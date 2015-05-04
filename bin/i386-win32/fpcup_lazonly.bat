@@ -10,7 +10,7 @@ ECHO ====================================================
 ECHO.
 
 if EXIST .\fpcup.exe (
-fpcup.exe --fpcURL="trunk" --lazURL="trunk" --skip="fpc,FPCCrossWin32-64"--verbose
+fpcup.exe --fpcURL="trunk" --lazURL="trunk" --skip="fpc,FPCCrossWin32-64" --verbose
 )
 
 ECHO.
