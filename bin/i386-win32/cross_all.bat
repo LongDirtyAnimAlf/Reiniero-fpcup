@@ -1,26 +1,27 @@
 @ECHO OFF
 REM ###############################################
 REM               fpcup for windows
-REM             cross compile script.
+REM          run all cross compile scripts
 REM ###############################################
 
 ECHO.
 ECHO ==============================================
-ECHO   Build cross compiler for linux arm
+ECHO   Build all cross compilers
 ECHO ==============================================
 ECHO.
-
-if '%1'=='noconfirm' (
-SET wait=--noconfirm
-)
 
 if EXIST .\fpcup.exe (
-fpcup.exe --fpcURL="default" --lazURL="default" --ostarget="linux" --cputarget="arm" --crossOPT="-CpARMV6 -CfVFPV2" --only="FPCCleanOnly,FPCBuildOnly" --skip="FPCGetOnly,lazbuild,bigide,useride" %wait%
+start /wait cross_android_arm.bat noconfirm
+start /wait cross_linux_arm.bat noconfirm
+start /wait cross_linux_armhf.bat noconfirm
+start /wait cross_linux_i386.bat noconfirm
+start /wait cross_linux_x64.bat noconfirm
+start /wait cross_win_x64.bat noconfirm
 )
 
 ECHO.
 ECHO ==============================================
-ECHO   Build cross compiler for linux arm ready
+ECHO   Build all cross compilers ready
 ECHO ==============================================
 ECHO.
 PAUSE

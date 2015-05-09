@@ -10,8 +10,12 @@ ECHO   Build cross compiler for windows 64 bit
 ECHO ==============================================
 ECHO.
 
+if '%1'=='noconfirm' (
+SET wait=--noconfirm
+)
+
 if EXIST .\fpcup.exe (
-fpcup.exe --fpcURL="default" --lazURL="default" --ostarget="win64" --cputarget="x86_64"
+fpcup.exe --fpcURL="default" --lazURL="default" --only="crosswin32-64" %wait%
 )
 
 ECHO.

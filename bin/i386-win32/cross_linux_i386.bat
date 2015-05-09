@@ -10,8 +10,12 @@ ECHO   Build cross compiler for linux i386
 ECHO ============================================
 ECHO.
 
+if '%1'=='noconfirm' (
+SET wait=--noconfirm
+)
+
 if EXIST .\fpcup.exe (
-fpcup.exe --fpcURL="default" --lazURL="default" --ostarget="linux" --cputarget="i386" --only="FPCCleanOnly,FPCBuildOnly" --skip="FPCGetOnly,lazbuild,bigide,useride"
+fpcup.exe --fpcURL="default" --lazURL="default" --ostarget="linux" --cputarget="i386" --only="FPCCleanOnly,FPCBuildOnly" --skip="FPCGetOnly,lazbuild,bigide,useride" %wait%
 )
 
 ECHO.
