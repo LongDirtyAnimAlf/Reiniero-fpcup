@@ -6,7 +6,7 @@ REM ###############################################
 
 ECHO.
 ECHO ==============================================
-ECHO   Build cross compiler for linux arm
+ECHO   Build cross compiler for android arm
 ECHO ==============================================
 ECHO.
 
@@ -20,7 +20,7 @@ fpcup.exe --fpcURL="default" --lazURL="default" --ostarget="android" --cputarget
 
 ECHO.
 ECHO ==============================================
-ECHO   Build cross compiler for linux arm ready
+ECHO   Build cross compiler for android arm ready
 ECHO ==============================================
 ECHO.
 PAUSE
