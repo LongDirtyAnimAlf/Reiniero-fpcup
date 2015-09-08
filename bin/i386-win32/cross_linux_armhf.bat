@@ -15,7 +15,7 @@ SET wait=--noconfirm
 )
 
 if EXIST .\fpcup.exe (
-fpcup.exe --fpcURL="default" --lazURL="default" --ostarget="linux" --cputarget="arm" --fpcOPT="-dFPC_ARMHF" --crossOPT="-CpARMV7A -CfVFPV3 -OoFASTMATH -CaEABIHF" --only="FPCCleanOnly,FPCBuildOnly" --skip="FPCGetOnly,lazbuild,bigide,useride" %wait%
+fpcup.exe --fpcURL="default" --ostarget="linux" --cputarget="arm" --fpcOPT="-dFPC_ARMHF" --crossOPT="-CpARMV7A -CfVFPV3 -OoFASTMATH -CaEABIHF" --only="FPCCleanOnly,FPCBuildOnly" --skip="FPCGetOnly,lazbuild,bigide,useride" %wait%
 )
 
 ECHO.
