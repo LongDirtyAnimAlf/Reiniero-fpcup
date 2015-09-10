@@ -12,7 +12,6 @@ ECHO.
 
 if EXIST .\fpcup.exe (
 call cross_android_arm.bat noconfirm
-call cross_linux_arm.bat noconfirm
 call cross_linux_armhf.bat noconfirm
 call cross_linux_i386.bat noconfirm
 call cross_linux_x64.bat noconfirm
