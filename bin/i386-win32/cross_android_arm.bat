@@ -15,8 +15,10 @@ SET wait=--noconfirm
 )
 
 if EXIST .\fpcup.exe (
-fpcup.exe --fpcURL="default" --ostarget="android" --cputarget="arm" --fpcOPT="-dFPC_ARMHF" --crossOPT="-CpARMV7A -CfVFPV3 -OoFASTMATH" --only="FPCCleanOnly,FPCBuildOnly" --skip="FPCGetOnly,lazbuild,bigide,useride" %wait%
+fpcup.exe --fpcURL="default" --ostarget="android" --cputarget="arm" --only="FPCCleanOnly,FPCBuildOnly" --skip="FPCGetOnly,lazbuild,bigide,useride" %wait%
 )
+
+
 
 ECHO.
 ECHO ==============================================
