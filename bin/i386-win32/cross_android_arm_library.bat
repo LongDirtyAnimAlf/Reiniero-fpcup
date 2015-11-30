@@ -15,7 +15,7 @@ SET wait=--noconfirm
 )
 
 if EXIST .\fpcup.exe (
-fpcup.exe --fpcURL="default" --ostarget="android" --cputarget="arm" --only="FPCCleanOnly,FPCBuildOnly" --skip="FPCGetOnly,lazbuild,bigide,useride" --crossbindir=C:\Users\Me\Downloads\android-ndk-r10e\toolchains\arm-linux-androideabi-4.9\prebuilt\windows\bin --crosslibdir=C:\Users\Me\Downloads\android-ndk-r10e\platforms\android-21\arch-arm\usr\lib %wait%
+fpcup.exe --ostarget="android" --cputarget="arm" --only="FPCCleanOnly,FPCBuildOnly" --crossbindir=C:\Users\Me\Downloads\android-ndk-r10e\toolchains\arm-linux-androideabi-4.9\prebuilt\windows\bin --crosslibdir=C:\Users\Me\Downloads\android-ndk-r10e\platforms\android-21\arch-arm\usr\lib %wait%
 )
 
 REM Delphi auto-installed toolchains can also be used !

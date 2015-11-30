@@ -15,8 +15,17 @@ SET wait=--noconfirm
 )
 
 if EXIST .\fpcup.exe (
-fpcup.exe --fpcURL="default" --ostarget="linux" --cputarget="x86_64" --only="FPCCleanOnly,FPCBuildOnly" --skip="FPCGetOnly,lazbuild,bigide,useride" %wait%
+fpcup.exe --ostarget="linux" --cputarget="x86_64" --only="FPCCleanOnly,FPCBuildOnly" %wait%
 )
+
+REM ###############################################
+REM fpclazup can also be used
+REM 
+REM if EXIST .\fpclazup.exe (
+REM fpclazup.exe --ostarget="linux" --cputarget="x86_64" --only="FPCCleanOnly,FPCBuildOnly" %wait%
+REM )
+REM 
+REM ###############################################
 
 ECHO.
 ECHO ==============================================

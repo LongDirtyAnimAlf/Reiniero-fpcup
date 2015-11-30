@@ -5,17 +5,17 @@ REM ############################################################################
 
 ECHO.
 ECHO =====================================================================================
-ECHO   Fpcup for freepsrta
+ECHO   Fpcup for interface rtti
 ECHO =====================================================================================
 ECHO.
 
 if EXIST .\fpcup.exe (
-fpcup.exe --installdir="c:\freesparta" --lazURL="sparta" --include=freesparta
+fpcup.exe --installdir="c:\fpcrtti" --fpcURL="RTTI"
 )
 
 ECHO.
 ECHO =====================================================================================
-ECHO   Fpcup for freesparta ready;
+ECHO   Fpcup for interface rtti ready;
 ECHO =====================================================================================
 ECHO.
 PAUSE

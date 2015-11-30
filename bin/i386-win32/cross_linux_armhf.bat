@@ -15,8 +15,18 @@ SET wait=--noconfirm
 )
 
 if EXIST .\fpcup.exe (
-fpcup.exe --fpcURL="default" --ostarget="linux" --cputarget="arm" --fpcOPT="-dFPC_ARMHF" --crossOPT="-CpARMV7A -CfVFPV3 -OoFASTMATH -CaEABIHF" --only="FPCCleanOnly,FPCBuildOnly" --skip="FPCGetOnly,lazbuild,bigide,useride" %wait%
+fpcup.exe --ostarget="linux" --cputarget="arm" --fpcOPT="-dFPC_ARMHF" --crossOPT="-CpARMV7A -CfVFPV3 -OoFASTMATH -CaEABIHF" --only="FPCCleanOnly,FPCBuildOnly" %wait%
 )
+
+REM ###############################################
+REM fpclazup can also be used
+REM 
+REM if EXIST .\fpclazup.exe (
+REM fpclazup.exe --ostarget="linux" --cputarget="arm" --fpcOPT="-dFPC_ARMHF" --crossOPT="-CpARMV7A -CfVFPV3 -OoFASTMATH -CaEABIHF" --
+REM only="FPCCleanOnly,FPCBuildOnly" %wait%
+REM )
+REM 
+REM ###############################################
 
 ECHO.
 ECHO ==============================================

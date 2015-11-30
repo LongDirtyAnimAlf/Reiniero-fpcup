@@ -14,13 +14,13 @@ if '%1'=='noconfirm' (
 SET wait=--noconfirm
 )
 
-if EXIST .\fpcup.exe (
-fpcup.exe --fpcURL="default" --lazURL="default" --only="crosswin32-64" %wait%
+if EXIST .\fpclazup.exe (
+fpclazup.exe --only="crosswin32-64" %wait%
 )
 
 ECHO.
-ECHO ==============================================
+ECHO ===============================================
 ECHO   Build cross compiler for windows 64 bit ready
-ECHO ==============================================
+ECHO ===============================================
 ECHO.
 PAUSE

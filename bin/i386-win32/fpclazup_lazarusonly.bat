@@ -1,24 +1,21 @@
 @ECHO OFF
 REM #####################################################
-REM               fpcup for windows
+REM               fpclazup for windows
 REM #####################################################
 
 ECHO.
 ECHO ====================================================
-ECHO   Fpcup for modules only:
-ECHO   install a single module (zeos) only
-ECHO   or install multiple modules only
+ECHO   Fpclazup default; Lazarus only
 ECHO ====================================================
 ECHO.
 
-if EXIST .\fpcup.exe (
-fpcup.exe --only="zeos" --verbose
+if EXIST .\fpclazup.exe (
+fpclazup.exe --lazURL="default" --skip="fpc,FPCCrossWin32-64" --verbose
 )
 
-REM fpcup.exe --only="lazpaint,bgracontrols,bgragames,ecc,indy,turbobird,notepas,uos,lazradio,treelistview" --verbose
 ECHO.
 ECHO ====================================================
-ECHO   Fpcup for modules only
+ECHO   Fpclazup default ready; Lazarus only
 ECHO ====================================================
 ECHO.
 PAUSE
