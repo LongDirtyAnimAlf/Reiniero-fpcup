@@ -1,3 +1,4 @@
 #! /bin/bash
 #
-./fpcup_linux_armhf --fpcURL='trunk' --lazURL='trunk' --fpcopt='-dFPC_ARMHF -CpARMV7A -CaEABIHF -CfVFPv3 -OoFASTMATH -g -gl -O1' --lazopt='-g -gl -O1' --verbose
+# ./fpcup_linux_armhf --fpcopt='-dFPC_ARMHF -CpARMV7A -CfVFPv3 -OoFASTMATH -g -gl -O1' --verbose
+./fpclazup_linux_armhf --fpcopt='-dFPC_ARMHF -CpARMV7A -CfVFPv3 -OoFASTMATH -g -gl -O1' --lazopt='-g -gl -O1' --verbose
