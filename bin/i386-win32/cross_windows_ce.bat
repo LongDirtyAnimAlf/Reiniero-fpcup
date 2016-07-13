@@ -15,7 +15,7 @@ SET wait=--noconfirm
 )
 
 if EXIST .\fpclazup.exe (
-fpclazup.exe --ostarget="win64" --cputarget="x86_64" --only="FPCCleanOnly,FPCBuildOnly" --verbose %wait%
+fpclazup.exe --ostarget="wince" --cputarget="arm" --only="FPCCleanOnly,FPCBuildOnly" --verbose %wait%
 )
 
 ECHO.
