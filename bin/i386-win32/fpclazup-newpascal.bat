@@ -1,2 +1,2 @@
-fpclazup --installdir="C:\NewPascal" --fpcURL="newpascal" --lazURL="trunk" --getfullrepo --verbose
+fpclazup --installdir="C:\NewPascal" --fpcURL="newpascal" --lazURL="newpascal"
 pause
