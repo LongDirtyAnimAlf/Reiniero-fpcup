@@ -4,12 +4,14 @@ del ..\CrossLinuxAarch64.rar
 del ..\CrossLinuxARM.rar
 del ..\CrossLinuxi386.rar
 del ..\CrossLinuxx64.rar
+del ..\CrossWinceARM.rar
 
-"C:\Program Files (x86)\WinRAR\Rar.exe" a -r -x..\fpc\units -x..\fpc\bin -x..\cross -x..\newpascalbatchfiles ..\NPLazBaseWin32.rar ..\
+"C:\Program Files (x86)\WinRAR\Rar.exe" a -r -x..\fpc\.svn -x..\lazarus\.svn -x..\fpc\units -x..\fpc\bin -x..\cross -x..\newpascalbatchfiles -x..\apps -x..\ccr ..\NPLazBaseWin32.rar ..\
 "C:\Program Files (x86)\WinRAR\Rar.exe" a -r ..\NPLazBaseWin32.rar ..\fpc\bin\i386-win32
 "C:\Program Files (x86)\WinRAR\Rar.exe" a -r ..\NPLazBaseWin32.rar ..\fpc\bin\x86_64-win64
 "C:\Program Files (x86)\WinRAR\Rar.exe" a -r ..\NPLazBaseWin32.rar ..\fpc\units\i386-win32
 "C:\Program Files (x86)\WinRAR\Rar.exe" a -r ..\NPLazBaseWin32.rar ..\fpc\units\x86_64-win64
+"C:\Program Files (x86)\WinRAR\Rar.exe" a -r ..\NPLazBaseWin32.rar ..\ccr\mORMot
 
 "C:\Program Files (x86)\WinRAR\Rar.exe" a -r ..\CrossAndroidARM.rar ..\fpc\bin\arm-android
 "C:\Program Files (x86)\WinRAR\Rar.exe" a -r ..\CrossAndroidARM.rar ..\fpc\units\arm-android
@@ -35,5 +37,10 @@ del ..\CrossLinuxx64.rar
 "C:\Program Files (x86)\WinRAR\Rar.exe" a -r ..\CrossLinuxx64.rar ..\fpc\units\x86_64-linux
 "C:\Program Files (x86)\WinRAR\Rar.exe" a -r ..\CrossLinuxx64.rar ..\cross\bin\x86_64-linux
 "C:\Program Files (x86)\WinRAR\Rar.exe" a -r ..\CrossLinuxx64.rar ..\cross\lib\x86_64-linux
+
+"C:\Program Files (x86)\WinRAR\Rar.exe" a -r ..\CrossWinceARM.rar ..\fpc\bin\arm-wince
+"C:\Program Files (x86)\WinRAR\Rar.exe" a -r ..\CrossWinceARM.rar ..\fpc\units\arm-wince
+"C:\Program Files (x86)\WinRAR\Rar.exe" a -r ..\CrossWinceARM.rar ..\cross\bin\arm-wince
+"C:\Program Files (x86)\WinRAR\Rar.exe" a -r ..\CrossWinceARM.rar ..\cross\lib\arm-wince
 
 pause

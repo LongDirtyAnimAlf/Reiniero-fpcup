@@ -1,21 +1,21 @@
 @ECHO OFF
 REM ######################################################################################
-REM               fpclazup for windows
+REM               fpcup for windows
 REM ######################################################################################
 
 ECHO.
 ECHO =====================================================================================
-ECHO   Fpclazup for interface rtti
+ECHO   Fpcup for interface rtti
 ECHO =====================================================================================
 ECHO.
 
-if EXIST .\fpclazup.exe (
-fpclazup.exe --installdir="c:\fpcrtti" --fpcURL="RTTI"
+if EXIST .\fpcup.exe (
+fpcup.exe --installdir="c:\fpcrtti" --fpcURL="trunk" --fpcPATCH="fpctrunkrtti.patch"
 )
 
 ECHO.
 ECHO =====================================================================================
-ECHO   Fpclazup for interface rtti ready;
+ECHO   Fpcup for interface rtti ready;
 ECHO =====================================================================================
 ECHO.
 PAUSE

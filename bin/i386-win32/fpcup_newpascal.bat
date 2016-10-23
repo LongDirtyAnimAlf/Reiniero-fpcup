@@ -5,17 +5,17 @@ REM ############################################################################
 
 ECHO.
 ECHO =====================================================================================
-ECHO   Fpcup for interface rtti
+ECHO   Fpcup by NewPascal
 ECHO =====================================================================================
 ECHO.
 
 if EXIST .\fpcup.exe (
-fpcup.exe --installdir="c:\fpcrtti" --fpcURL="RTTI"
+fpcup.exe --installdir="c:\NewPascalFPConly" --fpcURL="newpascal"
 )
 
 ECHO.
 ECHO =====================================================================================
-ECHO   Fpcup for interface rtti ready;
+ECHO   Fpcup by NewPascal ready;
 ECHO =====================================================================================
 ECHO.
 PAUSE
