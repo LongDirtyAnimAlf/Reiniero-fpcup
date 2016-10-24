@@ -10,7 +10,7 @@ ECHO ==============================================
 ECHO.
 
 if EXIST .\fpclazup.exe (
-fpclazup.exe --fpcURL="trunk" --lazURL="trunk" --verbose
+fpclazup.exe --fpcURL="trunk" --lazURL="trunk" --verbose --getfullrepo
 )
 
 ECHO.
