@@ -207,6 +207,8 @@ begin
   writeln('                       Depreciated, still here for backward compatibility');
   writeln(' getfilesonly          Just get files. No repos. Uses "svn export"');
   writeln(' disablejobs           Do not use (parallel) jobs when building FPC.');
+  writeln(' usewget               Use wget on Linux as downloader.');
+  writeln(' fpcsplit              Use different directory for source and binaries.');
   writeln(' noconfirm             No confirmation asked. For batch operation.');
   writeln(' verbose               Show output from svn and make.');
   writeln(' version               Show version info and quit.');
@@ -224,7 +226,7 @@ var
   //Linux, Unix,...
   FPCUpLink:string;
   {$ENDIF}
-  bNoConfirm,bHelp,bVersion:boolean;
+  bNoConfirm,bHelp,bVersion,bFPCsplit,bLazsplit:boolean;
   i, iCurrentOption: integer;
 	sAllParameters:string;
   sConfirm:string;
@@ -233,9 +235,7 @@ var
   sInstallDir: string; // Root installation directory
   bHaveInstalldir: boolean; //Has user explicitly specified a non-standard install dir?
   sLogFile: string; //Filename for log
-  {$ifndef FPCONLY}
   s:string;
-  {$endif}
   LeftOverOptions: TStringList; //Options left over after processing; may contain module=0 options
 begin
   // First check for settings.ini; it might not be present but specified anyway.
@@ -266,6 +266,8 @@ begin
           LeftOverOptions.Add('getfullrepo');
           LeftOverOptions.Add('getfilesonly');
           LeftOverOptions.Add('disablejobs');
+          LeftOverOptions.Add('usewget');
+          LeftOverOptions.Add('fpcsplit');
           LeftOverOptions.Add('verbose');
           LeftOverOptions.Add('version');
           try
@@ -313,6 +315,9 @@ begin
       // before the params are removed again by Options.GetOption calls
       sAllParameters:=Options.Params.Text;
 
+      bFPCsplit:=Options.GetOptionNoParam('','fpcsplit');
+      //bLazsplit:=Options.GetOptionNoParam('','lazsplit');
+
       {$IFDEF MSWINDOWS}
       // All directories specified: absolute paths without trailing delimiter
       sInstallDir:=Options.GetOption('','installdir','');
@@ -326,7 +331,13 @@ begin
       end;
       FInstaller.MakeDirectory:=ExcludeTrailingPathDelimiter(SafeExpandFileNameUTF8(Options.GetOption('','binutilsdir',sInstallDir+'\fpcbootstrap')));
       FInstaller.BootstrapCompilerDirectory:=ExcludeTrailingPathDelimiter(SafeExpandFileNameUTF8(Options.GetOption('','fpcbootstrapdir',sInstallDir+'\fpcbootstrap')));
-      FInstaller.FPCDirectory:=ExcludeTrailingPathDelimiter(SafeExpandFileNameUTF8(Options.GetOption('','fpcdir',sInstallDir+'\fpc')));
+
+      s:=ExcludeTrailingPathDelimiter(SafeExpandFileNameUTF8(Options.GetOption('','fpcdir',sInstallDir+'\fpc')));
+      FInstaller.FPCInstallDirectory:=s;
+      if bFPCsplit
+         then FInstaller.FPCSourceDirectory:=s+'src'
+         else FInstaller.FPCSourceDirectory:=s;
+
       {$ifndef FPCONLY}
       FInstaller.LazarusDirectory:=ExcludeTrailingPathDelimiter(SafeExpandFileNameUTF8(Options.GetOption('','lazdir',sInstallDir+'\lazarus')));
       {$endif}
@@ -343,7 +354,13 @@ begin
       end;
       FInstaller.MakeDirectory:=ExcludeTrailingPathDelimiter(SafeExpandFileNameUTF8(Options.GetOption('','binutilsdir','')));
       FInstaller.BootstrapCompilerDirectory:=ExcludeTrailingPathDelimiter(SafeExpandFileNameUTF8(Options.GetOption('','fpcbootstrapdir',sInstallDir+'/fpcbootstrap')));
-      FInstaller.FPCDirectory:=ExcludeTrailingPathDelimiter(SafeExpandFileNameUTF8(Options.GetOption('','fpcdir',sInstallDir+'/fpc')));
+
+      s:=ExcludeTrailingPathDelimiter(SafeExpandFileNameUTF8(Options.GetOption('','fpcdir',sInstallDir+'/fpc')));
+      FInstaller.FPCInstallDirectory:=s;
+      if bFPCsplit
+         then FInstaller.FPCSourceDirectory:=s+'src'
+         else FInstaller.FPCSourceDirectory:=s;
+
       {$ifndef FPCONLY}
       FInstaller.LazarusDirectory:=ExcludeTrailingPathDelimiter(SafeExpandFileNameUTF8(Options.GetOption('','lazdir',sInstallDir+'/lazarus')));
       {$endif}
@@ -442,7 +459,7 @@ begin
           FInstaller.ShortCutNameLazarus:='Lazarus_'+ExtractFileName(FInstaller.LazarusDirectory);
 
       FInstaller.LazarusOPT:=Options.GetOption('','lazOPT','');
-      {$endif}
+
       {$IF (defined(BSD)) and (not defined(Darwin))}
       //todo: check for other BSDs
       if (pos('-Fl/usr/local/lib/',FInstaller.LazarusOPT)=0) then
@@ -458,7 +475,6 @@ begin
         FInstaller.LazarusOpt:=FInstaller.LazarusOPT+' -Fl/usr/X11R6/lib';
       end;
       {$ENDIF defined(BSD) and not defined(Darwin)}
-      {$ifndef FPCONLY}
       FInstaller.LazarusDesiredRevision:=Options.GetOption('','lazrevision','',false);
       FInstaller.CrossLCL_Platform:=Options.GetOption('','lclplatform','');
       {$endif}
@@ -493,6 +509,7 @@ begin
       FInstaller.ExportOnly:=(Options.GetOptionNoParam('','getfilesonly'));
       FInstaller.NoJobs:=Options.GetOptionNoParam('','disablejobs');
       FInstaller.UseGitClient:=Options.GetOptionNoParam('','usegitclient',false);
+      FInstaller.UseWget:=Options.GetOptionNoParam('','usewget');
       // do not add to default options:
       bVersion:=Options.GetOptionNoParam('','version',false);
       bNoConfirm:=Options.GetOptionNoParam('','noconfirm',true);
@@ -679,7 +696,7 @@ begin
       writeln('Bootstrap dir:      '+FInstaller.BootstrapCompilerDirectory);
       writeln('FPC URL:            '+FInstaller.FPCURL);
       writeln('FPC options:        '+FInstaller.FPCOPT);
-      writeln('FPC directory:      '+FInstaller.FPCDirectory);
+      writeln('FPC directory:      '+FInstaller.FPCInstallDirectory);
       {$ifndef FPCONLY}
       writeln('Lazarus URL:        '+FInstaller.LazarusURL);
       writeln('Lazarus options:    '+FInstaller.LazarusOPT);
@@ -791,10 +808,6 @@ begin
 
       // Note: we don't have a unicode version of SafeExpandFileName; investigate consequences for Unicode paths!??!?
       // User could have specified relative paths so we're normalizing them.
-      {$ifndef FPCONLY}
-      if SafeExpandFileName(FInstaller.LazarusDirectory)=SafeExpandFileName(FInstaller.FPCDirectory) then
-        writeln('WARNING: FPC and Lazarus directories are the same ('+FInstaller.FPCDirectory+'). This will not work!');
-      {$endif}
       if (FInstaller.FPCDesiredRevision<>'') then
         writeln('WARNING: Reverting FPC to revision '+FInstaller.FPCDesiredRevision);
       {$ifndef FPCONLY}

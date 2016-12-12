@@ -47,9 +47,6 @@ private
   function TargetSignature: string;
 public
   function GetLibs(Basepath:string):boolean;override;
-  {$ifndef FPCONLY}
-  function GetLibsLCL(LCL_Platform:string; Basepath:string):boolean;override;
-  {$endif}
   function GetBinUtils(Basepath:string):boolean;override;
   constructor Create;
   destructor Destroy; override;
@@ -77,9 +74,13 @@ begin
   if not result then
     result:=SearchLibrary(IncludeTrailingPathDelimiter(Basepath)+'usr'+DirectorySeparator+'lib',LibName);
 
+  // for osxcross with special libs: search also for libc.tbd
+  if not result then
+    result:=SearchLibrary(IncludeTrailingPathDelimiter(Basepath)+'usr'+DirectorySeparator+'lib','libc.tbd');
+
   // first search local paths based on libbraries provided for or adviced by fpc itself
   if not result then
-    result:=SimpleSearchLibrary(BasePath,DirName);
+    result:=SimpleSearchLibrary(BasePath,DirName,LibName);
 
   if not result then
   begin
@@ -98,6 +99,8 @@ begin
     FLibsFound:=True;
     FFPCCFGSnippet:=FFPCCFGSnippet+LineEnding+
     '-Fl'+IncludeTrailingPathDelimiter(FLibsPath);
+
+    // specialities for osxcross
     if Pos('osxcross',FLibsPath)>0 then
     begin
       FFPCCFGSnippet:=FFPCCFGSnippet+LineEnding+
@@ -108,23 +111,15 @@ begin
       '-kFoundation'+LineEnding+
       '-k-framework'+LineEnding+
       '-kCoreFoundation'+LineEnding+
-      //'-k-dylib_file /System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libGL.dylib:C:\cygwin\opt\osxcross\target\SDK\MacOSX10.10.sdk\System\Library\Frameworks\OpenGL.framework\Versions\A\Libraries\libGL.dylib'+LineEnding+
-      //'-k-dylib_file /System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libGLU.dylib:C:\cygwin\opt\osxcross\target\SDK\MacOSX10.10.sdk\System\Library\Frameworks\OpenGL.framework\Versions\A\Libraries\libGLU.dylib'+LineEnding+
       // -XRx is needed for fpc : prepend <x> to all linker search paths
-      '-XRC:\cygwin\opt\osxcross\target\SDK\MacOSX10.10.sdk';
+      '-XR'+ExcludeTrailingPathDelimiter(Basepath);
     end;
+
     FFPCCFGSnippet:=FFPCCFGSnippet+LineEnding+
     '-Xr/usr/lib';//+LineEnding+ {buildfaq 3.3.1: makes the linker create the binary so that it searches in the specified directory on the target system for libraries}
     //'-FL/usr/lib/ld-linux.so.2' {buildfaq 3.3.1: the name of the dynamic linker on the target};
   end;
 end;
-
-{$ifndef FPCONLY}
-function Tany_darwinx64.GetLibsLCL(LCL_Platform: string; Basepath: string): boolean;
-begin
-  result:=true;
-end;
-{$endif}
 
 function Tany_darwinx64.GetBinUtils(Basepath:string): boolean;
 const
@@ -132,6 +127,7 @@ const
 var
   AsFile: string;
   BinPrefixTry: string;
+  i:integer;
 begin
   result:=inherited;
   if result then exit;
@@ -143,7 +139,7 @@ begin
     result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
 
   // Also allow for (cross)binutils from https://github.com/tpoechtrager/osxcross
-  // version 10.10 = v14
+  // fpc version from https://github.com/LongDirtyAnimalf/osxcross
   {$IFDEF MSWINDOWS}
   if IsWindows64
      then BinPrefixTry:='x86_64'
@@ -153,21 +149,19 @@ begin
   {$endif}
   BinPrefixTry:=BinPrefixTry+'-apple-darwin';
 
-  if not result then
+  for i:=15 downto 10 do
   begin
-    AsFile:=BinPrefixTry+'14-'+'as'+GetExeExt;
-    result:=SearchBinUtil(BasePath,AsFile);
-    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
-    if result then FBinUtilsPrefix:=BinPrefixTry+'14-';
-  end;
-
-  // version 10.9 = v13
-  if not result then
-  begin
-    AsFile:=BinPrefixTry+'13-'+'as'+GetExeExt;
-    result:=SearchBinUtil(BasePath,AsFile);
-    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
-    if result then FBinUtilsPrefix:=BinPrefixTry+'13-';
+    if not result then
+    begin
+      AsFile:=BinPrefixTry+InttoStr(i)+'-'+'as'+GetExeExt;
+      result:=SearchBinUtil(BasePath,AsFile);
+      if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+      if result then
+      begin
+        FBinUtilsPrefix:=BinPrefixTry+InttoStr(i)+'-';
+        break;
+      end;
+    end;
   end;
 
   SearchBinUtilsInfo(result);
@@ -190,6 +184,7 @@ begin
   FCrossModuleName:='any_darwinx64';
   FBinUtilsPrefix:='x86_64-darwin-';
   FBinUtilsPath:='';
+  FBinutilsPathInPath:=true;
   FFPCCFGSnippet:='';
   FLibsPath:='';
   FTargetCPU:='x86_64';

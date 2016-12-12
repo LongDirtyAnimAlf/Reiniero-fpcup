@@ -66,12 +66,12 @@ type
     function GetProxyCommand: string;
     function GetRepoExecutable: string; override;
     function GetRepoExecutableName: string; override;
+    function FindRepoExecutable: string; override;
     procedure Update; override;
   public
     procedure CheckOutOrUpdate; override;
     function Commit(Message: string): boolean; override;
     function Execute(Command: string): integer; override;
-    function FindRepoExecutable: string; override;
     function GetDiffAll: string; override;
     procedure LocalModifications(var FileList: TStringList); override;
     function LocalRepositoryExists: boolean; override;
@@ -243,7 +243,7 @@ begin
        if UseForce then Command:=StringReplace(Command,' checkout ',' checkout --force ',[]);
      end;
 
-  if (FDesiredRevision = '') or (trim(FDesiredRevision) = 'HEAD') then
+  if (FDesiredRevision = '') or (Uppercase(trim(FDesiredRevision)) = 'HEAD') then
     Command:=Command+'HEAD '+Repository+' '+LocalRepository
   else
     Command:=Command+FDesiredRevision+' '+Repository+' '+LocalRepository;
@@ -390,9 +390,8 @@ begin
     Command := ' --username ' + UserName + ' --password ' + Password;
   end;
 
-
-  if (FDesiredRevision = '') or (trim(FDesiredRevision) = 'HEAD') then
-    Command := ' update ' + ProxyCommand + Command + ' --quiet --non-interactive --trust-server-cert ' + LocalRepository
+  if (FDesiredRevision = '') or (Uppercase(trim(FDesiredRevision)) = 'HEAD') then
+    Command := ' update ' + ProxyCommand + Command + ' --quiet --non-interactive --trust-server-cert -r HEAD ' + LocalRepository
   else
     Command := ' update ' + ProxyCommand + Command + ' --quiet --non-interactive --trust-server-cert -r ' + FDesiredRevision + ' ' + LocalRepository;
 
