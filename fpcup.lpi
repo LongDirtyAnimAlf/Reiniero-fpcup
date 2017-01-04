@@ -14,10 +14,6 @@
       <Title Value="fpcup"/>
       <UseAppBundle Value="False"/>
       <ResourceType Value="res"/>
-      <XPManifest>
-        <TextName Value="CompanyName.ProductName.AppName"/>
-        <TextDesc Value="Your application description."/>
-      </XPManifest>
       <Icon Value="0"/>
       <Resources Count="2">
         <Resource_0 FileName="fpcup.ini" Type="RCDATA" ResourceName="FPCUP_INI"/>
@@ -73,9 +69,6 @@ end;"/>
             </Debugging>
           </Linking>
           <Other>
-            <Verbosity>
-              <ShowAll Value="True"/>
-            </Verbosity>
             <WriteFPCLogo Value="False"/>
             <CustomOptions Value="-dDEBUG -dFPCONLY"/>
             <ExecuteBefore>
@@ -190,9 +183,6 @@ end;"/>
             <LinkSmart Value="True"/>
           </Linking>
           <Other>
-            <Verbosity>
-              <ShowAll Value="True"/>
-            </Verbosity>
             <WriteFPCLogo Value="False"/>
             <CustomOptions Value="-dFPCONLY"/>
             <ExecuteBefore>
@@ -230,9 +220,6 @@ end;"/>
             <LinkSmart Value="True"/>
           </Linking>
           <Other>
-            <Verbosity>
-              <ShowAll Value="True"/>
-            </Verbosity>
             <WriteFPCLogo Value="False"/>
             <CustomOptions Value="-dFPCONLY"/>
             <ExecuteBefore>
@@ -270,9 +257,6 @@ end;"/>
             <LinkSmart Value="True"/>
           </Linking>
           <Other>
-            <Verbosity>
-              <ShowAll Value="True"/>
-            </Verbosity>
             <WriteFPCLogo Value="False"/>
             <CustomOptions Value="-dFPCONLY"/>
             <ExecuteBefore>
@@ -310,9 +294,6 @@ end;"/>
             <LinkSmart Value="True"/>
           </Linking>
           <Other>
-            <Verbosity>
-              <ShowAll Value="True"/>
-            </Verbosity>
             <WriteFPCLogo Value="False"/>
             <CustomOptions Value="-dFPCONLY"/>
             <ExecuteBefore>
@@ -350,9 +331,6 @@ end;"/>
             <LinkSmart Value="True"/>
           </Linking>
           <Other>
-            <Verbosity>
-              <ShowAll Value="True"/>
-            </Verbosity>
             <WriteFPCLogo Value="False"/>
             <CustomOptions Value="-dFPCONLY"/>
             <ExecuteBefore>

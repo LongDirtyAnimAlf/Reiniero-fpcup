@@ -14,10 +14,6 @@
       <Title Value="fpclazup"/>
       <UseAppBundle Value="False"/>
       <ResourceType Value="res"/>
-      <XPManifest>
-        <TextName Value="CompanyName.ProductName.AppName"/>
-        <TextDesc Value="Your application description."/>
-      </XPManifest>
       <Icon Value="0"/>
       <Resources Count="2">
         <Resource_0 FileName="fpcup.ini" Type="RCDATA" ResourceName="FPCUP_INI"/>
@@ -74,9 +70,6 @@ end;"/>
             </Debugging>
           </Linking>
           <Other>
-            <Verbosity>
-              <ShowAll Value="True"/>
-            </Verbosity>
             <WriteFPCLogo Value="False"/>
             <CustomOptions Value="-dDEBUG"/>
             <ExecuteBefore>
@@ -188,9 +181,6 @@ end;"/>
             <LinkSmart Value="True"/>
           </Linking>
           <Other>
-            <Verbosity>
-              <ShowAll Value="True"/>
-            </Verbosity>
             <WriteFPCLogo Value="False"/>
             <ExecuteBefore>
               <CompileReasons Run="False"/>
@@ -227,9 +217,6 @@ end;"/>
             <LinkSmart Value="True"/>
           </Linking>
           <Other>
-            <Verbosity>
-              <ShowAll Value="True"/>
-            </Verbosity>
             <WriteFPCLogo Value="False"/>
             <ExecuteBefore>
               <CompileReasons Run="False"/>
@@ -266,9 +253,6 @@ end;"/>
             <LinkSmart Value="True"/>
           </Linking>
           <Other>
-            <Verbosity>
-              <ShowAll Value="True"/>
-            </Verbosity>
             <WriteFPCLogo Value="False"/>
             <ExecuteBefore>
               <CompileReasons Run="False"/>
@@ -305,9 +289,6 @@ end;"/>
             <LinkSmart Value="True"/>
           </Linking>
           <Other>
-            <Verbosity>
-              <ShowAll Value="True"/>
-            </Verbosity>
             <WriteFPCLogo Value="False"/>
             <ExecuteBefore>
               <CompileReasons Run="False"/>
@@ -344,9 +325,6 @@ end;"/>
             <LinkSmart Value="True"/>
           </Linking>
           <Other>
-            <Verbosity>
-              <ShowAll Value="True"/>
-            </Verbosity>
             <WriteFPCLogo Value="False"/>
             <ExecuteBefore>
               <CompileReasons Run="False"/>

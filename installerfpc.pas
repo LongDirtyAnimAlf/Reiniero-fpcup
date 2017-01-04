@@ -526,7 +526,7 @@ begin
         ProcessEx.Parameters.Add('all');
         ProcessEx.Parameters.Add('OS_TARGET='+FCrossOS_Target);
         ProcessEx.Parameters.Add('CPU_TARGET='+FCrossCPU_Target);
-        ProcessEx.Parameters.Add('OSTYPE='+CrossInstaller.TargetOS);
+        //ProcessEx.Parameters.Add('OSTYPE='+CrossInstaller.TargetOS);
         if Length(FCrossOS_SubArch)>0 then ProcessEx.Parameters.Add('SUBARCH='+FCrossOS_SubArch);
         Options:=FCompilerOptions;
         // Error checking for some known problems with cross compilers
@@ -541,42 +541,50 @@ begin
           end;
         end;
 
-        {$ifndef Darwin}
-        if (CrossInstaller.TargetOS='darwin') then
-        begin
-          if CrossInstaller.LibsPath<>''then
-          begin
-             Options:=Options+' -Xd';
-             Options:=Options+' -Fl'+ExcludeTrailingPathDelimiter(CrossInstaller.LibsPath);
-             if Pos('osxcross',CrossInstaller.LibsPath)>0 then
-             begin
-               Options:=Options+' -Fl'+IncludeTrailingPathDelimiter(CrossInstaller.LibsPath)+'system';
-             end;
-          end;
-        end;
-        {$endif}
 
         if (CrossInstaller.TargetOS='android') then
         begin
           if (Pos('-dFPC_ARMEL',Options)=0) then Options:=Options+' -dFPC_ARMEL';
         end;
 
+        CrossOptions:='';
+
         if CrossInstaller.BinUtilsPrefix<>'' then
         begin
           // Earlier, we used regular OPT; using CROSSOPT is apparently more precise
-          CrossOptions:='CROSSOPT=-XP'+CrossInstaller.BinUtilsPrefix;
+          CrossOptions:=CrossOptions+' -XP'+CrossInstaller.BinUtilsPrefix;//+' -FD'+ExcludeTrailingPathDelimiter(CrossInstaller.BinUtilsPath);
           ProcessEx.Parameters.Add('BINUTILSPREFIX='+CrossInstaller.BinUtilsPrefix);
         end;
 
-        if (CrossInstaller.CrossOpt.Count>0) and (CrossOptions='') then
-           CrossOptions:='CROSSOPT=';
+        if CrossInstaller.LibsPath<>''then
+        begin
+           CrossOptions:=CrossOptions+' -Xd';
+           CrossOptions:=CrossOptions+' -Fl'+ExcludeTrailingPathDelimiter(CrossInstaller.LibsPath);
+
+           {$ifndef Darwin}
+           if (CrossInstaller.TargetOS='darwin') then
+           begin
+             // add extra libs located in ...\system for Mac SDK
+             // does not do harm on other systems if they are not there
+             CrossOptions:=CrossOptions+' -Fl'+IncludeTrailingPathDelimiter(CrossInstaller.LibsPath)+'system';
+           end;
+           {$endif}
+          // if we have libs ... chances are +/-100% that we have bins, so set path to include bins !
+          // but only in case we did not do it before
+          // not sure if this is realy needed
+          if NOT CrossInstaller.BinUtilsPathInPath then
+             SetPath(IncludeTrailingPathDelimiter(CrossInstaller.BinUtilsPath),true,false);
+        end;
+
         for i:=0 to CrossInstaller.CrossOpt.Count-1 do
         begin
           CrossOptions:=trimright(CrossOptions+' '+CrossInstaller.CrossOpt[i]);
         end;
+
+        CrossOptions:=Trim(CrossOptions);
         if CrossOptions<>'' then
         begin
-          ProcessEx.Parameters.Add(CrossOptions);
+          ProcessEx.Parameters.Add('CROSSOPT='+CrossOptions);
         end;
 
         // suppress hints and add all other options
@@ -743,13 +751,9 @@ begin
       end;
 
       finally
-        // Return path to previous state
-        if (CrossInstaller.BinUtilsPathInPath)  then
-        begin
           SetPath(OldPath,false,false);
         end;
       end;
-    end;
 
     RemoveStaleBuildDirectories(FSourceDirectory,FCrossCPU_Target+'-'+FCrossOS_Target);
 
@@ -919,7 +923,7 @@ begin
     if (ExecuteCommand(CompilerPath+ ' -iV', Output, FVerbose)=0) then
     begin
       Output:=StringReplace(Output,LineEnding,'',[rfReplaceAll,rfIgnoreCase]);
-      Result:=Output;
+      if Length(Output)>0 then Result:=Output;
     end;
   except
   end;
@@ -1261,7 +1265,7 @@ end;
 BootstrapArchive := SysUtils.GetTempFileName;
 if OperationSucceeded then
 begin
-  OperationSucceeded:=Download(NOT FUseWget, FBootstrapCompilerURL, BootstrapArchive,HTTPProxyHost,HTTPProxyPort,HTTPProxyUser,HTTPProxyPassword);
+  OperationSucceeded:=Download(FUseWget, FBootstrapCompilerURL, BootstrapArchive,HTTPProxyHost,HTTPProxyPort,HTTPProxyUser,HTTPProxyPassword);
   if FileExists(BootstrapArchive)=false then OperationSucceeded:=false;
 end;
 
@@ -1531,6 +1535,11 @@ begin
 
           aDownLoader.getFTPFileList('ftp://ftp.freepascal.org/pub/fpc/dist/'+aLocalBootstrapVersion+'/bootstrap/',aCompilerList);
 
+          if FVerbose then
+          begin
+            if aCompilerList.Count>0 then infoln('Found FPC v'+aLocalBootstrapVersion+' online bootstrappers: '+aCompilerList.CommaText,etInfo);
+          end;
+
           {$IFDEF FREEBSD}
           // FreeBSD : special because of versions
           FreeBSDVersion:=0;
@@ -1668,24 +1677,36 @@ begin
 
       end;
 
+      // get compiler version (if any)
+      s:=GetCompilerVersion(FCompiler);
+
+      // we did not find any suitable bootstrapper
+      // check if we have a manual installed bootstrapper
       if (NOT aCompilerFound) AND (FBootstrapCompilerURL='') then
       begin
-        raise Exception.Create('No bootstrap compiler available for this operating system.');
-        //exit(false);
+        if (s='0.0.0') then
+        begin
+          infoln('No bootstrapper local and online. Fatal. Stopping.',etError);
+          exit(false);
+        end
+        else
+        begin
+          // there is a bootstrapper available: just use it !!
+          infoln('No correct bootstrapper. But going to use the available one with version ' + s,etInfo);
+          FBootstrapCompilerOverrideVersionCheck:=true;
+          result:=true;
+        end;
       end;
 
-      {$ifdef darwin}
-      // Force use of universal bootstrap compiler regardless of what user said as fpc ftp
-      // doesn't have a ppc386 bootstrap. Will have to build one later in TFPCInstaller.BuildModule
-      // FBootstrapCompiler := IncludeTrailingPathDelimiter(FBootstrapCompilerDirectory)+'ppcuniversal';
-      // Ensure make doesn't care if we build an i386 compiler with an old stable compiler:
-      // FBootstrapCompilerOverrideVersionCheck:=true;
-      {$endif darwin}
-      // final check ... do we have the correct (as in version) compiler already ?
-      if GetCompilerVersion(FCompiler)<>aLocalBootstrapVersion then
+      if (aCompilerFound) AND (FBootstrapCompilerURL<>'') then
       begin
-        infoln('Going to download bootstrapper from '+ FBootstrapCompilerURL,etInfo);
+      // final check ... do we have the correct (as in version) compiler already ?
+        infoln('Check if we already have a bootstrap compiler with version '+ aLocalBootstrapVersion,etInfo);
+        if s<>aLocalBootstrapVersion then
+      begin
+          infoln('No correct bootstrapper. Going to download bootstrapper from '+ FBootstrapCompilerURL,etInfo);
         result:=DownloadBootstrapCompiler;
+      end;
       end;
 
     finally
@@ -1748,15 +1769,15 @@ begin
   //add fpc/utils to solve data2inc not found by fpcmkcfg
   SetPath(
     FBinPath+PathSeparator+
-    // pwd is located in /bin ... the makefile needs it !!
-    // tools are located in /usr/bin ... the makefile needs it !!
-    '/bin'+PathSeparator+'/usr/bin'+PathSeparator+
     FBootstrapCompilerDirectory+PathSeparator+
     IncludeTrailingPathDelimiter(FInstallDirectory)+PathSeparator+
     IncludeTrailingPathDelimiter(FInstallDirectory)+'bin'+PathSeparator+ {e.g. fpdoc, fpcres}
     IncludeTrailingPathDelimiter(FInstallDirectory)+'utils'+PathSeparator+
     IncludeTrailingPathDelimiter(FSourceDirectory)+PathSeparator+
-    IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler',
+    IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+PathSeparator+
+    // pwd is located in /bin ... the makefile needs it !!
+    // tools are located in /usr/bin ... the makefile needs it !!
+    '/bin'+PathSeparator+'/usr/bin',
     true,false);
   {$ENDIF UNIX}
   InitDone:=result;
@@ -1893,6 +1914,9 @@ begin
 
   if (bIntermediateNeeded) then
   begin
+    // temporary ... there are no sources (yet) for 3.0.2
+    if RequiredBootstrapVersion='3.0.2' then RequiredBootstrapVersion:='3.0.0';
+
     infoln('We need to build an FPC ' + RequiredBootstrapVersion + ' intermediate compiler.',etInfo);
 
     // get the correct binutils (Windows only)

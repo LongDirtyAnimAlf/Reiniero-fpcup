@@ -141,7 +141,7 @@ type
     function DownloadFromGit(ModuleName: string; var BeforeRevision, AfterRevision: string; UpdateWarnings: TStringList): boolean;
     // Checkout/update using SVN; use FSourceDirectory as local repository
     // Any generated warnings will be added to UpdateWarnings
-    function DownloadFromSVN(ModuleName: string; var BeforeRevision, AfterRevision: string; UpdateWarnings: TStringList;const aUserName:string='';const aPassword:string=''): boolean;
+    function DownloadFromSVN(ModuleName: string; var BeforeRevision, AfterRevision: string; UpdateWarnings: TStringList): boolean;
     // Download SVN client and set FSVNClient.SVNExecutable if succesful.
     {$IFDEF MSWINDOWS}
     function DownloadSVN: boolean;
@@ -497,8 +497,8 @@ begin
     {$IFDEF MSWINDOWS}
     if OperationSucceeded then
     begin
-      // check availability of OpenSSL libraries. Just continue in case oof error
-      if FileExists(SafeGetApplicationPath+'libeay32.dll') AND FileExists(ExtractFilePath(ParamStr(0))+'ssleay32.dll') then
+      // check availability of OpenSSL libraries. Just continue in case of error
+      if FileExists(SafeGetApplicationPath+'libeay32.dll') AND FileExists(SafeGetApplicationPath+'ssleay32.dll') then
       begin
         infoln('Found OpenSLL library files.',etInfo);
       end
@@ -1073,7 +1073,7 @@ begin
   result:=DownloadFromBase(FGitClient,ModuleName,BeforeRevision,AfterRevision,UpdateWarnings);
 end;
 
-function TInstaller.DownloadFromSVN(ModuleName: string; var BeforeRevision, AfterRevision: string; UpdateWarnings: TStringList;const aUserName:string='';const aPassword:string=''): boolean;
+function TInstaller.DownloadFromSVN(ModuleName: string; var BeforeRevision, AfterRevision: string; UpdateWarnings: TStringList): boolean;
 var
   BeforeRevisionShort: string; //Basically the branch revision number
   CheckoutOrUpdateReturnCode: integer;
@@ -1091,8 +1091,6 @@ begin
   FSVNClient.ModuleName:=ModuleName;
   FSVNClient.LocalRepository := FSourceDirectory;
   FSVNClient.Repository := FURL;
-  FSVNClient.UserName:=aUserName;
-  FSVNClient.Password:=aPassword;
   RepoExists:=FSVNClient.LocalRepositoryExists;
   if RepoExists then
   begin
@@ -1690,9 +1688,10 @@ end;
 
 function TInstaller.GetFile(aURL,aFile:string; forceoverwrite:boolean=false):boolean;
 begin
-  result:=((FileExists(aFile)) AND (NOT forceoverwrite));
+  result:=((FileExists(aFile)) AND (NOT forceoverwrite) AND (FileSize(aFile)>0));
   if (NOT result) then
   begin
+    if ((forceoverwrite) AND (SysUtils.FileExists(aFile))) then SysUtils.DeleteFile(aFile);
     result:=Download(FUseWget,aURL,aFile,FHTTPProxyHost,FHTTPProxyPort,FHTTPProxyUser,FHTTPProxyPassword);
     if (NOT result) then infoln('Could not download ' + ExtractFileName(aFile) +' from ' + aURL + ' into ' + ExtractFileDir(aFile),etError);
   end;

@@ -3,7 +3,7 @@
   <ProjectSession>
     <PathDelim Value="\"/>
     <Version Value="10"/>
-    <BuildModes Count="3" Active="darwin64">
+    <BuildModes Count="3" Active="linux64">
       <Item1 Name="linuxarmhf">
         <CompilerOptions>
           <Version Value="11"/>
@@ -128,8 +128,7 @@ end;"/>
       <Unit0>
         <Filename Value="fpcup.lpr"/>
         <IsPartOfProject Value="True"/>
-        <TopLine Value="81"/>
-        <CursorPos Y="110"/>
+        <IsVisibleTab Value="True"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
       </Unit0>
@@ -157,17 +156,15 @@ end;"/>
         <Filename Value="installercore.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerCore"/>
-        <EditorIndex Value="6"/>
+        <EditorIndex Value="-1"/>
         <UsageCount Value="200"/>
-        <Loaded Value="True"/>
       </Unit4>
       <Unit5>
         <Filename Value="installerfpc.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerFpc"/>
-        <EditorIndex Value="5"/>
+        <EditorIndex Value="-1"/>
         <UsageCount Value="200"/>
-        <Loaded Value="True"/>
       </Unit5>
       <Unit6>
         <Filename Value="installerlazarus.pas"/>
@@ -189,15 +186,13 @@ end;"/>
         <Filename Value="installeruniversal.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerUniversal"/>
-        <IsVisibleTab Value="True"/>
-        <EditorIndex Value="8"/>
+        <EditorIndex Value="-1"/>
         <UsageCount Value="200"/>
-        <Loaded Value="True"/>
       </Unit8>
       <Unit9>
         <Filename Value="fpcup.ini"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="3"/>
+        <EditorIndex Value="1"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
         <DefaultSyntaxHighlighter Value="Ini"/>
@@ -206,18 +201,14 @@ end;"/>
         <Filename Value="installermanager.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerManager"/>
-        <EditorIndex Value="7"/>
+        <EditorIndex Value="-1"/>
         <UsageCount Value="200"/>
-        <Loaded Value="True"/>
       </Unit10>
       <Unit11>
         <Filename Value="fpcuputil.pas"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="2"/>
-        <TopLine Value="37"/>
-        <CursorPos X="13" Y="44"/>
+        <EditorIndex Value="-1"/>
         <UsageCount Value="200"/>
-        <Loaded Value="True"/>
       </Unit11>
       <Unit12>
         <Filename Value="m_crosswin64.pas"/>
@@ -302,7 +293,7 @@ end;"/>
       <Unit23>
         <Filename Value="settings.ini"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="4"/>
+        <EditorIndex Value="2"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
         <DefaultSyntaxHighlighter Value="Ini"/>
@@ -310,11 +301,10 @@ end;"/>
       <Unit24>
         <Filename Value="m_crossinstaller.pas"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="1"/>
+        <EditorIndex Value="-1"/>
         <TopLine Value="264"/>
         <CursorPos Y="275"/>
         <UsageCount Value="200"/>
-        <Loaded Value="True"/>
       </Unit24>
       <Unit25>
         <Filename Value="m_win32_to_linux386.pas"/>

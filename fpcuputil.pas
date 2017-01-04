@@ -1,4 +1,4 @@
-{ Utility unit for FPCUp
+{ Utility unit for various FPCup versions
 Copyright (C) 2012-2014 Reinier Olislagers, Ludo Brands
 
 This library is free software; you can redistribute it and/or modify it
@@ -37,6 +37,8 @@ unit fpcuputil;
 this will disable writeln calls
 }
 {not $DEFINE NOCONSOLE}
+
+{$define ENABLEWGET}
 
 interface
 
@@ -82,6 +84,7 @@ type
     FHTTPProxyPort: integer;
     FHTTPProxyUser: string;
     FHTTPProxyPassword: string;
+    procedure parseFTPHTMLListing(F:TStream;filelist:TStringList);
   protected
     procedure SetVerbose(aValue:boolean);virtual;
     property MaxRetries : Byte Read FMaxRetries Write FMaxRetries default DefMaxRetries;
@@ -125,10 +128,13 @@ type
     function checkURL(const URL:string):boolean;override;
   end;
 
-  {$IFDEF UNIX}
+  {$IFDEF ENABLEWGET}
   TUseWGetDownloader = Class(TBasicDownLoader)
   private
     function WGetDownload(Const URL : String; Dest : TStream):boolean;
+    function LibCurlDownload(Const URL : String; Dest : TStream):boolean;
+    function WGetFTPFileList(const URL:string; filelist:TStringList):boolean;
+    function LibCurlFTPFileList(const URL:string; filelist:TStringList):boolean;
     function Download(const URL: String; Dest: TStream):boolean;
   protected
     function FTPDownload(Const URL : String; Dest : TStream):boolean;
@@ -144,7 +150,7 @@ type
   {$IFDEF Darwin}
   TWGetDownloader = TUseNativeDownLoader;
   {$else}
-  {$IFDEF UNIX}
+  {$IFDEF ENABLEWGET}
   TWGetDownloader = TUseWGetDownloader;
   {$ELSE}
   TWGetDownloader = TUseNativeDownLoader;
@@ -219,6 +225,7 @@ uses
   Forms,Controls,
   {$endif}
   IniFiles,
+  DOM,DOM_HTML,SAX_HTML,
   ftpsend {for downloading from ftp},
   FileUtil, LazFileUtils, LazUTF8,
   strutils,uriparser
@@ -226,12 +233,24 @@ uses
     //Mostly for shortcut code
     ,windows, shlobj {for special folders}, ActiveX, ComObj
   {$ENDIF MSWINDOWS}
-  {$IFDEF UNIX}
+  {$IFDEF ENABLEWGET}
   // for wget downloader
   ,process
-  ,baseunix,processutils
-  {$ENDIF UNIX}
+  {$IFDEF UNIX}
+  ,baseunix
+  {$ENDIF}
+  ,processutils
+  // for libc downloader
+  ,fpcuplibcurl
+  {$ENDIF ENABLEWGET}
   ;
+
+const
+  USERAGENT = 'curl/7.50.1 (i686-pc-linux-gnu) libcurl/7.50.1 OpenSSL/1.0.1t zlib/1.2.8 libidn/1.29 libssh2/1.4.3 librtmp/2.3';
+  //USERAGENT = 'Mozilla/5.0 (compatible; fpweb)';
+  //USERAGENT = 'Mozilla/4.0 (compatible; MSIE 5.01; Windows NT 5.0)';
+  CURLUSERAGENT='curl/7.51.0';
+
 
 {$ifdef mswindows}
 function GetWin32Version(var Major,Minor,Build : Integer): Boolean;
@@ -870,18 +889,22 @@ begin
 end;
 
 // returns file size in bytes or 0 if not found.
-function FileSizeUTF8(FileName: string) : Int64;
+function FileSize(FileName: string) : Int64;
+//function FileSizeUTF8(FileName: string) : Int64;
 var
-  sr : TSearchRec;
+  sr : TRawByteSearchRec;
+  //sr : TSearchRec;
 begin
 {$ifdef unix}
   result:=filesize(FileName);
 {$else}
-  if FindFirstUTF8(FileName, faAnyFile, sr ) = 0 then
+  if SysUtils.FindFirst(FileName, faAnyFile, sr ) = 0 then
+  //if FindFirstUTF8(FileName, faAnyFile, sr ) = 0 then
      result := Int64(sr.FindData.nFileSizeHigh) shl Int64(32) + Int64(sr.FindData.nFileSizeLow)
   else
      result := 0;
-  FindCloseUTF8(sr);
+  SysUtils.FindClose(sr);
+  //FindCloseUTF8(sr);
 {$endif}
 end;
 
@@ -1259,6 +1282,46 @@ begin
   FHTTPProxyPassword:=pass;
 end;
 
+procedure TBasicDownLoader.parseFTPHTMLListing(F:TStream;filelist:TStringList);
+var
+  ADoc: THTMLDocument;
+  HTMFiles : TDOMNodeList;
+  HTMFile : TDOMNode;
+  FilenameValid:boolean;
+  i,j:integer;
+  s:string;
+begin
+  F.Position:=0;
+  try
+    ReadHTMLFile(ADoc,F);
+    // a bit rough, but it works
+    HTMFiles:=ADoc.GetElementsByTagName('a');
+    for i:=0 to HTMFiles.Count-1 do
+    begin
+      HtmFile:=HTMFiles.Item[i];
+      s:=HtmFile.TextContent;
+      if Length(s)>0 then
+      begin
+        // validate filename (also rough)
+        FilenameValid:=True;
+        for j:=1 to Length(s) do
+        begin
+          FilenameValid := (NOT SysUtils.CharInSet(s[j], [';', '=', '+', '<', '>', '|','"', '[', ']', '\', '/', '''']));
+          if (NOT FilenameValid) then break;
+        end;
+        if FilenameValid then FilenameValid:=(Pos('..',s)=0);
+        // restrict ourselves to zip and bz2 ... we only use this to retrieve lists of bootstrapper archives !
+        if FilenameValid then FilenameValid:=((LowerCase(ExtractFileExt(s))='.zip') OR (LowerCase(ExtractFileExt(s))='.bz2'));
+        // finally, add filename if all is ok !!
+        if FilenameValid then filelist.Add(s);
+      end;
+    end;
+  finally
+    aDoc.Free;
+  end;
+end;
+
+
 procedure TUseNativeDownLoader.DoHeaders(Sender : TObject);
 Var
   I : Integer;
@@ -1393,6 +1456,14 @@ begin
       begin
         Username := FUsername;
         Password := FPassword;
+      end
+      else
+      begin
+        if Pos('ftp.freepascal.org',URL)>0 then
+        begin
+          Username := 'anonymous';
+          Password := 'fpc@example.com';
+        end;
       end;
       if Length(HTTPProxyHost)>0 then
       begin
@@ -1404,12 +1475,23 @@ begin
       TargetHost := URI.Host;
       if not Login then exit;
       Result := List(URI.Path, False);
+      Logout;
+
       for i := 0 to FtpList.Count -1 do
       begin
         s := FTPList[i].FileName;
         filelist.Add(s);
       end;
-      Logout;
+
+      if FTPList.Lines.Count>0 then
+      begin
+        // do we have a HTML lsiting (due to a proxy) ?
+        if Pos('<!DOCTYPE HTML',UpperCase(FTPList.Lines.Strings[0]))=1 then
+        begin
+          parseFTPHTMLListing(DataStream,filelist);
+        end;
+      end;
+
     finally
       Free;
     end;
@@ -1435,6 +1517,14 @@ begin
     begin
       Username := FUsername;
       Password := FPassword;
+    end
+    else
+    begin
+      if Pos('ftp.freepascal.org',URL)>0 then
+      begin
+        Username := 'anonymous';
+        Password := 'fpc@example.com';
+      end;
     end;
     if Length(HTTPProxyHost)>0 then
     begin
@@ -1466,8 +1556,8 @@ begin
   begin
     repeat
       //RequestHeaders.Add('Connection: Close');
-      // User-Agent needed for sourceforge
-      AddHeader('User-Agent','curl/7.38.0 (i686-pc-linux-gnu) libcurl/7.38.0 OpenSSL/1.0.1t zlib/1.2.8 libidn/1.29 libssh2/1.4.3 librtmp/2.3');
+      // User-Agent needed for sourceforge and GitHub
+      AddHeader('User-Agent',USERAGENT);
       try
         Get(URL,filename);
         response:=ResponseStatusCode;
@@ -1509,7 +1599,8 @@ begin
   tries:=0;
   with aFPHTTPClient do
   begin
-    AddHeader('User-Agent','curl/7.38.0 (i686-pc-linux-gnu) libcurl/7.38.0 OpenSSL/1.0.1t zlib/1.2.8 libidn/1.29 libssh2/1.4.3 librtmp/2.3');
+    // User-Agent needed for sourceforge and GitHub
+    AddHeader('User-Agent',USERAGENT);
     AddHeader('Connection','Close');
     repeat
       try
@@ -1549,7 +1640,7 @@ Var
 begin
   result:=false;
   URI:=ParseURI(URL);
-  infoln('FPHTTPClient downloader: Getting ' + URI.Document + ' from '+URI.Host+URI.Path,etInfo);
+  infoln('Native downloader: Getting ' + URI.Document + ' from '+URI.Host+URI.Path,etInfo);
   P:=URI.Protocol;
   If CompareText(P,'ftp')=0 then
     result:=FTPDownload(URL,filename)
@@ -1560,7 +1651,7 @@ begin
 end;
 
 
-{$IFDEF UNIX}
+{$IFDEF ENABLEWGET}
 
 // proxy still to do !!
 
@@ -1572,7 +1663,7 @@ begin
   result:=false;
   With TProcess.Create(Self) do
   try
-    CommandLine:='wget -q --tries='+InttoStr(MaxRetries)+' --output-document=- '+URL;
+    CommandLine:='wget -q --user-agent="'+USERAGENT+'" --tries='+InttoStr(MaxRetries)+' --output-document=- '+URL;
     Options:=[poUsePipes,poNoConsole];
     Execute;
     while Running do
@@ -1580,23 +1671,97 @@ begin
       Count:=Output.Read(Buffer,SizeOf(Buffer));
       if (Count>0) then Dest.WriteBuffer(Buffer,Count);
     end;
-    result:=(ExitStatus=0);
+    result:=((ExitStatus=0) AND (Dest.Size>0));
   finally
     Free;
   end;
 end;
 
+function DoWrite(Ptr : Pointer; Size : size_t; nmemb: size_t; Data : Pointer) : size_t;cdecl;
+begin
+  if Data=nil then result:=0 else
+  begin
+    result:=TStream(Data).Write(Ptr^,Size*nmemb);
+  end;
+end;
+
+function TUseWGetDownloader.LibCurlDownload(Const URL : String; Dest : TStream):boolean;
+var
+  hCurl : pCurl;
+  res: CURLcode;
+  UserPass:string;
+begin
+  result:=false;
+
+  if LoadCurlLibrary then
+  begin
+
+    curl_global_init(CURL_GLOBAL_ALL);
+
+    try
+      hCurl:= curl_easy_init();
+      if Assigned(hCurl) then
+      begin
+
+        res:=CURLE_OK;
+
+        UserPass:='';
+        if FUsername <> '' then
+        begin
+          UserPass:=FUsername+':'+FPassword;
+        end
+        else
+        begin
+          if Pos('ftp.freepascal.org',URL)>0 then UserPass:='anonymous:fpc@example.com';
+        end;
+        if Length(UserPass)>0 then if res=CURLE_OK then res:=curl_easy_setopt(hCurl, CURLOPT_USERPWD, pointer(UserPass));
+
+        if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_TCP_KEEPALIVE,1);
+        if res=CURLE_OK then res:=curl_easy_setopt(hCurl, CURLOPT_FOLLOWLOCATION, 1);
+        if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_MAXREDIRS,50);
+        if res=CURLE_OK then res:=curl_easy_setopt(hCurl, CURLOPT_NOPROGRESS,1);
+        if res=CURLE_OK then res:=curl_easy_setopt(hCurl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
+        if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_URL,PChar(URL));
+        if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_WRITEFUNCTION,@DoWrite);
+        if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_WRITEDATA,Pointer(Dest));
+        if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_USERAGENT,PChar(CURLUSERAGENT));
+
+        if res=CURLE_OK then res := curl_easy_perform(hCurl);
+
+        result:=((res=CURLE_OK) AND (Dest.Size>0));
+
+        curl_easy_cleanup(hCurl);
+      end;
+    except
+      // swallow libcurl exceptions
+    end;
+  end;
+end;
+
+
 function TUseWGetDownloader.FTPDownload(Const URL : String; Dest : TStream):boolean;
 begin
+  result:=LibCurlDownload(URL,Dest);
+  if (result) then infoln('LibCurl FTP file download success !!!', etInfo);
+  if (NOT result) then
+  begin
   result:=WGetDownload(URL,Dest);
+    if (result) then infoln('Wget FTP file download success !', etInfo);
+  end;
 end;
 
 function TUseWGetDownloader.HTTPDownload(Const URL : String; Dest : TStream):boolean;
 begin
+  result:=LibCurlDownload(URL,Dest);
+  if (result) then infoln('LibCurl HTTP file download success !!!', etInfo);
+  if (NOT result) then
+  begin
   result:=WGetDownload(URL,Dest);
+    if (result) then infoln('Wget HTTP file download success !', etInfo);
+  end;
 end;
 
-function TUseWGetDownloader.getFTPFileList(const URL:string; filelist:TStringList):boolean;
+function TUseWGetDownloader.WGetFTPFileList(const URL:string; filelist:TStringList):boolean;
 const
   WGETFTPLISTFILE='.listing';
 var
@@ -1638,21 +1803,115 @@ begin
   end;
 end;
 
-function TUseWGetDownloader.getFile(const URL,filename:string):boolean;
+function TUseWGetDownloader.LibCurlFTPFileList(const URL:string; filelist:TStringList):boolean;
 var
-  F : TFileStream;
+  hCurl : pCurl;
+  res: CURLcode;
+  URI : TURI;
+  s : String;
+  aTFTPList:TFTPList;
+  F:TMemoryStream;
+  i:integer;
+  UserPass :string;
 begin
   result:=false;
+
+  URI:=ParseURI(URL);
+  s:=URI.Protocol;
+  if CompareText(s,'ftp')=0 then
+  begin
+    if LoadCurlLibrary then
+    begin
+
+      //curl_global_init(CURL_GLOBAL_ALL);
+
+      try
+        hCurl:= curl_easy_init();
+        if Assigned(hCurl) then
+        begin
+
+          res:=CURLE_OK;
+
+          F:=TMemoryStream.Create;
   try
-    F:=TFileStream.Create(filename,fmCreate);
+
+            UserPass:='';
+            if FUsername <> '' then
+            begin
+              UserPass:=FUsername+':'+FPassword;
+            end
+            else
+            begin
+              if Pos('ftp.freepascal.org',URL)>0 then UserPass:='anonymous:fpc@example.com';
+            end;
+            if Length(UserPass)>0 then if res=CURLE_OK then res:=curl_easy_setopt(hCurl, CURLOPT_USERPWD, pointer(UserPass));
+
+            if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_URL,pointer(URL));
+            if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_WRITEFUNCTION,@DoWrite);
+            if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_WRITEDATA,Pointer(F));
+            if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_USERAGENT,CURLUSERAGENT);
+            if res=CURLE_OK then res:=curl_easy_perform(hCurl);
+
+            result:=(res=CURLE_OK);
+
+            curl_easy_cleanup(hCurl);
+
+            // libcurl correct exit ?
+            if result then
+            begin
+              // do we have data ?
+              if (F.Size>0) then
+              begin
+                F.Position:=0;
+                aTFTPList:=TFTPList.Create;
     try
-      result:=Download(URL,F);
+                  aTFTPList:=TFTPList.Create;
+                  aTFTPList.Lines.LoadFromStream(F);
+
+                  if aTFTPList.Lines.Count>0 then
+                  begin
+                    // do we have a HTML listing (due to a proxy) ?
+                    if Pos('<!DOCTYPE HTML',UpperCase(aTFTPList.Lines.Strings[0]))=1 then
+                    begin
+                      parseFTPHTMLListing(F,filelist);
+                    end
+                    else
+                    begin
+                      // parse the pure FTP response
+                      aTFTPList.ParseLines;
+                      for i := 0 to aTFTPList.Count -1 do
+                      begin
+                        s := aTFTPList[i].FileName;
+                        filelist.Add(s);
+                      end;
+                    end;
+                  end;
+                finally
+                  aTFTPList.Free;
+                end;
+              end;
+            end;
+
     finally
       F.Free;
     end;
+
+        end;
   except
-    result:=False;
-    SysUtils.DeleteFile(filename);
+        // swallow libcurl exceptions
+      end;
+    end;
+  end;
+end;
+
+function TUseWGetDownloader.getFTPFileList(const URL:string; filelist:TStringList):boolean;
+begin
+  result:=LibCurlFTPFileList(URL,filelist);
+  if (result) then infoln('LibCurl FTP filelist success !!!!', etInfo);
+  if (NOT result) then
+  begin
+    result:=WGetFTPFileList(URL,filelist);
+    if (result) then infoln('Wget FTP filelist success !!!!', etInfo);
   end;
 end;
 
@@ -1661,9 +1920,7 @@ var
   Output:string;
 begin
   Output:='';
-  //'curl/7.38.0 (i686-pc-linux-gnu) libcurl/7.38.0 OpenSSL/1.0.1t zlib/1.2.8 libidn/1.29 libssh2/1.4.3 librtmp/2.3'
-  //'Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.2.3) Gecko/20100401 Firefox/3.6.3'
-  result:=(ExecuteCommand('wget -U "curl/7.38.0 (i686-pc-linux-gnu) libcurl/7.38.0 OpenSSL/1.0.1t zlib/1.2.8 libidn/1.29 libssh2/1.4.3 librtmp/2.3" --tries='+InttoStr(MaxRetries)+' --spider '+URL,Output,false)=0);
+  result:=(ExecuteCommand('wget --user-agent="'+USERAGENT+'" --tries='+InttoStr(MaxRetries)+' --spider '+URL,Output,false)=0);
   if result then
   begin
     result:=(Pos('Remote file exists',Output)>0);
@@ -1682,7 +1939,6 @@ Var
 begin
   result:=false;
   URI:=ParseURI(URL);
-  infoln('WGET downloader: Getting ' + URI.Document + ' from '+URI.Host+URI.Path,etInfo);
   P:=URI.Protocol;
   If CompareText(P,'ftp')=0 then
     result:=FTPDownload(URL,Dest)
@@ -1691,7 +1947,27 @@ begin
   else if CompareText(P,'https')=0 then
     result:=HTTPDownload(URL,Dest);
 end;
-{$ENDIF}
+
+function TUseWGetDownloader.getFile(const URL,filename:string):boolean;
+var
+  F : TFileStream;
+begin
+  result:=false;
+  try
+    F:=TFileStream.Create(filename,fmCreate);
+    try
+      result:=Download(URL,F);
+    finally
+      F.Free;
+    end;
+  except
+    result:=False;
+    SysUtils.DeleteFile(filename);
+  end;
+end;
+
+
+{$ENDIF ENABLEWGET}
 
 end.
 

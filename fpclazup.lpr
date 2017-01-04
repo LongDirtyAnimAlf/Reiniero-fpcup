@@ -19,7 +19,6 @@ module which is not derived from or based on this library. If you modify
 this library, you may extend this exception to your version of the library,
 but you are not obligated to do so. If you do not wish to do so, delete this
 exception statement from your version.
-
 This program is distributed in the hope that it will be useful, but WITHOUT
 ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
 FITNESS FOR A PARTICULAR PURPOSE. See the GNU Library General Public License
@@ -83,9 +82,13 @@ uses
   {$IFDEF Darwin}
   m_crossdarwin64,
   m_crossdarwin32,
+  m_crossdarwinpowerpc,
+  m_crossdarwinarm,
   {$else}
   m_any_to_darwin386,
   m_any_to_darwinx64,
+  m_any_to_darwinpowerpc,
+  m_any_to_darwinarm,
   {$endif}
   {$IF defined(FREEBSD) or defined(NETBSD) or defined(OPENBSD)}
   m_freebsd_to_linux386, m_freebsd64_to_freebsd32, m_freebsd_to_linux64,
