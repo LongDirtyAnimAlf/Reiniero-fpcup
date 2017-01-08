@@ -1055,7 +1055,7 @@ begin
   //check if this is a known module:
 
   // FPC:
-  if uppercase(ModuleName)='FPC' then
+  if (uppercase(ModuleName)='FPC') then
     begin
     if assigned(FInstaller) then
       begin
