@@ -526,9 +526,11 @@ begin
         ProcessEx.Parameters.Add('all');
         ProcessEx.Parameters.Add('CPU_SOURCE='+SourceCPU);
         ProcessEx.Parameters.Add('OS_SOURCE='+SourceOS);
-        ProcessEx.Parameters.Add('OS_TARGET='+FCrossOS_Target);
-        ProcessEx.Parameters.Add('CPU_TARGET='+FCrossCPU_Target);
+        ProcessEx.Parameters.Add('OS_TARGET='+FCrossOS_Target); //cross compile for different OS...
+        ProcessEx.Parameters.Add('CPU_TARGET='+FCrossCPU_Target); // and processor.
         //ProcessEx.Parameters.Add('OSTYPE='+CrossInstaller.TargetOS);
+        ProcessEx.Parameters.Add('NOGDBMI=1'); // prevent building of IDE to be 100% sure
+
         if Length(FCrossOS_SubArch)>0 then ProcessEx.Parameters.Add('SUBARCH='+FCrossOS_SubArch);
         Options:=FCompilerOptions;
         // Error checking for some known problems with cross compilers
@@ -546,7 +548,11 @@ begin
 
         if (CrossInstaller.TargetOS='android') then
         begin
-          if (Pos('-dFPC_ARMEL',Options)=0) then Options:=Options+' -dFPC_ARMEL';
+          // what to do ...
+          // always build hardfloat for ARM on Android ?
+          // or default to softfloat for ARM on Android ?
+          // if (Pos('-dFPC_ARMEL',Options)=0) then Options:=Options+' -dFPC_ARMEL';
+          if (Pos('-dFPC_ARMHF',Options)=0) then Options:=Options+' -dFPC_ARMHF';
         end;
 
         CrossOptions:='';
@@ -592,6 +598,7 @@ begin
         // suppress hints and add all other options
         Options:=StringReplace(Options,'  ',' ',[rfReplaceAll]);
         Options:=Trim(Options);
+        // suppress hints
         ProcessEx.Parameters.Add('OPT=-vi-n-h- '+Options);
         //ProcessEx.Parameters.Add('OPT=-vd+ '+Options);
         //ProcessEx.Parameters.Add('OPT=-vw -vl -vx -vd -vi-n-h- '+Options);
@@ -637,6 +644,15 @@ begin
       end
       else
       begin
+        {$IFDEF UNIX}
+        // fpc bug ?!!
+        s:=GetCompilerName(CrossInstaller.TargetCPU);
+        if (FileExists(IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler/'+s)) AND (s=GetCompilerName(SourceCPU)) then
+        begin
+          infoln('Non-native cross-compiler has same same as native compiler ... delete non-native cross-compiler to prevent overwriting of native compiler !!',etInfo);
+          SysUtils.DeleteFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler/'+s);
+        end;
+        {$ENDIF}
         // Install crosscompiler: make crossinstall
         // (apparently equivalent to make install CROSSINSTALL=1)
         ProcessEx.Executable := Make;
@@ -658,11 +674,12 @@ begin
         ProcessEx.Parameters.Add('COPYTREE=echo'); //fix for examples in Win svn, see build FAQ
         {$ENDIF}
         //putting crossinstall before target might help!?!?
+        ProcessEx.Parameters.Add('crossinstall');
         ProcessEx.Parameters.Add('CPU_SOURCE='+SourceCPU);
         ProcessEx.Parameters.Add('OS_SOURCE='+SourceOS);
         ProcessEx.Parameters.Add('OS_TARGET='+FCrossOS_Target); //cross compile for different OS...
         ProcessEx.Parameters.Add('CPU_TARGET='+FCrossCPU_Target); // and processor.
-        ProcessEx.Parameters.Add('crossinstall');
+        ProcessEx.Parameters.Add('NOGDBMI=1'); // prevent building of IDE to be 100% sure
         // suppress hints
         ProcessEx.Parameters.Add('OPT=-vi-n-h-');
         if Length(FCrossOS_SubArch)>0 then ProcessEx.Parameters.Add('SUBARCH='+FCrossOS_SubArch);
@@ -722,7 +739,7 @@ begin
         begin
           {$IFDEF UNIX}
           s:=GetCompilerName(CrossInstaller.TargetCPU);
-          if FileExists(IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler/'+s) then
+          if (FileExists(IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler/'+s)) then
           begin
             infoln('Copy compiler ('+s+') into: '+FBinPath,etInfo);
             FileUtil.CopyFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler/'+s,
@@ -1754,6 +1771,7 @@ begin
   {$IFDEF MSWINDOWS}
   s:='';
   // preserve cygwin and msys(2) paths when setting path
+  {
   aCompilerList:=TStringList.Create;
   try
     aCompilerList.Delimiter:=PathSeparator;
@@ -1770,6 +1788,7 @@ begin
   finally
     aCompilerList.Free;
   end;
+  }
   if Length(FSVNDirectory)>0
      then s:=PathSeparator+ExcludeTrailingPathDelimiter(FSVNDirectory)+s;
   // Try to ignore existing make.exe, fpc.exe by setting our own path:
@@ -1958,8 +1977,10 @@ begin
       if ((FCPUCount>1) AND (NOT FNoJobs)) then ProcessEx.Parameters.Add('--jobs='+inttostr(FCPUCount));
       ProcessEx.Parameters.Add('FPC='+FCompiler);
       ProcessEx.Parameters.Add('--directory='+ExcludeTrailingPathDelimiter(BootstrapDirectory));
-      //ProcessEx.Parameters.Add('OS_TARGET='+SourceOS);
-      //ProcessEx.Parameters.Add('CPU_TARGET='+SourceCPU);
+
+      ProcessEx.Parameters.Add('OS_TARGET='+SourceOS);
+      ProcessEx.Parameters.Add('CPU_TARGET='+SourceCPU);
+
       ProcessEx.Execute;
       infoln('Cleaned FPC ' + RequiredBootstrapVersion + ' intermediate bootstrap compiler.',etInfo);
 
@@ -2050,9 +2071,20 @@ begin
         if ((FCPUCount>1) AND (NOT FNoJobs)) then ProcessEx.Parameters.Add('--jobs='+inttostr(FCPUCount));
         ProcessEx.Parameters.Add('FPC='+FCompiler);
         ProcessEx.Parameters.Add('--directory='+ExcludeTrailingPathDelimiter(BootstrapDirectory));
+
+        // Legacy settings from fpcup ... not sure if correct [Don]
+        // Copy over user-specified instruction sets e.g. for trunk compiler...
+        // in CROSSOPT though, as the stable compiler likely will not understand them
+        // if FCompilerOptions<>'' then ProcessEx.Parameters.Add('CROSSOPT='+FCompilerOptions);
+
+        {$ifdef CPUARMHF}
+        ProcessEx.Parameters.Add('OPT=-vi-n-h- -dFPC_ARMHF');
+        {$else}
         ProcessEx.Parameters.Add('OPT=-vi-n-h-');
-        //ProcessEx.Parameters.Add('OS_TARGET='+SourceOS);
-        //ProcessEx.Parameters.Add('CPU_TARGET='+SourceCPU);
+        {$endif}
+
+        ProcessEx.Parameters.Add('OS_TARGET='+SourceOS);
+        ProcessEx.Parameters.Add('CPU_TARGET='+SourceCPU);
 
         if (GetCompilerVersion(FCompiler)<>RequiredBootstrapBootstrapVersion) then
         begin
@@ -2071,6 +2103,7 @@ begin
         if ReturnCode=1 then infoln('Successfully build FPC ' + RequiredBootstrapVersion + ' intermediate bootstrap compiler.',etInfo);
       end;
 
+      infoln('Going to copy bootstrapper ' + IncludeTrailingPathDelimiter(BootstrapDirectory)+'compiler/'+GetCompilerName(SourceCPU) + ' towards bootstrapper ' + ExtractFilePath(FCompiler)+IntermediateCompiler,etInfo);
       FileUtil.CopyFile(IncludeTrailingPathDelimiter(BootstrapDirectory)+'compiler/'+GetCompilerName(SourceCPU),
         ExtractFilePath(FCompiler)+IntermediateCompiler);
 
@@ -2509,6 +2542,7 @@ var
   UpdateWarnings: TStringList;
   ReturnCode,i: integer;
   //MakefileSL:TStringList;
+  DiffFileSL:TStringList;
   aRepoClient:TRepoClient;
 begin
   result:=InitModule;
@@ -2609,6 +2643,34 @@ begin
             {$ELSE}
             ReturnCode:=ExecuteCommandInDir(LocalPatchCmd + PatchFilePath, FSourceDirectory, Output, True);
             {$ENDIF}
+
+            if ReturnCode<>0 then
+            begin
+              // Patching can go wrong when line endings are not compatible
+              // Try to circumvent this problem by trick below (replacing line enddings)
+              if Pos('different line endings',Output)>0 then
+              begin
+                DiffFileSL:=TStringList.Create();
+                try
+                  {$IFDEF MSWINDOWS}
+                  DiffFileSL.TextLineBreakStyle:=tlbsLF;
+                  {$ELSE}
+                  DiffFileSL.TextLineBreakStyle:=tlbsCRLF;
+                  {$ENDIF}
+                  DiffFileSL.LoadFromFile(PatchFilePath);
+                  DiffFileSL.TextLineBreakStyle:=DefaultTextLineBreakStyle;
+                  DiffFileSL.SaveToFile(PatchFilePath);
+                finally
+                  DiffFileSL.Free();
+                end;
+                {$IFDEF MSWINDOWS}
+                ReturnCode:=ExecuteCommandInDir(IncludeTrailingPathDelimiter(FMakeDir) + LocalPatchCmd + PatchFilePath, FSourceDirectory, Output, True);
+                {$ELSE}
+                ReturnCode:=ExecuteCommandInDir(LocalPatchCmd + PatchFilePath, FSourceDirectory, Output, True);
+                {$ENDIF}
+              end;
+            end;
+
             if ReturnCode=0
                then infoln('FPC has been patched successfully with '+UpdateWarnings[i],etInfo)
                else

@@ -648,24 +648,30 @@ begin
       infoln('Could not retrieve Windows version using GetWin32Version.',etWarning);
   {$ENDIF}
 
-  if SkipModules<>'' then begin
+  FSequencer.FSkipList:=nil;
+  if SkipModules<>'' then
+  begin
     FSequencer.FSkipList:=TStringList.Create;
     FSequencer.FSkipList.Delimiter:=',';
     FSequencer.FSkipList.DelimitedText:=SkipModules;
     end;
-  if FOnlyModules<>'' then begin
+
+  if FOnlyModules<>'' then
+  begin
     FSequencer.CreateOnly(FOnlyModules);
     result:=FSequencer.Run('Only');
     FSequencer.DeleteOnly;
     end
-  else begin
+  else
+  begin
     {$if defined(win32)}
     // Run Windows specific cross compiler or regular version
     if pos('CROSSWIN32-64',UpperCase(SkipModules))>0 then begin
       infoln('InstallerManager: going to run sequencer for sequence: Default.',etDebug);
       result:=FSequencer.Run('Default');
     end
-    else begin
+    else
+    begin
       infoln('InstallerManager: going to run sequencer for sequence: DefaultWin32.',etDebug);
       result:=FSequencer.Run('DefaultWin32');
     end;
@@ -707,8 +713,8 @@ begin
       FSequencer.DeleteOnly;
     end;
     end;
-  if assigned(FSequencer.FSkipList) then
-    FSequencer.FSkipList.Free;
+
+  if assigned(FSequencer.FSkipList) then FSequencer.FSkipList.Free;
 end;
 
 constructor TFPCupManager.Create;
@@ -944,6 +950,7 @@ function TSequencer.DoExec(FunctionName: string): boolean;
 
         LS[11].lib:='libpangocairo-1.0.so';
         }
+        //apt-get install subversion make binutils gdb gcc libgtk2.0-dev
         Output:='libgtk2.0-dev libcairo2-dev libpango1.0-dev libxtst-dev libgdk-pixbuf2.0-dev libatk1.0-dev libghc-x11-dev';
         AdvicedLibs:=AdvicedLibs+
                      'build-essential gcc subversion devscripts libc6-dev freeglut3-dev libgl1-mesa libgl1-mesa-dev '+
@@ -1252,7 +1259,11 @@ end;
 
 function TSequencer.IsSkipped(ModuleName: string): boolean;
 begin
+  try
   result:=assigned(FSkipList) and (FSkipList.IndexOf(Uppercase(ModuleName))>=0);
+  except
+    result:=false;
+  end;
 end;
 
 procedure TSequencer.ResetAllExecuted(SkipFPC: boolean);
