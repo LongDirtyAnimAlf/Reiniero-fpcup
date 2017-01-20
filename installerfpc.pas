@@ -246,6 +246,7 @@ begin
       ConfigText.Add(LineEnding);
     ConfigText.Add(Snippet);
 
+    {$ifndef Darwin}
     // remove pipeline assembling for Darwin when cross-compiling !!
     SnipBegin:=ConfigText.IndexOf('# use pipes instead of temporary files for assembling');
     if SnipBegin>-1 then
@@ -256,6 +257,7 @@ begin
         ConfigText.Insert(SnipBegin+3,'#ENDIF');
       end;
     end;
+    {$endif}
 
     ConfigText.SaveToFile(FPCCFG);
     result:=true;
@@ -560,16 +562,16 @@ begin
         if CrossInstaller.BinUtilsPrefix<>'' then
         begin
           // Earlier, we used regular OPT; using CROSSOPT is apparently more precise
-          CrossOptions:=CrossOptions+' -XP'+CrossInstaller.BinUtilsPrefix;//+' -FD'+ExcludeTrailingPathDelimiter(CrossInstaller.BinUtilsPath);
+          CrossOptions:=CrossOptions+' -XP'+CrossInstaller.BinUtilsPrefix;
           ProcessEx.Parameters.Add('BINUTILSPREFIX='+CrossInstaller.BinUtilsPrefix);
         end;
 
         if CrossInstaller.LibsPath<>''then
         begin
+           {$ifndef Darwin}
            CrossOptions:=CrossOptions+' -Xd';
            CrossOptions:=CrossOptions+' -Fl'+ExcludeTrailingPathDelimiter(CrossInstaller.LibsPath);
 
-           {$ifndef Darwin}
            if (CrossInstaller.TargetOS='darwin') then
            begin
              // add extra libs located in ...\system for Mac SDK
@@ -577,11 +579,30 @@ begin
              CrossOptions:=CrossOptions+' -Fl'+IncludeTrailingPathDelimiter(CrossInstaller.LibsPath)+'system';
            end;
            {$endif}
+
+           {$ifdef Darwin}
+           //if (CrossInstaller.TargetOS='iphonesim') then
+           begin
+             s:=ResolveDots(IncludeTrailingPathDelimiter(CrossInstaller.LibsPath)+'../../');
+             CrossOptions:=CrossOptions+' -XR'+ExcludeTrailingPathDelimiter(s);
+           end;
+           {$endif}
+
           // if we have libs ... chances are +/-100% that we have bins, so set path to include bins !
           // but only in case we did not do it before
           // not sure if this is realy needed
           if NOT CrossInstaller.BinUtilsPathInPath then
              SetPath(IncludeTrailingPathDelimiter(CrossInstaller.BinUtilsPath),true,false);
+        end;
+
+        if CrossInstaller.BinUtilsPath<>''then
+        begin
+           {$ifdef Darwin}
+           //if (CrossInstaller.TargetOS='iphonesim') then
+           begin
+             CrossOptions:=CrossOptions+' -FD'+ExcludeTrailingPathDelimiter(CrossInstaller.BinUtilsPath);
+           end;
+           {$endif}
         end;
 
         for i:=0 to CrossInstaller.CrossOpt.Count-1 do
@@ -594,6 +615,10 @@ begin
         begin
           ProcessEx.Parameters.Add('CROSSOPT='+CrossOptions);
         end;
+
+        {$ifdef Darwin}
+        Options:=Options+' -ap';
+        {$endif}
 
         // suppress hints and add all other options
         Options:=StringReplace(Options,'  ',' ',[rfReplaceAll]);
@@ -646,6 +671,8 @@ begin
       begin
         {$IFDEF UNIX}
         // fpc bug ?!!
+        // fpcupdeluxe bug !!?
+        // see infoln for problem description
         s:=GetCompilerName(CrossInstaller.TargetCPU);
         if (FileExists(IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler/'+s)) AND (s=GetCompilerName(SourceCPU)) then
         begin
@@ -738,19 +765,23 @@ begin
         else
         begin
           {$IFDEF UNIX}
+
+          // get the name of the cross-compiler we just built.
+          IntermediateCompiler:=GetCrossCompilerName(CrossInstaller.TargetCPU);
+
+          {$IFDEF Darwin}
+          // on Darwin, the normal compiler names are used for the final cross-target compiler !!
+          // tricky !
           s:=GetCompilerName(CrossInstaller.TargetCPU);
-          if (FileExists(IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler/'+s)) then
-          begin
-            infoln('Copy compiler ('+s+') into: '+FBinPath,etInfo);
-            FileUtil.CopyFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler/'+s,
-              IncludeTrailingPathDelimiter(FBinPath)+s);
-            fpChmod(IncludeTrailingPathDelimiter(FBinPath)+s,&755);
-          end;
+          {$else}
           s:=GetCrossCompilerName(CrossInstaller.TargetCPU);
-          if FileExists(IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler/'+s) then
+          {$endif}
+
+          // copy over the cross-compiler towards the FPC bin-directory, with the right compilername.
+          if FileExists(IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler/'+IntermediateCompiler) then
           begin
-            infoln('Copy cross-compiler ('+s+') into: '+FBinPath,etInfo);
-            FileUtil.CopyFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler/'+s,
+            infoln('Copy cross-compiler ('+IntermediateCompiler+') into: '+FBinPath,etInfo);
+            FileUtil.CopyFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler/'+IntermediateCompiler,
               IncludeTrailingPathDelimiter(FBinPath)+s);
             fpChmod(IncludeTrailingPathDelimiter(FBinPath)+s,&755);
           end;
@@ -789,7 +820,7 @@ begin
   end
   else
   begin
-    infoln('FPC: Can''t find cross installer for '+FCrossCPU_Target+'-'+FCrossOS_Target,etwarning);
+    infoln('FPC: Can''t find cross installer for '+FCrossCPU_Target+'-'+FCrossOS_Target+' !!!',etError);
     result:=false;
   end;
 
@@ -2341,7 +2372,6 @@ begin
           CloseFile(TxtFile);
         end;
       end;
-
 
       // On *nix FPC 3.1.x, both "architecture bin" and "plain bin" may contain tools like fpcres.
       // Adding this won't hurt on Windows.
