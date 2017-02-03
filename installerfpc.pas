@@ -624,7 +624,7 @@ begin
         Options:=StringReplace(Options,'  ',' ',[rfReplaceAll]);
         Options:=Trim(Options);
         // suppress hints
-        ProcessEx.Parameters.Add('OPT=-vi-n-h- '+Options);
+        ProcessEx.Parameters.Add('OPT='+STANDARDCOMPILEROPTIONS+' '+Options);
         //ProcessEx.Parameters.Add('OPT=-vd+ '+Options);
         //ProcessEx.Parameters.Add('OPT=-vw -vl -vx -vd -vi-n-h- '+Options);
 
@@ -708,7 +708,7 @@ begin
         ProcessEx.Parameters.Add('CPU_TARGET='+FCrossCPU_Target); // and processor.
         ProcessEx.Parameters.Add('NOGDBMI=1'); // prevent building of IDE to be 100% sure
         // suppress hints
-        ProcessEx.Parameters.Add('OPT=-vi-n-h-');
+        ProcessEx.Parameters.Add('OPT='+STANDARDCOMPILEROPTIONS);
         if Length(FCrossOS_SubArch)>0 then ProcessEx.Parameters.Add('SUBARCH='+FCrossOS_SubArch);
 
         CrossOptions:='';
@@ -871,7 +871,7 @@ begin
 
   if FBootstrapCompilerOverrideVersionCheck then
     ProcessEx.Parameters.Add('OVERRIDEVERSIONCHECK=1');
-  s:='-vi-n-h- '+FCompilerOptions;
+  s:=STANDARDCOMPILEROPTIONS+' '+FCompilerOptions;
   s:=StringReplace(s,'  ',' ',[rfReplaceAll]);
   s:=Trim(s);
   {$IFDEF UNIX}
@@ -2109,9 +2109,9 @@ begin
         // if FCompilerOptions<>'' then ProcessEx.Parameters.Add('CROSSOPT='+FCompilerOptions);
 
         {$ifdef CPUARMHF}
-        ProcessEx.Parameters.Add('OPT=-vi-n-h- -dFPC_ARMHF');
+        ProcessEx.Parameters.Add('OPT='+STANDARDCOMPILEROPTIONS+' -dFPC_ARMHF');
         {$else}
-        ProcessEx.Parameters.Add('OPT=-vi-n-h-');
+        ProcessEx.Parameters.Add('OPT='+STANDARDCOMPILEROPTIONS);
         {$endif}
 
         ProcessEx.Parameters.Add('OS_TARGET='+SourceOS);
@@ -2181,7 +2181,7 @@ begin
     ProcessEx.Parameters.Add('CPU_SOURCE=i386');
     ProcessEx.Parameters.Add('OS_TARGET=win64');
     ProcessEx.Parameters.Add('CPU_TARGET=x86_64');
-    ProcessEx.Parameters.Add('OPT=-vi-n-h-');
+    ProcessEx.Parameters.Add('OPT='+STANDARDCOMPILEROPTIONS);
     // Override makefile checks that checks for stable compiler in FPC trunk
     if FBootstrapCompilerOverrideVersionCheck then
       ProcessEx.Parameters.Add('OVERRIDEVERSIONCHECK=1');
@@ -2211,7 +2211,7 @@ begin
     ProcessEx.Parameters.Add('FPC='+FCompiler);
     ProcessEx.Parameters.Add('--directory='+ExcludeTrailingPathDelimiter(FSourceDirectory));
     ProcessEx.Parameters.Add('CPU_TARGET=i386');
-    ProcessEx.Parameters.Add('OPT=-vi-n-h-');
+    ProcessEx.Parameters.Add('OPT='+STANDARDCOMPILEROPTIONS);
     // Override makefile checks that checks for stable compiler in FPC trunk
     if FBootstrapCompilerOverrideVersionCheck then
       ProcessEx.Parameters.Add('OVERRIDEVERSIONCHECK=1');

@@ -612,7 +612,7 @@ end;
 
 function TUniversalInstaller.RunCommands(Directive: string;sl:TStringList): boolean;
 var
-  i:integer;
+  i,j:integer;
   exec:string;
   output:string='';
   BaseWorkingdir:string;
@@ -627,6 +627,19 @@ begin
        else exec:=GetValue(Directive+IntToStr(i),sl);
     // Skip over missing numbers:
     if exec='' then continue;
+    j:=Pos('lazbuild',lowerCase(exec));
+    if j>0 then
+    begin
+      {$IFDEF MSWINDOWS}
+      j:=Pos('lazbuild.exe',lowerCase(exec));
+      if j>0 then exec:=StringReplace(exec,'lazbuild.exe','lazbuild',[rfIgnoreCase]);
+      {$ENDIF}
+      {$IFDEF DEBUG}
+      exec:=StringReplace(exec,'lazbuild','lazbuild --verbose',[rfIgnoreCase]);
+      {$ELSE}
+      exec:=StringReplace(exec,'lazbuild','lazbuild --quiet --quiet',[rfIgnoreCase]);
+      {$ENDIF}
+    end;
     Workingdir:=GetValue('Workingdir'+IntToStr(i),sl);
     if Workingdir='' then Workingdir:=BaseWorkingdir;
     if FVerbose then WritelnLog('TUniversalInstaller: running ExecuteCommandInDir for '+exec,true);
@@ -1017,6 +1030,12 @@ begin
         FErrorLog.Clear;
         ProcessEx.CurrentDirectory:=ExcludeTrailingPathDelimiter(LazarusDir);
         ProcessEx.Parameters.Clear;
+        {$IFDEF DEBUG}
+        ProcessEx.Parameters.Add('--verbose');
+        {$ELSE}
+        ProcessEx.Parameters.Add('--quiet');
+        ProcessEx.Parameters.Add('--quiet');
+        {$ENDIF}
         ProcessEx.Parameters.Add('--pcp='+FLazarusPrimaryConfigPath);
         ProcessEx.Parameters.Add('--build-ide=-dKeepInstalledPackages ' + FLazarusCompilerOptions);
         ProcessEx.Parameters.Add('--build-mode=');
@@ -1471,6 +1490,12 @@ begin
       FErrorLog.Clear;
       ProcessEx.CurrentDirectory:=ExcludeTrailingPathDelimiter(LazarusDir);
       ProcessEx.Parameters.Clear;
+      {$IFDEF DEBUG}
+      ProcessEx.Parameters.Add('--verbose');
+      {$ELSE}
+      ProcessEx.Parameters.Add('--quiet');
+      ProcessEx.Parameters.Add('--quiet');
+      {$ENDIF}
       ProcessEx.Parameters.Add('--pcp='+FLazarusPrimaryConfigPath);
       ProcessEx.Parameters.Add('--build-ide=-dKeepInstalledPackages ' + FLazarusCompilerOptions);
       ProcessEx.Parameters.Add('--build-mode=');

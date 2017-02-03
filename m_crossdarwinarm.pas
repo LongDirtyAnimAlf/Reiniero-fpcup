@@ -12,9 +12,6 @@ uses
   Classes, SysUtils, m_crossinstaller, fpcuputil;
 
 implementation
-const
-  ErrorNotFound='An error occurred getting cross compiling binutils/libraries.'+LineEnding+
-    'todo: specify what exactly is missing';
 
 type
 
@@ -63,6 +60,7 @@ var
 begin
   result:=inherited;
   if result then exit;
+
   FBinUtilsPath:='';
   FBinUtilsPrefix:=''; // we have the "native" names, no prefix
   result:=true;

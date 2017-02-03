@@ -12,9 +12,6 @@ uses
   Classes, SysUtils, m_crossinstaller, fpcuputil;
 
 implementation
-const
-  ErrorNotFound='An error occurred getting cross compiling binutils/libraries.'+LineEnding+
-    'todo: specify what exactly is missing';
 
 type
 
@@ -36,6 +33,7 @@ function TDarwin64.GetLibs(Basepath:string): boolean;
 begin
   result:=FLibsFound;
   if result then exit;
+
   FLibsPath:='';
   result:=true;
   FLibsFound:=true;

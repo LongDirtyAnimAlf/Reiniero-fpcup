@@ -55,11 +55,14 @@ uses
 implementation
 
 const
+  ARCH='arm';
+  ARCHSHORT='arm';
+  OS='android';
   NDKVERSIONBASENAME='android-ndk-r';
   NDKVERSIONNAMES:array[0..16] of string = ('7','7b','7c','8','8b','8c','8d','8e','9','9b','9c','9d','10','10b','10c','10d','10e');
-  NDKTOOLCHAINVERSIONS:array[0..3] of string = ('arm-linux-androideabi-4.4.7','arm-linux-androideabi-4.6','arm-linux-androideabi-4.8','arm-linux-androideabi-4.9');
-  NDKARCHDIRNAME='arch-arm';
-  PLATFORMVERSIONBASENAME='android-';
+  NDKTOOLCHAINVERSIONS:array[0..3] of string = (ARCH+'-linux-'+OS+'eabi-4.4.7',ARCH+'-linux-'+OS+'eabi-4.6',ARCH+'-linux-'+OS+'eabi-4.8',ARCH+'-linux-'+OS+'eabi-4.9');
+  NDKARCHDIRNAME='arch-'+ARCHSHORT;
+  PLATFORMVERSIONBASENAME=OS+'-';
   PLATFORMVERSIONSNUMBERS:array[0..13] of byte = (9,10,11,12,13,14,15,16,17,18,19,20,21,22); //23 does not yet work due to text allocations
 
 
@@ -176,7 +179,7 @@ begin
   if (not result) AND (SearchModeUsed=smAuto) then
   begin
     infoln(FCrossModuleName + ': failed: searched libspath '+FLibsPath,etDebug);
-    for delphiversion:=17 downto 12 do
+    for delphiversion:=MAXDELPHIVERSION downto MINDELPHIVERSION do
     begin
       if not result then
       begin
@@ -222,25 +225,16 @@ begin
   end
   else
   begin
-    infoln(FCrossModuleName + ': Please fill '+SafeExpandFileName(IncludeTrailingPathDelimiter(BasePath)+'lib'+DirectorySeparator+DirName)+
-    ' with Android libs, e.g. from the Android NDK. See http://wiki.lazarus.freepascal.org/Android.'
-    ,etError);
+    //infoln(FCrossModuleName + ': Please fill '+SafeExpandFileName(IncludeTrailingPathDelimiter(BasePath)+'lib'+DirectorySeparator+DirName)+
+    //' with Android libs, e.g. from the Android NDK. See http://wiki.lazarus.freepascal.org/Android.'
+    //,etError);
     FAlreadyWarned:=true;
   end;
 end;
 
 function TAny_ARMAndroid.GetBinUtils(Basepath:string): boolean;
 const
-  DirName='arm-android';
-  {
-  NDKVERSIONBASENAME='android-ndk-r';
-  NDKVERSIONNAMES:array[0..16] of string = ('7','7b','7c','8','8b','8c','8d','8e','9','9b','9c','9d','10','10b','10c','10d','10e');
-  NDKTOOLCHAINVERSIONS:array[0..2] of string = ('arm-linux-androideabi-4.6','arm-linux-androideabi-4.8','arm-linux-androideabi-4.9');
-  NDKARCHDIRNAME='arch-arm';
-  PLATFORMVERSIONBASENAME='android-';
-  PLATFORMVERSIONSNUMBERS:array[0..13] of byte = (9,10,11,12,13,14,15,16,17,18,19,20,21,22); //23 does not yet work due to text allocations
-  }
-
+  DirName=ARCH+'-'+OS;
 var
   AsFile: string;
   PresetBinPath:string;
@@ -360,13 +354,13 @@ begin
           begin
             {$IFDEF CPU64}
             result:=SearchBinUtil(IncludeTrailingPathDelimiter(GetEnvironmentVariable('ProgramFiles(x86)'))+
-            'Android\'+NDKVERSIONBASENAME+NDKVERSIONNAMES[ndkversion]+'\toolchains\'+NDKTOOLCHAINVERSIONS[toolchain]+
+            UppercaseFirstChar(OS)+'\'+NDKVERSIONBASENAME+NDKVERSIONNAMES[ndkversion]+'\toolchains\'+NDKTOOLCHAINVERSIONS[toolchain]+
             '\prebuilt\windows\bin',AsFile);
             if result then break else
             {$ENDIF}
             begin
               result:=SearchBinUtil(IncludeTrailingPathDelimiter(GetEnvironmentVariable('ProgramFiles'))+
-              'Android\'+NDKVERSIONBASENAME+NDKVERSIONNAMES[ndkversion]+'\toolchains\'+NDKTOOLCHAINVERSIONS[toolchain]+
+              UppercaseFirstChar(OS)+'\'+NDKVERSIONBASENAME+NDKVERSIONNAMES[ndkversion]+'\toolchains\'+NDKTOOLCHAINVERSIONS[toolchain]+
               '\prebuilt\windows\bin',AsFile);
               if result then break;
             end;
@@ -379,7 +373,7 @@ begin
   // check Delphi auto installed android libraries
   if (not result) AND (SearchModeUsed=smAuto) then
   begin
-    for delphiversion:=17 downto 12 do
+    for delphiversion:=MAXDELPHIVERSION downto MINDELPHIVERSION do
     begin
       if not result then
       begin
@@ -435,21 +429,14 @@ end;
 constructor TAny_ARMAndroid.Create;
 begin
   inherited Create;
-  FCrossModuleName:='Any_ARMAndroid';
-  // Invoke like
-  // fpc -Parm -Tandroid
-  // Note: the compiler does NOT define LINUX!
-  // It defines UNIX and ANDROID though.
-
-  // This prefix is HARDCODED into the compiler so should match (or be empty, actually)
-  FBinUtilsPrefix:='arm-linux-androideabi-';//standard eg in Android NDK 9
+  FTargetCPU:=ARCH;
+  FTargetOS:=OS;
+  FCrossModuleName:='TAny_'+Uppercase(OS)+UppercaseFirstChar(ARCH);
+  FBinUtilsPrefix:=ARCH+'-linux-'+OS+'eabi-';//standard eg in Android NDK 9
   FBinUtilsPath:='';
   FCompilerUsed:=ctInstalled; //Use current trunk compiler to build, not stable bootstrap
-  FCrossModuleName:='TAny_ARMAndroid'; //used in messages to user
   FFPCCFGSnippet:='';
   FLibsPath:='';
-  FTargetCPU:='arm';
-  FTargetOS:='android';
   FAlreadyWarned:=false;
   infoln(FCrossModuleName+': crosscompiler loading',etDebug);
 end;

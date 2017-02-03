@@ -3,7 +3,7 @@
   <ProjectSession>
     <PathDelim Value="\"/>
     <Version Value="10"/>
-    <BuildModes Count="3" Active="linux64">
+    <BuildModes Count="3" Active="win32">
       <Item1 Name="linuxarmhf">
         <CompilerOptions>
           <Version Value="11"/>
@@ -60,6 +60,7 @@
 end;"/>
           <CodeGeneration>
             <SmartLinkUnit Value="True"/>
+            <TargetCPU Value="i386"/>
             <TargetOS Value="darwin"/>
             <Optimizations>
               <OptimizationLevel Value="2"/>

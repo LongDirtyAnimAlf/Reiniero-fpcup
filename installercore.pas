@@ -42,6 +42,14 @@ const
   BINUTILSURL = FPCSVNURL + '/fpcbuild';
   DEFAULTBINUTILSVERSION = '3.0.0';
   //DEFAULTBINUTILSVERSION = '2.6.4';
+  {$IFDEF DEBUG}
+  STANDARDCOMPILEROPTIONS='-vewndl';
+  {$ELSE}
+  //STANDARDCOMPILEROPTIONS='-veqw -vm2024,2031,3005,3018,3057,4105,4104,4044,4045,4055,4056,4066,5024,5033,5043,5044,5066,5074,5075,5076,6018,11047';
+  //STANDARDCOMPILEROPTIONS='-veqw';
+  STANDARDCOMPILEROPTIONS='-vw-n-h-i-l-d-u-t-p-c-x-';
+  {$ENDIF}
+
 
 type
   TUtilCategory = (ucBinutil {regular binutils like as.exe},
@@ -1414,6 +1422,8 @@ const
   JasminVersion = '2.4';
   SourceURL = 'http://sourceforge.net/projects/jasmin/files/jasmin/jasmin-'+JasminVersion+'/jasmin-'+JasminVersion+'.zip/download';
   //SourceURL = 'https://github.com/davidar/jasmin/archive/'+JasminVersion+'.zip';
+  //SourceURL = 'http://svn.freepascal.org/svn/fpcbuild/branches/fixes_3_0/install/jvm/jasmin.jar';
+  //SourceURL = 'http://svn.freepascal.org/svn/fpcbuild/trunk/install/jvm/jasmin.jar';
 var
   OperationSucceeded: boolean;
   ResultCode: longint;

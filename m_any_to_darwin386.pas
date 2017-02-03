@@ -58,7 +58,7 @@ end;
 { Tany_darwin386 }
 function Tany_darwin386.TargetSignature: string;
 begin
-  result:=FTargetCPU+'-'+TargetOS;
+  result:=TargetCPU+'-'+TargetOS;
 end;
 
 function Tany_darwin386.GetLibs(Basepath:string): boolean;
