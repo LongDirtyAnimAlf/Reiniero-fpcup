@@ -876,6 +876,8 @@ begin
 
       {$IFDEF Darwin}
       LazarusConfig.SetVariable(EnvironmentConfig, 'EnvironmentOptions/Debugger/ClassTGDBMIDebugger/Properties/WarnOnTimeOut', 'False');
+      // for newer versions Mac OSX versions (>=10.8) perhaps needed:
+      //LazarusConfig.SetVariable(EnvironmentConfig, 'EnvironmentOptions/DebuggerOptions/DebuggerResetAfterRun', 'True');
       {$endif}
 
 

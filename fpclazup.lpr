@@ -70,13 +70,17 @@ uses
   m_crossinstaller,
   m_any_to_aixpowerpc,
   m_any_to_androidarm,
+  m_any_to_androidmipsel,
+  m_any_to_androidaarch64, //not yet available !!
   m_any_to_linuxarm,
   m_any_to_embeddedarm,
   m_any_to_linuxaarch64,
   m_any_to_androidjvm,
   m_any_to_javajvm,
-  {$IFNDEF MSWINDOWS}
+  {$IFDEF LINUX}
   m_linux386_to_mips,
+  {$ENDIF}
+  {$IFNDEF MSWINDOWS}
   m_any_to_linuxmipsel,
   {$ENDIF}
   {$IFDEF Darwin}
@@ -85,15 +89,21 @@ uses
   m_crossdarwinpowerpc,
   m_crossdarwinarm,
   m_crossdarwinaarch64,
-  m_crossdarwin64iphonesim,
+  m_crossdarwinx64iphonesim,
+  m_crossdarwin386iphonesim,
   {$else}
   m_any_to_darwin386,
   m_any_to_darwinx64,
   m_any_to_darwinpowerpc,
   m_any_to_darwinarm,
+  m_any_to_darwinaarch64,
   {$endif}
   {$IF defined(FREEBSD) or defined(NETBSD) or defined(OPENBSD)}
-  m_freebsd_to_linux386, m_freebsd64_to_freebsd32, m_freebsd_to_linux64,
+  m_freebsd_to_linux386,
+  {$ifdef CPU64}
+  m_freebsd64_to_freebsd32,
+  {$endif}
+  m_freebsd_to_linux64,
   {$else}
   m_any_to_linux386,
   m_any_to_linuxx64,

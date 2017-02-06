@@ -35,6 +35,7 @@ var
 begin
   result:=FLibsFound;
   if result then exit;
+
   FLibsPath:='';
   result:=true;
   FLibsFound:=true;
@@ -88,7 +89,7 @@ begin
   FTargetOS:='darwin';
   FAlreadyWarned:=false;
   FFPCCFGSnippet:=''; //no need to change fpc.cfg
-  infoln('TDarwinarm crosscompiler loading',etDebug);
+  ShowInfo;
 end;
 
 destructor TDarwinarm.Destroy;

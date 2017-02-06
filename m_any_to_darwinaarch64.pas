@@ -1,6 +1,6 @@
-unit m_any_to_darwinpowerpc;
+unit m_any_to_darwinaarch64;
 
-{ Cross compiles to Darwin 32 bit
+{ Cross compiles to Darwin 64 bit arm
 Copyright (C) 2014 Reinier Olislagers / DonAlfredo
 
 This library is free software; you can redistribute it and/or modify it
@@ -38,10 +38,17 @@ uses
 
 implementation
 
+uses
+  LazFileUtils;
+
+const
+  ARCH='aarch64';
+  OS='darwin';
+
 type
 
-{ Tany_darwinpowerpc }
-Tany_darwinpowerpc = class(TCrossInstaller)
+{ Tany_darwinaarch64 }
+Tany_darwinaarch64 = class(TCrossInstaller)
 private
   FAlreadyWarned: boolean; //did we warn user about errors and fixes already?
   function TargetSignature: string;
@@ -52,16 +59,20 @@ public
   destructor Destroy; override;
 end;
 
-{ Tany_darwinpowerpc }
-function Tany_darwinpowerpc.TargetSignature: string;
+{ Tany_darwinaarch64 }
+function Tany_darwinaarch64.TargetSignature: string;
 begin
-  result:=FTargetCPU+'-'+TargetOS;
+  result:=TargetCPU+'-'+TargetOS;
 end;
 
-function Tany_darwinpowerpc.GetLibs(Basepath:string): boolean;
+function Tany_darwinaarch64.GetLibs(Basepath:string): boolean;
 const
-  DirName='powerpc-darwin';
+  DirName=ARCH+'-'+OS;
   LibName='libc.dylib';
+var
+  s:string;
+  i,j,k:integer;
+  found:boolean;
 begin
 
   result:=FLibsFound;
@@ -70,6 +81,10 @@ begin
   // begin simple: check presence of library file in basedir
   if not result then
     result:=SearchLibrary(Basepath,LibName);
+
+  // for osxcross with special libs: search also for libc.tbd
+  if not result then
+    result:=SearchLibrary(Basepath,'libc.tbd');
 
   if not result then
     result:=SearchLibrary(IncludeTrailingPathDelimiter(Basepath)+'usr'+DirectorySeparator+'lib',LibName);
@@ -83,12 +98,62 @@ begin
     result:=SimpleSearchLibrary(BasePath,DirName,LibName);
 
   if not result then
+    result:=SimpleSearchLibrary(BasePath,DirName,'libc.tbd');
+
+  if not result then
+    result:=SimpleSearchLibrary(BasePath,IncludeTrailingPathDelimiter(DirName)+'usr'+DirectorySeparator+'lib',LibName);
+
+  if not result then
+    result:=SimpleSearchLibrary(BasePath,IncludeTrailingPathDelimiter(DirName)+'usr'+DirectorySeparator+'lib','libc.tbd');
+
+  // universal libs : also search in arm-darwin
+  if not result then
+    result:=SimpleSearchLibrary(BasePath,'arm-darwin'+DirectorySeparator+'usr'+DirectorySeparator+'lib',LibName);
+  if not result then
+    result:=SimpleSearchLibrary(BasePath,'arm-darwin'+DirectorySeparator+'usr'+DirectorySeparator+'lib','libc.tbd');
+
+
+  {
+  // also for cctools
+  if not result then
+  begin
+    found:=false;
+    for i:=MAXIOSVERSION downto MINIOSVERSION do
+    begin
+      if found then break;
+      for j:=15 downto -1 do
+      begin
+        if found then break;
+        for k:=15 downto -1 do
+        begin
+          if found then break;
+
+          s:=InttoStr(i);
+          if j<>-1 then
+          begin
+            s:=s+'.'+InttoStr(j);
+            if k<>-1 then s:=s+'.'+InttoStr(k);
+          end;
+          s:='MacIOS'+s+'.sdk';
+
+          s:=DirName+DirectorySeparator+s+DirectorySeparator+'usr'+DirectorySeparator+'lib';
+          result:=SimpleSearchLibrary(BasePath,s,LibName);
+          if not result then
+             result:=SimpleSearchLibrary(BasePath,s,'libc.tbd');
+          if result then found:=true;
+        end;
+      end;
+    end;
+  end;
+  }
+
+  if not result then
   begin
     {$IFDEF UNIX}
-    FLibsPath:='/usr/lib/powerpc-linux-gnu'; //debian Jessie+ convention
+    FLibsPath:='/usr/lib/arm-darwin-gnu'; //debian Jessie+ convention
     result:=DirectoryExists(FLibsPath);
     if not result then
-    infoln('Tany_darwinpowerpc: failed: searched libspath '+FLibsPath,etInfo);
+    infoln('Tany_darwinaarch64: failed: searched libspath '+FLibsPath,etInfo);
     {$ENDIF}
   end;
 
@@ -101,29 +166,30 @@ begin
     '-Fl'+IncludeTrailingPathDelimiter(FLibsPath);
 
     // specialities for osxcross
-    if Pos('osxcross',FLibsPath)>0 then
+    //if Pos('osxcross',FLibsPath)>0 then
     begin
+      s:=IncludeTrailingPathDelimiter(FLibsPath)+'..'+DirectorySeparator+'..'+DirectorySeparator;
+      s:=ResolveDots(s);
+      s:=ExcludeTrailingBackslash(s);
       FFPCCFGSnippet:=FFPCCFGSnippet+LineEnding+
-      '-Fl'+IncludeTrailingPathDelimiter(FLibsPath)+'system\'+LineEnding+
-      '-k-framework'+LineEnding+
-      '-kAppKit'+LineEnding+
+      '-Fl'+IncludeTrailingPathDelimiter(FLibsPath)+'system'+DirectorySeparator+LineEnding+
       '-k-framework'+LineEnding+
       '-kFoundation'+LineEnding+
       '-k-framework'+LineEnding+
       '-kCoreFoundation'+LineEnding+
       // -XRx is needed for fpc : prepend <x> to all linker search paths
-      '-XR'+ExcludeTrailingPathDelimiter(Basepath);
+      //'-XR'+ExcludeTrailingPathDelimiter(Basepath);
+      '-XR'+s;
     end;
 
     FFPCCFGSnippet:=FFPCCFGSnippet+LineEnding+
     '-Xr/usr/lib';//+LineEnding+ {buildfaq 3.3.1: makes the linker create the binary so that it searches in the specified directory on the target system for libraries}
-    //'-FL/usr/lib/ld-linux.so.2' {buildfaq 3.3.1: the name of the dynamic linker on the target};
   end;
 end;
 
-function Tany_darwinpowerpc.GetBinUtils(Basepath:string): boolean;
+function Tany_darwinaarch64.GetBinUtils(Basepath:string): boolean;
 const
-  DirName='powerpc-darwin';
+  DirName=ARCH+'-'+OS;
 var
   AsFile: string;
   BinPrefixTry: string;
@@ -138,18 +204,22 @@ begin
   if not result then
     result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
 
-  // Also allow for (cross)binutils from https://github.com/tpoechtrager/osxcross
-  // fpc version from https://github.com/LongDirtyAnimalf/osxcross
-  {$IFDEF MSWINDOWS}
-  if IsWindows64
-     then BinPrefixTry:='x86_64'
-     else BinPrefixTry:='i386';
-  {$else}
-  BinPrefixTry:=lowercase({$i %FPCTARGETCPU%});
-  {$endif}
-  BinPrefixTry:=BinPrefixTry+'-apple-darwin';
+  // Also allow for (cross)binutils from https://github.com/tpoechtrager/cctools
+  BinPrefixTry:='aarch64-apple-darwin';
 
-  for i:=15 downto 10 do
+  {
+  10.4  = darwin8
+  10.5  = darwin9
+  10.6  = darwin10
+  10.7  = darwin11
+  10.8  = darwin12
+  10.9  = darwin13
+  10.10 = darwin14
+  10.11 = darwin15
+  10.12 = darwin16
+  }
+
+  for i:=MAXDARWINVERSION downto MINDARWINVERSION do
   begin
     if not result then
     begin
@@ -178,34 +248,34 @@ begin
   end;
 end;
 
-constructor Tany_darwinpowerpc.Create;
+constructor Tany_darwinaarch64.Create;
 begin
   inherited Create;
-  FCrossModuleName:='any_darwinpowerpc';
-  FBinUtilsPrefix:='powerpc-darwin-';
+  FTargetCPU:=ARCH;
+  FTargetOS:=OS;
+  FCrossModuleName:='TAny_'+UppercaseFirstChar(OS)+UppercaseFirstChar(ARCH);
+  FBinUtilsPrefix:=ARCH+'-'+OS+'-';
   FBinUtilsPath:='';
-  FBinutilsPathInPath:=true;
+  //FBinutilsPathInPath:=true;
   FFPCCFGSnippet:='';
   FLibsPath:='';
-  FTargetCPU:='powerpc';
-  FTargetOS:='darwin';
   FAlreadyWarned:=false;
   ShowInfo;
 end;
 
-destructor Tany_darwinpowerpc.Destroy;
+destructor Tany_darwinaarch64.Destroy;
 begin
   inherited Destroy;
 end;
 
 var
-  any_darwinpowerpc:Tany_darwinpowerpc;
+  any_darwinaarch64:Tany_darwinaarch64;
 
 initialization
-  any_darwinpowerpc:=Tany_darwinpowerpc.Create;
-  RegisterExtension(any_darwinpowerpc.TargetCPU+'-'+any_darwinpowerpc.TargetOS,any_darwinpowerpc);
+  any_darwinaarch64:=Tany_darwinaarch64.Create;
+  RegisterExtension(any_darwinaarch64.TargetCPU+'-'+any_darwinaarch64.TargetOS,any_darwinaarch64);
 finalization
-  any_darwinpowerpc.Destroy;
+  any_darwinaarch64.Destroy;
 
 end.
 

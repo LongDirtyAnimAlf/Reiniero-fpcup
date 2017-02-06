@@ -88,7 +88,7 @@ begin
   FTargetOS:='darwin';
   FAlreadyWarned:=false;
   FFPCCFGSnippet:=''; //no need to change fpc.cfg
-  infoln('TDarwinaarch64 crosscompiler loading',etDebug);
+  ShowInfo;
 end;
 
 destructor TDarwinaarch64.Destroy;

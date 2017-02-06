@@ -14,6 +14,10 @@ uses
 
 implementation
 
+const
+  ARCH='i386';
+  OS='win32';
+
 type
 
 { Tanyinternallinker_win386 }
@@ -52,12 +56,12 @@ end;
 constructor Tanyinternallinker_win386.Create;
 begin
   inherited Create;
-  FCrossModuleName:='anyinternallinker_win386';
-  FTargetCPU:='i386';
-  FTargetOS:='win32';
+  FTargetCPU:=ARCH;
+  FTargetOS:=OS;
+  FCrossModuleName:='TAnyinternallinker_'+OS+'_'+ARCH;
   FAlreadyWarned:=false;
   FFPCCFGSnippet:=''; //no need to change fpc.cfg
-  infoln('Tanyinternallinker_win386 crosscompiler loading',etDebug);
+  ShowInfo;
 end;
 
 destructor Tanyinternallinker_win386.Destroy;

@@ -1160,6 +1160,7 @@ begin
 
   if s=FPCTRUNKVERSION then result:='3.0.0'
   else if (s='3.0.2') or (s='3.0.1') then result:='3.0.0'
+  //else if (s='3.0.2') or (s='3.0.1') then result:='2.6.4'
   else if s='3.0.0' then result:='2.6.4'
   else if s='2.6.4' then result:='2.6.2'
   else if s='2.6.2' then result:='2.6.0'
@@ -1228,6 +1229,7 @@ begin
         end;
       end;
 
+      // REQUIREDVERSION2 is optional; could be empty
       x:=Pos('REQUIREDVERSION2=',s);
       if x>0 then
       begin
@@ -1249,10 +1251,9 @@ begin
 
     end;
 
-    //take the newest ??
     if GetLowestRequirement then
     begin
-      if (RequiredVersion2>RequiredVersion)
+      if ( (RequiredVersion2>RequiredVersion) OR (RequiredVersion2=0))
           then FinalVersion:=RequiredVersion
           else FinalVersion:=RequiredVersion2;
     end
@@ -1823,7 +1824,8 @@ begin
   if Length(FSVNDirectory)>0
      then s:=PathSeparator+ExcludeTrailingPathDelimiter(FSVNDirectory)+s;
   // Try to ignore existing make.exe, fpc.exe by setting our own path:
-  // add fpc/utils to solve data2inc not found by fpcmkcfg
+  // add install/fpc/utils to solve data2inc not found by fpcmkcfg
+  // also add src/fpc/utils to solve data2inc not found by fpcmkcfg
   SetPath(
     FBinPath+PathSeparator+ {compiler for current architecture}
     FMakeDir+PathSeparator+
@@ -1833,11 +1835,13 @@ begin
     IncludeTrailingPathDelimiter(FInstallDirectory)+'utils'+PathSeparator+
     IncludeTrailingPathDelimiter(FSourceDirectory)+PathSeparator+
     IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+PathSeparator+
+    IncludeTrailingPathDelimiter(FSourceDirectory)+'utils'+PathSeparator+
     s,
     false,false);
   {$ENDIF MSWINDOWS}
   {$IFDEF UNIX}
-  //add fpc/utils to solve data2inc not found by fpcmkcfg
+  // add install/fpc/utils to solve data2inc not found by fpcmkcfg
+  // also add src/fpc/utils to solve data2inc not found by fpcmkcfg
   SetPath(
     FBinPath+PathSeparator+
     FBootstrapCompilerDirectory+PathSeparator+
@@ -1846,6 +1850,7 @@ begin
     IncludeTrailingPathDelimiter(FInstallDirectory)+'utils'+PathSeparator+
     IncludeTrailingPathDelimiter(FSourceDirectory)+PathSeparator+
     IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+PathSeparator+
+    IncludeTrailingPathDelimiter(FSourceDirectory)+'utils'+PathSeparator+
     // pwd is located in /bin ... the makefile needs it !!
     // tools are located in /usr/bin ... the makefile needs it !!
     '/bin'+PathSeparator+'/usr/bin',
@@ -1861,6 +1866,8 @@ var
   IntermediateCompiler:string;
   ICSVNCommand:string;
   RequiredBootstrapVersion:string;
+  RequiredBootstrapVersionLow:string;
+  RequiredBootstrapVersionHigh:string;
   RequiredBootstrapBootstrapVersion:string;
   FPCCfg: string;
   FPCMkCfg: string; //path+file of fpcmkcfg
@@ -1876,77 +1883,66 @@ begin
   result:=InitModule;
   if not result then exit;
 
-  bIntermediateNeeded:=false;
-  IntermediateCompiler:='intermediate_'+GetCompilerName(SourceCPU);
   infoln('TFPCInstaller: building module '+ModuleName+'...',etInfo);
 
-  FSVNClient.ModuleName:=ModuleName;
+  bIntermediateNeeded:=false;
+  IntermediateCompiler:='intermediate_'+GetCompilerName(SourceCPU);
 
   infoln('We have a FPC source (@ '+FSourceDirectory+') with version: '+GetCompilerVersionFromSource(FSourceDirectory),etInfo);
-  RequiredBootstrapVersion:=GetBootstrapCompilerVersionFromSource(FSourceDirectory);
-  if RequiredBootstrapVersion='0.0.0' then
+
+  RequiredBootstrapVersion:='0.0.0';
+  RequiredBootstrapVersionLow:=GetBootstrapCompilerVersionFromSource(FSourceDirectory,True);
+  RequiredBootstrapVersionHigh:=GetBootstrapCompilerVersionFromSource(FSourceDirectory,False);
+
+  if RequiredBootstrapVersionLow='0.0.0' then
   begin
-    RequiredBootstrapVersion:=GetBootstrapCompilerVersionFromVersion(GetCompilerVersionFromSource(FSourceDirectory));
-    if RequiredBootstrapVersion='0.0.0' then
+    RequiredBootstrapVersionLow:=GetBootstrapCompilerVersionFromVersion(GetCompilerVersionFromSource(FSourceDirectory));
+    if RequiredBootstrapVersionLow='0.0.0' then
     begin
       infoln('Could not determine required bootstrap compiler version. Should not happen. Aborting.',etError);
       exit(false);
-    end else infoln('To compile this FPC, we use a compiler with version : '+RequiredBootstrapVersion,etInfo);
-  end else infoln('To compile this FPC, we need (required) a compiler with version : '+RequiredBootstrapVersion,etInfo);
+    end else infoln('To compile this FPC, we use a compiler with (lowest) version : '+RequiredBootstrapVersionLow,etInfo);
+  end else infoln('To compile this FPC, we need (required) a compiler with (lowest) version : '+RequiredBootstrapVersionLow,etInfo);
 
   OperationSucceeded:=false;
 
   // do we already have a suitable compiler somewhere ?
   if FileExists(FCompiler) then
   begin
-    OperationSucceeded:=(GetCompilerVersion(FCompiler)=RequiredBootstrapVersion);
-    if NOT OperationSucceeded then
+    OperationSucceeded:=(GetCompilerVersion(FCompiler)=RequiredBootstrapVersionLow);
+    if OperationSucceeded
+      then RequiredBootstrapVersion:=RequiredBootstrapVersionLow
+      else
     begin
-      // check if another compiler (lower version) is also allowed
-      s:=GetBootstrapCompilerVersionFromSource(FSourceDirectory,True);
-      OperationSucceeded:=(GetCompilerVersion(FCompiler)=s);
-      if OperationSucceeded then RequiredBootstrapVersion:=s;
-    end;
-  end;
-
-  {
-  if NOT OperationSucceeded then
-  begin
-    // do we already have a suitable intermediate compiler somewhere ?
-    if FileExists(ExtractFilePath(FCompiler)+IntermediateCompiler) then
-    begin
-      OperationSucceeded:=(GetCompilerVersion(ExtractFilePath(FCompiler)+IntermediateCompiler)=RequiredBootstrapVersion);
-      if NOT OperationSucceeded then
+        // check if higher compiler version is available
+        if (RequiredBootstrapVersionLow<>RequiredBootstrapVersionHigh) then
       begin
-        // check if another compiler (lower version) is also allowed
-        s:=GetBootstrapCompilerVersionFromSource(FSourceDirectory,True);
-        OperationSucceeded:=(GetCompilerVersion(ExtractFilePath(FCompiler)+IntermediateCompiler)=s);
-        if OperationSucceeded then RequiredBootstrapVersion:=s;
+          OperationSucceeded:=(GetCompilerVersion(FCompiler)=RequiredBootstrapVersionHigh);
+          if OperationSucceeded then RequiredBootstrapVersion:=RequiredBootstrapVersionHigh;
       end;
-      if OperationSucceeded then FCompiler:=ExtractFilePath(FCompiler)+IntermediateCompiler;
     end;
   end;
-  }
 
   if OperationSucceeded then
   begin
-    infoln('To compile this FPC, we will use a compiler with version : '+RequiredBootstrapVersion,etInfo);
-  end;
-
-  if (GetCompilerVersion(FCompiler)<>RequiredBootstrapVersion) then
+    infoln('To compile this FPC, we will use the (already available) compiler with version : '+RequiredBootstrapVersion,etInfo);
+  end
+  else
   begin
     // get the bootstrapper, among other things (binutils)
+    // start with the lowest requirement ??!!
+    RequiredBootstrapVersion:=RequiredBootstrapVersionLow;
     result:=InitModule(RequiredBootstrapVersion);
-    // check if we have a lower acceptable requirement for the bootstrapper
-    if (GetCompilerVersion(FCompiler)<>RequiredBootstrapVersion) then
-    begin
-      // get lower requirement for the bootstrapper
-      s:=GetBootstrapCompilerVersionFromSource(FSourceDirectory,True);
-      // if so, set bootstrapper to lower one !!
-      if (GetCompilerVersion(FCompiler)=s) then
+    if (GetCompilerVersion(FCompiler)=RequiredBootstrapVersion)
+      then infoln('To compile this FPC, we will use a fresh compiler with version : '+RequiredBootstrapVersion,etInfo)
+      else
       begin
-        RequiredBootstrapVersion:=s;
-        infoln('To compile this FPC, we can also (and will) use (required) a compiler with version : '+RequiredBootstrapVersion,etInfo);
+        // check if we have a higher acceptable requirement for the bootstrapper
+        if (GetCompilerVersion(FCompiler)=RequiredBootstrapVersionHigh) then
+    begin
+      // if so, set bootstrapper to lower one !!
+          RequiredBootstrapVersion:=RequiredBootstrapVersionHigh;
+          infoln('To compile this FPC, we can also (and will) use (required) a fresh compiler with version : '+RequiredBootstrapVersion,etInfo);
       end;
     end;
   end;
@@ -1982,9 +1978,6 @@ begin
 
   if (bIntermediateNeeded) then
   begin
-    // temporary ... there are no sources (yet) for 3.0.2
-    if RequiredBootstrapVersion='3.0.2' then RequiredBootstrapVersion:='3.0.0';
-
     infoln('We need to build an FPC ' + RequiredBootstrapVersion + ' intermediate compiler.',etInfo);
 
     // get the correct binutils (Windows only)
@@ -1996,6 +1989,8 @@ begin
     BootstrapDirectory := ExpandFileName(IncludeTrailingPathDelimiter(FSourceDirectory) + '..');
     BootstrapDirectory := IncludeTrailingPathDelimiter(BootstrapDirectory)+'fpc'+StringReplace(RequiredBootstrapVersion,'.','',[rfReplaceAll,rfIgnoreCase])+'bootstrap';
     BootstrapDirectory := ResolveDots(BootstrapDirectory);
+
+    FSVNClient.ModuleName:=ModuleName;
 
     ReturnCode:=-1;
     if DirectoryExists(BootstrapDirectory) then
@@ -2022,6 +2017,8 @@ begin
         ReturnCode := FSVNClient.Execute('info ' + BootstrapDirectory);
       end;
     end;
+
+    infoln('Getting the sources of the FPC ' + RequiredBootstrapVersion + ' intermediate compiler.',etInfo);
 
     s:='http://svn.freepascal.org/svn/fpc/tags/release_'+StringReplace(RequiredBootstrapVersion,'.','_',[rfReplaceAll,rfIgnoreCase]);
     if (ReturnCode = 0)

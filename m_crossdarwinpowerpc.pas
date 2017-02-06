@@ -56,7 +56,7 @@ begin
   FTargetOS:='darwin';
   FAlreadyWarned:=false;
   FFPCCFGSnippet:=''; //no need to change fpc.cfg
-  infoln('TDarwinpowerpc crosscompiler loading',etDebug);
+  ShowInfo;
 end;
 
 destructor TDarwinpowerpc.Destroy;
