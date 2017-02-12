@@ -244,6 +244,7 @@ type
 
   TFPCupManager=class(Tobject)
   private
+    FResultSet:TResultSet;
     FSVNExecutable: string;
     FHTTPProxyHost: string;
     FHTTPProxyPassword: string;
@@ -321,8 +322,10 @@ type
     FModuleEnabledList:TStringList;
     FModulePublishedList:TStringList;
     // Write msg to log with line ending. Can also write to console
-    procedure WritelnLog(msg:string;ToConsole:boolean=true);
+    procedure WritelnLog(msg:string;ToConsole:boolean=true);overload;
+    procedure WritelnLog(EventType: TEventType;msg:string;ToConsole:boolean=true);overload;
  public
+    property ResultSet: TResultSet read FResultSet;
     property Sequencer: TSequencer read FSequencer;
    {$ifndef FPCONLY}
     property ShortCutNameLazarus: string read FShortCutNameLazarus write FShortCutNameLazarus; //Name of the shortcut that points to the fpcup-installed Lazarus
@@ -594,6 +597,13 @@ begin
   FLog.WriteLog(msg,ToConsole);
 end;
 
+procedure TFPCupManager.WritelnLog(EventType: TEventType; msg: string; ToConsole: boolean);
+begin
+  // Set up log if it doesn't exist yet
+  FLog.WriteLog(EventType,msg,ToConsole);
+end;
+
+
 function TFPCupManager.LoadFPCUPConfig: boolean;
 begin
   installerUniversal.SetConfigFile(FConfigFile);
@@ -618,6 +628,8 @@ var
 {$ENDIF}
 begin
   result:=false;
+
+  FResultSet:=[];
 
   try
     WritelnLog(DateTimeToStr(now)+': fpcup'+RevisionStr+' ('+VersionDate+') started.',true);
@@ -713,6 +725,8 @@ begin
       FSequencer.DeleteOnly;
     end;
     end;
+
+  //FResultSet:=FSequencer.FInstaller;
 
   if assigned(FSequencer.FSkipList) then FSequencer.FSkipList.Free;
 end;
@@ -951,9 +965,10 @@ function TSequencer.DoExec(FunctionName: string): boolean;
         LS[11].lib:='libpangocairo-1.0.so';
         }
         //apt-get install subversion make binutils gdb gcc libgtk2.0-dev
-        Output:='libgtk2.0-dev libcairo2-dev libpango1.0-dev libxtst-dev libgdk-pixbuf2.0-dev libatk1.0-dev libghc-x11-dev';
+
+        Output:='libX11-dev libgtk2.0-dev libcairo2-dev libpango1.0-dev libxtst-dev libgdk-pixbuf2.0-dev libatk1.0-dev libghc-x11-dev';
         AdvicedLibs:=AdvicedLibs+
-                     'build-essential gcc subversion devscripts libc6-dev freeglut3-dev libgl1-mesa libgl1-mesa-dev '+
+                     'make binutils build-essential gdb gcc subversion unzip unrar devscripts libc6-dev freeglut3-dev libgl1-mesa libgl1-mesa-dev '+
                      'libglu1-mesa libglu1-mesa-dev libgpmg1-dev libsdl-dev libXxf86vm-dev libxtst-dev '+
                      'libxft2 libfontconfig1 xfonts-scalable gtk2-engines-pixbuf unrar';
       end
@@ -963,7 +978,7 @@ function TSequencer.DoExec(FunctionName: string): boolean;
         Output:='libX11-devel gtk2-devel gtk+extra gtk+-devel cairo-devel cairo-gobject-devel pango-devel';
       end
 
-      else Output:='the libraries to get libX11.so and libgdk_pixbuf-2.0.so and libpango-1.0.so and libgdk-x11-2.0.so';
+      else Output:='the libraries to get libX11.so and libgdk_pixbuf-2.0.so and libpango-1.0.so and libgdk-x11-2.0.so, but also make and binutils';
 
     finally
       AllOutput.Free;
@@ -977,11 +992,15 @@ function TSequencer.DoExec(FunctionName: string): boolean;
     begin
       if not TestLib(pll^[i]) then
       begin
-        FParent.WritelnLog('Required packages are not installed for Lazarus: '+pll^[i], true);
+        FParent.WritelnLog(etError,'Required package is not installed for Lazarus: '+pll^[i], true);
         result:=false;
       end;
     end;
-    if (NOT result) AND (Length(Output)>0) then FParent.WritelnLog('You need to install at least '+Output+' !', true);
+    if (NOT result) AND (Length(Output)>0) then
+    begin
+      FParent.WritelnLog(etError,'You need to install at least '+Output+' to build Lazarus !!', true);
+      FParent.WritelnLog(etError,'Make, binutils, subversion/svn [and gdb] are also required !!', true);
+    end;
 
     // do not error out ... user could only install FPC
     result:=true;

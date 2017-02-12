@@ -38,6 +38,10 @@ uses
   processutils, m_crossinstaller, fpcuputil, cpucount;
 
 const
+
+  FPCTRUNKVERSION  = '3.1.1';
+  LAZARUSTRUNKVERSION  = '3.1.1';
+
   FPCSVNURL = 'http://svn.freepascal.org/svn';
   BINUTILSURL = FPCSVNURL + '/fpcbuild';
   DEFAULTFPCVERSION = '3.0.2';
@@ -253,10 +257,12 @@ type
     destructor Destroy; override;
   end;
 
+  TFPCNativeInstaller = class(TInstaller);
+  TFPCInstaller = class(TInstaller);
+
 implementation
 
 uses
-  installerfpc,
   FileUtil, LazFileUtils, LazUTF8,
   ssl_openssl
   // for runtime init of openssl
@@ -431,6 +437,23 @@ begin
     GetFile(BINUTILSURL+'/tags/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll])+'/install/binw32/patch.exe',IncludeTrailingPathDelimiter(FMakeDir) + 'patch.exe');
     GetFile(BINUTILSURL+'/tags/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll])+'/install/binw32/patch.exe.manifest',IncludeTrailingPathDelimiter(FMakeDir) + 'patch.exe.manifest');
 
+    {$IFDEF MSWINDOWS}
+    if OperationSucceeded then
+    begin
+      // check availability of OpenSSL libraries. Just continue in case of error
+      if FileExists(SafeGetApplicationPath+'libeay32.dll') AND FileExists(SafeGetApplicationPath+'ssleay32.dll') then
+      begin
+        infoln('Found OpenSLL library files.',etInfo);
+      end
+      else
+      begin
+        infoln('No OpenSLL library files available. Going to download them',etWarning);
+        DownloadOpenSSL;
+      end;
+    end;
+    {$ENDIF}
+
+
     F7zip := IncludeTrailingPathDelimiter(FMakeDir) + '\7Zip\7za.exe';
     if Not FileExists(F7zip) then
     begin
@@ -518,23 +541,6 @@ begin
         {$ENDIF (defined(BSD)) and (not defined(Darwin))}
       end;
     end;
-
-    {$IFDEF MSWINDOWS}
-    if OperationSucceeded then
-    begin
-      // check availability of OpenSSL libraries. Just continue in case of error
-      if FileExists(SafeGetApplicationPath+'libeay32.dll') AND FileExists(SafeGetApplicationPath+'ssleay32.dll') then
-      begin
-        infoln('Found OpenSLL library files.',etInfo);
-      end
-      else
-      begin
-        infoln('No OpenSLL library files available. Going to download them',etWarning);
-        DownloadOpenSSL;
-      end;
-    end;
-    {$ENDIF}
-
 
     if OperationSucceeded then
     begin
