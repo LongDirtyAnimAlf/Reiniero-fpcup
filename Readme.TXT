@@ -1,6 +1,13 @@
-fpcup / fpclazup
+Fpcup / fpclazup
 Original: https://bitbucket.org/reiniero/fpcup/
 New (this) : https://github.com/LongDirtyAnimAlf/Reiniero-fpcup
+
+Preliminary remark !
+====================
+Consider using fpcupdeluxe. Its a GUI installer/updater fully based on fpc(laz)up.
+Easy to use. With the most important options available.
+See : https://github.com/newpascal/fpcupdeluxe
+Wiki : http://wiki.freepascal.org/fpcupdeluxe
 
 Acknowledgement
 ===========
@@ -10,7 +17,7 @@ Follow the fpcup development on http://forum.lazarus.freepascal.org/index.php/to
 
 What is it?
 ===========
-fpcup and fpclazup are basically wrappers around svn/make on steroids.
+Fpcup and fpclazup are basically wrappers around svn/make on steroids.
 It tries to use the FPC/Lazarus build process as much as possible.
 
 Fpcup is a tool that gets the FreePascal Compiler (FPC) from its subversion repository
