@@ -110,6 +110,7 @@ uses
   m_any_to_linuxx64,
   m_any_to_freebsdx64,
   m_any_to_freebsd386,
+  m_any_to_openbsd386,
   {$endif}
   {$IFDEF MSWINDOWS}
   {$ifdef win64}

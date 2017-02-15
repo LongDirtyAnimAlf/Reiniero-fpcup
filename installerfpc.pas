@@ -189,7 +189,7 @@ uses
   {$IFDEF UNIX}
     ,baseunix
   {$ENDIF UNIX}
-  {$IFDEF FREEBSD}
+  {$IFDEF BSD}
     ,math
   {$ENDIF}
   ;
@@ -1157,6 +1157,7 @@ begin
   result:='0.0.0';
 
   if s=FPCTRUNKVERSION then result:='3.0.0'
+  else if s='3.0.3' then result:='3.0.0'
   else if (s='3.0.2') or (s='3.0.1') then result:='3.0.0'
   //else if (s='3.0.2') or (s='3.0.1') then result:='2.6.4'
   else if s='3.0.0' then result:='2.6.4'
@@ -1391,8 +1392,8 @@ begin
       OperationSucceeded:=MoveFile(ExtractedCompiler,FBootstrapCompiler);
     end;
     {$ENDIF LINUX}
-    {$IFDEF BSD} //*BSD, OSX
-    {$IF defined(FREEBSD) or defined(NETBSD) or defined(OPENBSD)}
+    {$IFDEF BSD} //*BSD
+    {$IFNDEF DARWIN}
     //todo: test parameters
     //Extract bz2, overwriting without prompting
     if ExecuteCommand(FBunzip2+' -d -f -q '+BootstrapArchive,FVerbose) <> 0 then
@@ -1411,8 +1412,7 @@ begin
       infoln('Going to move ' + ExtractedCompiler + ' to ' + FBootstrapCompiler,etDebug);
       OperationSucceeded:=MoveFile(ExtractedCompiler,FBootstrapCompiler);
     end;
-    {$ENDIF defined(FREEBSD) or defined(NETBSD) or defined(OPENBSD)}
-    {$IFDEF DARWIN}
+    {$ELSE DARWIN}
     // Extract .tar.bz2, overwriting without prompting
     // GNU tar: -x -v -j -f
     // BSD tar:
