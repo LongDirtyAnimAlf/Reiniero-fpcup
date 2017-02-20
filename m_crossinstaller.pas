@@ -155,7 +155,6 @@ begin
       ' in directory '+FLibsPath, etInfo)
   else
     infoln(CrossModuleName + ': searched but did not find any library !!', etError);
-
   if Length(extrainfo)>0 then infoln(CrossModuleName + ' libs : '+extrainfo, etInfo);
 end;
 
@@ -338,7 +337,7 @@ end;
 
 procedure TCrossInstaller.ShowInfo(info: string = ''; Level: TEventType = etInfo);
 begin
-  if Length(info)>0 then infoln(info,Level)
+  if Length(info)>0 then infoln(CrossModuleName+': '+info,Level)
   {$ifndef LCL}
   else infoln(CrossModuleName+' crosscompiler loading',etDebug);
   {$else}

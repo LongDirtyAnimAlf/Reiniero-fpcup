@@ -1310,7 +1310,7 @@ begin
 
         // check specials for SourceForge !!
         // tricky, but necessary unfortunately ...
-        if (Pos('downloads.sourceforge.net',RemoteURL)>0) then
+        if (Pos('sourceforge.net',RemoteURL)>0) then
         begin
 
           // we have an archive from sourceforge ... this archive adds an extra path (name) when unpacking the zip

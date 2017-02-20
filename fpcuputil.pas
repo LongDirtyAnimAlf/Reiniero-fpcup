@@ -562,8 +562,12 @@ end;
 function GetFileNameFromURL(URL:string):string;
 var
   URI:TURI;
+  aURL:string;
 begin
-  URI:=ParseURI(URL);
+  if AnsiEndsStr('/download',URL)
+     then aURL:=Copy(URL,1,Length(URL)-9)
+     else aURL:=URL;
+  URI:=ParseURI(aURL);
   result:=URI.Document;
 end;
 
@@ -962,7 +966,8 @@ begin
     begin
       if AnsiPos(LineEnding, Message)>0 then writeln(''); //Write an empty line before multiline messagse
       writeln(BeginSnippet+Seriousness[Level]+' '+ Message); //we misuse this for info output
-      sleep(200); //hopefully allow output to be written without interfering with other output
+      //sleep(200); //hopefully allow output to be written without interfering with other output
+      sleep(1);
     end
   else
     begin
@@ -971,7 +976,8 @@ begin
     Project Options/Other/Custom Options using -dDEBUG}
     if AnsiPos(LineEnding, Message)>0 then writeln(''); //Write an empty line before multiline messagse
     writeln(BeginSnippet+Seriousness[Level]+' '+ Message); //we misuse this for info output
-    sleep(200); //hopefully allow output to be written without interfering with other output
+    //sleep(200); //hopefully allow output to be written without interfering with other output
+    sleep(1);
     {$ENDIF}
     end;
 {$ENDIF NOCONSOLE}
