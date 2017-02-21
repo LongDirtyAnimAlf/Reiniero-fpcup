@@ -44,6 +44,7 @@ interface
 
 uses
   Classes, SysUtils,
+  zipper,
   fphttpclient,
   sslsockets, fpopenssl,
   //fpftpclient,
@@ -57,6 +58,51 @@ type
   //callback = class
   //  class procedure Status (Sender: TObject; Reason: THookSocketReason; const Value: String);
   //end;
+
+  {TThreadedUnzipper}
+
+  TOnZipProgress = procedure(Sender: TObject; FPercent: double) of object;
+  TOnZipFile = procedure(Sender: TObject; AFileName : string; FileCount,TotalFileCount:cardinal) of object;
+  TOnZipCompleted = TNotifyEvent;
+
+  TThreadedUnzipper = class(TThread)
+  private
+    FStarted: Boolean;
+    FErrMsg: String;
+    FUnZipper: TUnZipper;
+    FPercent: double;
+    FFileCount: cardinal;
+    FFileList:TStrings;
+    FTotalFileCount: cardinal;
+    FCurrentFile: string;
+    FOnZipProgress: TOnZipProgress;
+    FOnZipFile: TOnZipFile;
+    FOnZipCompleted: TOnZipCompleted;
+    procedure DoOnProgress(Sender : TObject; Const Pct : Double);
+    procedure DoOnFile(Sender : TObject; Const AFileName : string);
+    procedure DoOnZipProgress;
+    procedure DoOnZipFile;
+    procedure DoOnZipCompleted;
+  protected
+    procedure Execute; override;
+  public
+    constructor Create;
+    destructor Destroy; override;
+    procedure DoUnZip(const ASrcFile, ADstDir: String; Files:array of string);
+  published
+    property OnZipProgress: TOnZipProgress read FOnZipProgress write FOnZipProgress;
+    property OnZipFile: TOnZipFile read FOnZipFile write FOnZipFile;
+    property OnZipCompleted: TOnZipCompleted read FOnZipCompleted write FOnZipCompleted;
+  end;
+
+  TNormalUnzipper = class(TObject)
+  private
+    FUnZipper: TThreadedUnzipper;
+    procedure DoOnZipFile(Sender: TObject; aFile: string; FileCnt, TotalFileCnt:cardinal);
+  public
+    function DoUnZip(const ASrcFile, ADstDir: String; Files:array of string):boolean;
+  end;
+
 
   { TLogger }
   TLogger = class(TObject)
@@ -144,6 +190,7 @@ type
     function getFTPFileList(const URL:string; filelist:TStringList):boolean;override;
     function checkURL(const URL:string):boolean;override;
   end;
+
   {$ENDIF}
 
   TNativeDownloader = TUseNativeDownLoader;
@@ -1216,8 +1263,166 @@ var
 begin
   ch := Copy(s, 1, 1);
   rest := Copy(s, Length(ch)+1, MaxInt);
-  result := Uppercase(ch) + Lowercase(rest);
+  result := UpperCase(ch) + LowerCase(rest);
 end;
+
+{TUnzipper}
+
+procedure TThreadedUnzipper.DoOnZipProgress;
+begin
+  if Assigned(FOnZipProgress) then
+    FOnZipProgress(Self, FPercent);
+end;
+
+procedure TThreadedUnzipper.DoOnZipFile;
+begin
+  if Assigned(FOnZipFile) then
+    FOnZipFile(Self, FCurrentFile, FFileCount, FTotalFileCount);
+end;
+
+procedure TThreadedUnzipper.DoOnZipCompleted;
+begin
+  if Assigned(FOnZipCompleted) then
+    FOnZipCompleted(Self);
+end;
+
+procedure TThreadedUnzipper.Execute;
+var
+  x:cardinal;
+  s:string;
+begin
+  try
+    FUnZipper.Examine;
+
+    {$ifdef MSWINDOWS}
+    // on windows, .files (hidden files) cannot be created !!??
+    // still to check on non-windows
+    if FFileList.Count=0 then
+    begin
+      for x:=0 to FUnZipper.Entries.Count-1 do
+      begin
+        if FUnZipper.UseUTF8
+          then s:=FUnZipper.Entries.Entries[x].UTF8ArchiveFileName
+          else s:=FUnZipper.Entries.Entries[x].ArchiveFileName;
+        if (Pos('/.',s)>0) OR (Pos('\.',s)>0) then continue;
+        if (Length(s)>0) AND (s[1]='.') then continue;
+        FFileList.Append(s);
+      end;
+    end;
+    {$endif}
+
+    if FFileList.Count=0
+      then FTotalFileCount:=FUnZipper.Entries.Count
+      else FTotalFileCount:=FFileList.Count;
+
+    if FFileList.Count=0
+      then FUnZipper.UnZipAllFiles
+      else FUnZipper.UnZipFiles(FFileList);
+  except
+    on E: Exception do
+    begin
+      FErrMsg := E.Message;
+      //Synchronize(@DoOnZipError);
+    end;
+  end;
+  Synchronize(@DoOnZipCompleted);
+end;
+
+constructor TThreadedUnzipper.Create;
+begin
+  inherited Create(True);
+  FreeOnTerminate := True;
+  FUnZipper := TUnZipper.Create;
+  FFileList := TStringList.Create;
+  FStarted := False;
+end;
+
+destructor TThreadedUnzipper.Destroy;
+begin
+  FFileList.Free;
+  FUnZipper.Free;
+  inherited Destroy;
+end;
+
+
+procedure TThreadedUnzipper.DoOnProgress(Sender : TObject; Const Pct : Double);
+begin
+  FPercent:=Pct;
+  Synchronize(@DoOnZipProgress);
+end;
+
+procedure TThreadedUnzipper.DoOnFile(Sender : TObject; Const AFileName : String);
+begin
+  Inc(FFileCount);
+  FCurrentFile:=ExtractFileNAme(AFileName);
+  Synchronize(@DoOnZipFile);
+end;
+
+
+procedure TThreadedUnzipper.DoUnZip(const ASrcFile, ADstDir: String; Files:array of string);
+var
+  i:word;
+begin
+  if FStarted then exit;
+  FUnZipper.Clear;
+  FUnZipper.OnPercent:=10;
+  FUnZipper.FileName := ASrcFile;
+  FUnZipper.OutputPath := ADstDir;
+  FUnZipper.OnProgress := @DoOnProgress;
+  FUnZipper.OnStartFile:= @DoOnFile;
+  FFileList.Clear;
+  if Length(Files)>0 then
+    for i := 0 to high(Files) do
+      FFileList.Append(Files[i]);
+  FPercent:=0;
+  FFileCount:=0;
+  FTotalFileCount:=0;
+  FStarted := True;
+  Start;
+end;
+
+procedure TNormalUnzipper.DoOnZipFile(Sender: TObject; aFile: string; FileCnt, TotalFileCnt:cardinal);
+begin
+  if TotalFileCnt>50000 then
+  begin
+    if (FileCnt MOD 5000)=0 then infoln('Extracted #'+InttoStr(FileCnt)+' files out of #'+InttoStr(TotalFileCnt),etInfo);
+  end
+  else
+  if TotalFileCnt>5000 then
+  begin
+    if (FileCnt MOD 500)=0 then infoln('Extracted #'+InttoStr(FileCnt)+' files out of #'+InttoStr(TotalFileCnt),etInfo);
+  end
+  else
+  if TotalFileCnt>500 then
+  begin
+    if (FileCnt MOD 50)=0 then infoln('Extracted #'+InttoStr(FileCnt)+' files out of #'+InttoStr(TotalFileCnt),etInfo);
+  end
+  else
+  if TotalFileCnt>50 then
+  begin
+    if (FileCnt MOD 5)=0 then infoln('Extracted #'+InttoStr(FileCnt)+' files out of #'+InttoStr(TotalFileCnt),etInfo);
+  end
+  else
+    infoln('Extracting '+aFile+'. #'+InttoStr(FileCnt)+' out of #'+InttoStr(TotalFileCnt),etInfo);
+end;
+
+function TNormalUnzipper.DoUnZip(const ASrcFile, ADstDir: String; Files:array of string):boolean;
+begin
+  result:=false;
+  FUnzipper := TThreadedUnzipper.Create;
+  try
+    FUnzipper.FreeOnTerminate:=False;
+    FUnzipper.OnZipFile := @DoOnZipFile;
+    FUnzipper.DoUnZip(ASrcFile, ADstDir, Files);
+    FUnzipper.WaitFor;
+    FUnzipper.Free;
+    result:=true;
+  except
+    FUnzipper.Free;
+  end;
+end;
+
+
 
 { TLogger }
 
@@ -1768,7 +1973,7 @@ begin
   if (result) then infoln('LibCurl FTP file download success !!!', etInfo);
   if (NOT result) then
   begin
-  result:=WGetDownload(URL,Dest);
+    result:=WGetDownload(URL,Dest);
     if (result) then infoln('Wget FTP file download success !', etInfo);
   end;
 end;
@@ -1779,7 +1984,7 @@ begin
   if (result) then infoln('LibCurl HTTP file download success !!!', etInfo);
   if (NOT result) then
   begin
-  result:=WGetDownload(URL,Dest);
+    result:=WGetDownload(URL,Dest);
     if (result) then infoln('Wget HTTP file download success !', etInfo);
   end;
 end;
@@ -1856,7 +2061,7 @@ begin
           res:=CURLE_OK;
 
           F:=TMemoryStream.Create;
-  try
+          try
 
             UserPass:='';
             if FUsername <> '' then
@@ -1887,7 +2092,7 @@ begin
               begin
                 F.Position:=0;
                 aTFTPList:=TFTPList.Create;
-    try
+                try
                   aTFTPList:=TFTPList.Create;
                   aTFTPList.Lines.LoadFromStream(F);
 
@@ -1915,12 +2120,12 @@ begin
               end;
             end;
 
-    finally
-      F.Free;
-    end;
+          finally
+            F.Free;
+          end;
 
         end;
-  except
+      except
         // swallow libcurl exceptions
       end;
     end;
