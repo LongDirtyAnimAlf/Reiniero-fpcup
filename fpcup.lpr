@@ -122,7 +122,8 @@ uses
   {$endif}
   {$endif}
   m_anyinternallinker_to_win386,
-  m_anyinternallinker_to_win64
+  m_anyinternallinker_to_win64,
+  checkoptions
   ;
 
 //{$R *.res}
@@ -131,12 +132,6 @@ uses
 // Get revision from our source code repository:
 // If you have a file not found error for revision.inc, please make sure you compile hgversion.pas before compiling this project.
 {$i revision.inc}
-
-const
-  CHECKOPTIONS_SUCCESS=-1; //checkoptions ran ok
-  ERROR_WRONG_OPTIONS=13; //user specified incorrect command line options
-  ERROR_FPCUP_BUILD_FAILED=64; //fpcup ran but build failed
-
 {$I fpcuplprbase.inc}
 
 var
@@ -172,8 +167,9 @@ begin
 
   try
     FPCupManager:=TFPCupManager.Create;
-    res:=CheckOptions(FPCupManager); //Process command line arguments
+    res:=CheckFPCUPOptions(FPCupManager); //Process command line arguments
     if res=CHECKOPTIONS_SUCCESS then
+    begin
       // Get/update/compile selected modules
       if FPCupManager.Run=false then
       begin
@@ -185,6 +181,12 @@ begin
         ShowErrorHints;
         res:=ERROR_FPCUP_BUILD_FAILED;
       end;
+    end
+    else
+    begin
+      if (res=ERROR_WRONG_OPTIONS) or (res=FPCUP_GETHELP) then WriteHelp(FPCupManager.ModulePublishedList,FPCupManager.ModuleEnabledList);
+      if (res=FPCUP_GETHELP) then res:=OK_IGNORE;
+    end;
   finally
     FPCupManager.free;
   end;

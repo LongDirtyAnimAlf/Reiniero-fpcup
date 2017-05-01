@@ -40,12 +40,13 @@ uses
 const
 
   FPCTRUNKVERSION  = '3.1.1';
-  LAZARUSTRUNKVERSION  = '3.1.1';
+  LAZARUSTRUNKVERSION  = '1.9';
 
   FPCSVNURL = 'http://svn.freepascal.org/svn';
   BINUTILSURL = FPCSVNURL + '/fpcbuild';
   DEFAULTFPCVERSION = '3.0.2';
-  DEFAULTLAZARUSVERSION = '1.6.2';
+  DEFAULTLAZARUSVERSION = '1.6.4';
+
   {$IFDEF DEBUG}
   STANDARDCOMPILEROPTIONS='-vew';
   {$ELSE}
@@ -139,9 +140,6 @@ type
     function CheckAndGetNeededExecutables: boolean;
     // Check for existence of required binutils; if not there, get them if possible
     function CheckAndGetNeededBinUtils: boolean;
-    // Check executable is the right one: run Executable with Parameters
-    // and look for ExpectOutput. Returns false if no match.
-    function CheckExecutable(Executable, Parameters, ExpectOutput: string): boolean;
     // Make a list (in FUtilFiles) of all binutils that can be downloaded
     procedure CreateBinutilsList(aVersion:string='');
     // Get a diff of all modified files in and below the directory and save it
@@ -437,7 +435,6 @@ begin
     GetFile(BINUTILSURL+'/tags/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll])+'/install/binw32/patch.exe',IncludeTrailingPathDelimiter(FMakeDir) + 'patch.exe');
     GetFile(BINUTILSURL+'/tags/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll])+'/install/binw32/patch.exe.manifest',IncludeTrailingPathDelimiter(FMakeDir) + 'patch.exe.manifest');
 
-    {$IFDEF MSWINDOWS}
     if OperationSucceeded then
     begin
       // check availability of OpenSSL libraries. Just continue in case of error
@@ -451,8 +448,6 @@ begin
         DownloadOpenSSL;
       end;
     end;
-    {$ENDIF}
-
 
     F7zip := IncludeTrailingPathDelimiter(FMakeDir) + '\7Zip\7za.exe';
     if Not FileExists(F7zip) then
@@ -713,52 +708,6 @@ begin
     end;
   end;
 
-  Result := OperationSucceeded;
-end;
-
-
-function TInstaller.CheckExecutable(Executable, Parameters, ExpectOutput: string): boolean;
-var
-  ResultCode: longint;
-  OperationSucceeded: boolean;
-  ExeName: string;
-  Output: string;
-begin
-  try
-
-    ExeName := ExtractFileName(Executable);
-    ResultCode := ExecuteCommand(Executable + ' ' + Parameters, Output, FVerbose);
-    if ResultCode >= 0 then //Not all non-0 result codes are errors. There's no way to tell, really
-    begin
-      if (ExpectOutput <> '') and (Ansipos(ExpectOutput, Output) = 0) then
-      begin
-        // This is not a warning/error message as sometimes we can use multiple different versions of executables
-        infoln(Executable + ' is not a valid ' + ExeName + ' application. ' +
-          ExeName + ' exists but shows no (' + ExpectOutput + ') in its output.',etDebug);
-        OperationSucceeded := false;
-      end
-      else
-      begin
-        // We're not looking for any specific output so we're happy
-        OperationSucceeded := true;
-      end;
-    end
-    else
-    begin
-      // This is not a warning/error message as sometimes we can use multiple different versions of executables
-      infoln(Executable + ' is not a valid ' + ExeName + ' application (' + ExeName + ' result code was: ' + IntToStr(ResultCode) + ')',etDebug);
-      OperationSucceeded := false;
-    end;
-  except
-    on E: Exception do
-    begin
-      // This is not a warning/error message as sometimes we can use multiple different versions of executables
-      infoln(Executable + ' is not a valid ' + ExeName + ' application (' + 'Exception: ' + E.ClassName + '/' + E.Message + ')', etDebug);
-      OperationSucceeded := false;
-    end;
-  end;
-  if OperationSucceeded then
-    infoln('Found valid ' + ExeName + ' application.',etDebug);
   Result := OperationSucceeded;
 end;
 

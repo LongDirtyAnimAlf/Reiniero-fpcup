@@ -579,10 +579,15 @@ begin
            {$endif}
 
            {$ifdef Darwin}
-           //if (CrossInstaller.TargetOS='iphonesim') then
+           if (CrossInstaller.TargetOS='macos') OR (CrossInstaller.TargetOS='darwin') OR (CrossInstaller.TargetOS='iphonesim') then
            begin
              s:=ResolveDots(IncludeTrailingPathDelimiter(CrossInstaller.LibsPath)+'../../');
              CrossOptions:=CrossOptions+' -XR'+ExcludeTrailingPathDelimiter(s);
+           end
+           else
+           begin
+             CrossOptions:=CrossOptions+' -Xd';
+             CrossOptions:=CrossOptions+' -Fl'+ExcludeTrailingPathDelimiter(CrossInstaller.LibsPath);
            end;
            {$endif}
 
@@ -1156,7 +1161,11 @@ begin
 
   result:='0.0.0';
 
+  // for trunk i.e. , also 3.0.2 is allowed
+  // but online, only official 3.0.0 bootstrapper available
+
   if s=FPCTRUNKVERSION then result:='3.0.0'
+  else if s='3.0.4' then result:='3.0.0'
   else if s='3.0.3' then result:='3.0.0'
   else if (s='3.0.2') or (s='3.0.1') then result:='3.0.0'
   //else if (s='3.0.2') or (s='3.0.1') then result:='2.6.4'
@@ -1354,6 +1363,18 @@ begin
     // assume we have an archive if the file extension differs from a normal executable extension
 
     {$IFDEF MSWINDOWS}
+      // Extract zip, "overwriting"
+      with TNormalUnzipper.Create do
+      begin
+        try
+          SysUtils.DeleteFile(ArchiveDir + CompilerName);
+          OperationSucceeded:=DoUnZip(BootstrapArchive,ArchiveDir,[]);
+        finally
+          Free;
+        end;
+      end;
+
+      {
     // Extract zip, overwriting without prompting
     if ExecuteCommand(FUnzip+' -o -d '+ArchiveDir+' '+BootstrapArchive,FVerbose) <> 0 then
     begin
@@ -1364,6 +1385,8 @@ begin
     begin
       OperationSucceeded := True; // Spelling it out can't hurt sometimes
     end;
+      }
+
     // Move CompilerName to proper directory
     if OperationSucceeded = True then
     begin
@@ -1371,7 +1394,7 @@ begin
       SysUtils.DeleteFile(FBootstrapCompiler);
       SysUtils.RenameFile(ArchiveDir + CompilerName, FBootstrapCompiler);
       //SysUtils.DeleteFile(ArchiveDir + CompilerName);
-    end;
+      end else infoln('Something went wrong while extracting bootstrap compiler. This will abort further processing.',eterror);;
     {$ENDIF MSWINDOWS}
     {$IFDEF LINUX}
     // Extract bz2, overwriting without prompting
@@ -2513,7 +2536,7 @@ begin
   end
   else
   begin
-    infoln('FPC: running make distclean failed: could not find compiler ('+FCompiler+')',etError);
+    infoln('FPC: running make distclean failed: could not find compiler ('+FCompiler+')',etWarning);
   end;
 
   // Delete any existing fpc.cfg files

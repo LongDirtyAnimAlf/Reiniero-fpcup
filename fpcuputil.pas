@@ -259,12 +259,14 @@ function GetGCCDirectory:string;
 {$ENDIF UNIX}
 // Emulates/runs which to find executable in path. If not found, returns empty string
 function Which(Executable: string): string;
+function CheckExecutable(Executable, Parameters, ExpectOutput: string): boolean;
 function ExtractFileNameOnly(const AFilename: string): string;
 function GetCompilerName(Cpu_Target:string):string;
 function GetCrossCompilerName(Cpu_Target:string):string;
 function DoubleQuoteIfNeeded(FileName: string): string;
 function GetNumericalVersion(aVersion: string): word;
 function UppercaseFirstChar(s: String): String;
+function DirectoryIsEmpty(Directory: string): Boolean;
 
 implementation
 
@@ -550,6 +552,7 @@ begin
     // this may fail if shortcut exists already
     try
       XdgDesktopContent.SaveToFile(XdgDesktopFile);
+      FPChmod(XdgDesktopFile, &711); //rwx--x--x
       OperationSucceeded:=(ExecuteCommand('xdg-desktop-icon install ' + XdgDesktopFile,false)=0);
     except
       OperationSucceeded:=false;
@@ -580,7 +583,7 @@ var
   ScriptFile: string;
 begin
   {$IFDEF MSWINDOWS}
-  infoln('todo: write me (CreateHomeStartLink)!', eterror);
+  infoln('Todo: write me (CreateHomeStartLink)!', etInfo);
   {$ENDIF MSWINDOWS}
   {$IFDEF UNIX}
   //create dir if it doesn't exist
@@ -1083,29 +1086,68 @@ end;
 function GetGCCDirectory:string;
 var
   output,s1,s2:string;
-  i:integer;
+  i,j:integer;
 begin
 
+  {$IF (defined(BSD)) and (not defined(Darwin))}
+  result:='/usr/local/lib/gcc/';
+  {$else}
   result:='/usr/lib/gcc/';
+  {$endif}
   output:='';
 
   try
     ExecuteCommand('gcc -v', Output, false);
+
+    s1:=' --libdir=';
+    i:=Ansipos(s1, Output);
+    if i > 0 then
+    begin
+      s2:=RightStr(Output,Length(Output)-(i+Length(s1)-1));
+      // find space as delimiter
+      i:=Ansipos(' ', s2);
+      // find lf as delimiter
+      j:=Ansipos(#10, s2);
+      if (j>0) AND (j<i) then i:=j;
+      // find cr as delimiter
+      j:=Ansipos(#13, s2);
+      if (j>0) AND (j<i) then i:=j;
+      if i > 0 then delete(s2,i,MaxInt);
+      result:=IncludeTrailingPathDelimiter(s2);
+    end;
+
+    i:=Ansipos('gcc', result);
+    if i=0 then result:=result+'gcc'+DirectorySeparator;
+
     s1:=' --build=';
     i:=Ansipos(s1, Output);
     if i > 0 then
     begin
       s2:=RightStr(Output,Length(Output)-(i+Length(s1)-1));
+      // find space as delimiter
       i:=Ansipos(' ', s2);
+      // find lf as delimiter
+      j:=Ansipos(#10, s2);
+      if (j>0) AND (j<i) then i:=j;
+      // find cr as delimiter
+      j:=Ansipos(#13, s2);
+      if (j>0) AND (j<i) then i:=j;
       if i > 0 then delete(s2,i,MaxInt);
-      result:=result+s2+'/';
+      result:=result+s2+DirectorySeparator;
     end;
     s1:='gcc version ';
     i:=Ansipos(s1, Output);
     if i > 0 then
     begin
       s2:=RightStr(Output,Length(Output)-(i+Length(s1)-1));
+      // find space as delimiter
       i:=Ansipos(' ', s2);
+      // find lf as delimiter
+      j:=Ansipos(#10, s2);
+      if (j>0) AND (j<i) then i:=j;
+      // find cr as delimiter
+      j:=Ansipos(#13, s2);
+      if (j>0) AND (j<i) then i:=j;
       if i > 0 then delete(s2,i,MaxInt);
       result:=result+s2;
     end;
@@ -1161,6 +1203,52 @@ begin
     Result:=IncludeTrailingPathDelimiter(Result);
 end;
 {$ENDIF UNIX}
+
+function CheckExecutable(Executable, Parameters, ExpectOutput: string): boolean;
+var
+  ResultCode: longint;
+  OperationSucceeded: boolean;
+  ExeName: string;
+  Output: string;
+begin
+  try
+    Output:='';
+    ExeName := ExtractFileName(Executable);
+    ResultCode := ExecuteCommand(Executable + ' ' + Parameters, Output, False);
+    if ResultCode >= 0 then //Not all non-0 result codes are errors. There's no way to tell, really
+    begin
+      if (ExpectOutput <> '') and (Ansipos(ExpectOutput, Output) = 0) then
+      begin
+        // This is not a warning/error message as sometimes we can use multiple different versions of executables
+        infoln(Executable + ' is not a valid ' + ExeName + ' application. ' +
+          ExeName + ' exists but shows no (' + ExpectOutput + ') in its output.',etDebug);
+        OperationSucceeded := false;
+      end
+      else
+      begin
+        // We're not looking for any specific output so we're happy
+        OperationSucceeded := true;
+      end;
+    end
+    else
+    begin
+      // This is not a warning/error message as sometimes we can use multiple different versions of executables
+      infoln(Executable + ' is not a valid ' + ExeName + ' application (' + ExeName + ' result code was: ' + IntToStr(ResultCode) + ')',etDebug);
+      OperationSucceeded := false;
+    end;
+  except
+    on E: Exception do
+    begin
+      // This is not a warning/error message as sometimes we can use multiple different versions of executables
+      infoln(Executable + ' is not a valid ' + ExeName + ' application (' + 'Exception: ' + E.ClassName + '/' + E.Message + ')', etDebug);
+      OperationSucceeded := false;
+    end;
+  end;
+  if OperationSucceeded then
+    infoln('Found valid ' + ExeName + ' application.',etDebug);
+  Result := OperationSucceeded;
+end;
+
 
 function ExtractFileNameOnly(const AFilename: string): string;
 var
@@ -1266,6 +1354,21 @@ begin
   result := UpperCase(ch) + LowerCase(rest);
 end;
 
+function DirectoryIsEmpty(Directory: string): Boolean;
+var
+  SR: TSearchRec;
+  i: Integer;
+begin
+  Result:=(NOT DirectoryExists(Directory));
+  if Result=true then exit;
+  SysUtils.FindFirst(IncludeTrailingPathDelimiter(Directory) + '*', faAnyFile, SR);
+  for i := 1 to 2 do
+    if (SR.Name = '.') or (SR.Name = '..') then
+      Result := SysUtils.FindNext(SR) <> 0;
+  SysUtils.FindClose(SR);
+end;
+
+
 {TUnzipper}
 
 procedure TThreadedUnzipper.DoOnZipProgress;
@@ -1301,9 +1404,14 @@ begin
     begin
       for x:=0 to FUnZipper.Entries.Count-1 do
       begin
+        { UTF8 features are only available in FPC >= 3.1 }
+        {$IF FPC_FULLVERSION > 30100}
         if FUnZipper.UseUTF8
           then s:=FUnZipper.Entries.Entries[x].UTF8ArchiveFileName
-          else s:=FUnZipper.Entries.Entries[x].ArchiveFileName;
+          else
+        {$endif}
+          s:=FUnZipper.Entries.Entries[x].ArchiveFileName;
+
         if (Pos('/.',s)>0) OR (Pos('\.',s)>0) then continue;
         if (Length(s)>0) AND (s[1]='.') then continue;
         FFileList.Append(s);

@@ -3,7 +3,7 @@
   <ProjectSession>
     <PathDelim Value="\"/>
     <Version Value="10"/>
-    <BuildModes Count="3" Active="win32">
+    <BuildModes Count="3" Active="Default">
       <Item1 Name="linuxarmhf">
         <CompilerOptions>
           <Version Value="11"/>
@@ -194,6 +194,7 @@ end;"/>
         <Filename Value="fpcup.ini"/>
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="1"/>
+        <CursorPos X="48" Y="6"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
         <DefaultSyntaxHighlighter Value="Ini"/>
@@ -203,6 +204,8 @@ end;"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerManager"/>
         <EditorIndex Value="-1"/>
+        <TopLine Value="28"/>
+        <CursorPos X="20" Y="13"/>
         <UsageCount Value="200"/>
       </Unit10>
       <Unit11>
@@ -235,6 +238,8 @@ end;"/>
         <Filename Value="commandline.pas"/>
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="-1"/>
+        <TopLine Value="30"/>
+        <CursorPos X="17" Y="30"/>
         <UsageCount Value="200"/>
       </Unit15>
       <Unit16>
@@ -416,7 +421,7 @@ end;"/>
         <WindowIndex Value="-1"/>
         <TopLine Value="-1"/>
         <CursorPos X="-1" Y="-1"/>
-        <UsageCount Value="134"/>
+        <UsageCount Value="136"/>
       </Unit39>
       <Unit40>
         <Filename Value="jedi.inc"/>
@@ -424,7 +429,7 @@ end;"/>
         <EditorIndex Value="-1"/>
         <TopLine Value="68"/>
         <CursorPos X="8" Y="88"/>
-        <UsageCount Value="134"/>
+        <UsageCount Value="136"/>
       </Unit40>
       <Unit41>
         <Filename Value="m_linux386_to_mipsel.pas"/>
@@ -432,7 +437,7 @@ end;"/>
         <EditorIndex Value="-1"/>
         <TopLine Value="107"/>
         <CursorPos Y="132"/>
-        <UsageCount Value="134"/>
+        <UsageCount Value="136"/>
       </Unit41>
       <Unit42>
         <Filename Value="revision.inc"/>
@@ -441,7 +446,7 @@ end;"/>
         <WindowIndex Value="-1"/>
         <TopLine Value="-1"/>
         <CursorPos X="-1" Y="-1"/>
-        <UsageCount Value="134"/>
+        <UsageCount Value="136"/>
       </Unit42>
       <Unit43>
         <Filename Value="m_any_to_linuxarm.pas"/>
@@ -449,19 +454,19 @@ end;"/>
         <EditorIndex Value="-1"/>
         <TopLine Value="65"/>
         <CursorPos X="19" Y="81"/>
-        <UsageCount Value="127"/>
+        <UsageCount Value="129"/>
       </Unit43>
       <Unit44>
         <Filename Value="m_any_to_androidjvm.pas"/>
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="-1"/>
-        <UsageCount Value="91"/>
+        <UsageCount Value="93"/>
       </Unit44>
       <Unit45>
         <Filename Value="m_any_to_javajvm.pas"/>
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="-1"/>
-        <UsageCount Value="91"/>
+        <UsageCount Value="93"/>
       </Unit45>
     </Units>
   </ProjectSession>
