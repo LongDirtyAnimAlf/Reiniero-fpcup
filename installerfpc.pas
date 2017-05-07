@@ -193,9 +193,6 @@ uses
     ,math
   {$ENDIF}
   ;
-const
-  SnipMagicBegin='# begin fpcup do not remove '; //look for this/add this in fpc.cfg cross-compile snippet. Note: normally followed by FPC CPU-os code
-  SnipMagicEnd='# end fpcup do not remove'; //denotes end of fpc.cfg cross-compile snippet
 
 function InsertFPCCFGSnippet(FPCCFG,Snippet: string): boolean;
 // Adds snippet to fpc.cfg file or replaces if if first line of snippet is present
@@ -524,6 +521,12 @@ begin
            ProcessEx.Parameters.Add('OVERRIDEVERSIONCHECK=1');
         //putting all before target might help!?!?
         ProcessEx.Parameters.Add('all');
+        // future improvement:
+        // 1: Make compiler_cycle CROSSINSTALL=1
+        // 2: Make rtl packages CROSSINSTALL=1
+        // 3: Make rtl_install packages_install CROSSINSTALL=1
+        // if cross-compiler is already present, this could reduce some build-time
+
         ProcessEx.Parameters.Add('CPU_SOURCE='+SourceCPU);
         ProcessEx.Parameters.Add('OS_SOURCE='+SourceOS);
         ProcessEx.Parameters.Add('OS_TARGET='+FCrossOS_Target); //cross compile for different OS...
@@ -552,8 +555,13 @@ begin
           // always build hardfloat for ARM on Android ?
           // or default to softfloat for ARM on Android ?
           // if (Pos('-dFPC_ARMEL',Options)=0) then Options:=Options+' -dFPC_ARMEL';
-          if (Pos('-dFPC_ARMHF',Options)=0) then Options:=Options+' -dFPC_ARMHF';
+          // decision: (nearly) always build hardfloat ... not necessary correct however !
+          if (Pos('-dFPC_ARMHF',Options)=0) AND (Pos('-dFPC_ARMEL',Options)=0) then Options:=Options+' -dFPC_ARMHF';
         end;
+
+        {$ifdef solaris}
+        Options:=Options+' -Xn';
+        {$endif}
 
         CrossOptions:='';
 
@@ -789,10 +797,13 @@ begin
             fpChmod(IncludeTrailingPathDelimiter(FBinPath)+s,&755);
           end;
           {$ENDIF}
-          if CrossInstaller.FPCCFGSnippet<>'' then
-          begin
             // Modify fpc.cfg
+          // always add this, to be able to detect which cross-compilers are installed
+          // helpfull for later bulk-update of all cross-compilers
             FPCCfg := IncludeTrailingPathDelimiter(FBinPath) + 'fpc.cfg';
+          if CrossInstaller.FPCCFGSnippet<>''
+             then s:=CrossInstaller.FPCCFGSnippet+LineEnding
+             else s:='# dummy (blank) config for auto-detect cross-compilers'+LineEnding;
             InsertFPCCFGSnippet(FPCCfg,
               SnipMagicBegin+FCrossCPU_target+'-'+FCrossOS_target+LineEnding+
               '#cross compile settings dependent on both target OS and target CPU'+LineEnding+
@@ -800,12 +811,11 @@ begin
               '#IFDEF CPU'+uppercase(FCrossCPU_Target+LineEnding)+
               '#IFDEF '+uppercase(FCrossOS_Target)+LineEnding+
               '# Inserted by fpcup '+DateTimeToStr(Now)+LineEnding+
-              CrossInstaller.FPCCFGSnippet+LineEnding+
+            s+
               '#ENDIF'+LineEnding+
               '#ENDIF'+LineEnding+
               '#ENDIF'+LineEnding+
               SnipMagicEnd);
-          end;
           {$IFDEF UNIX}
           result:=CreateFPCScript;
           {$ENDIF UNIX}
@@ -2417,6 +2427,9 @@ begin
       Write(TxtFile,';'+'/usr/lib/$FPCTARGET-gnueabi');
       {$ENDIF cpuarmhf}
       {$ENDIF cpuarm}
+      {$IF (defined(BSD)) and (not defined(Darwin))}
+      Write(TxtFile,';'+'/usr/local/lib'+';'+'/usr/X11R6/lib');
+      {$endif}
       Write(TxtFile,';'+GetGCCDirectory);
       Writeln;
       {$ENDIF UNIX}
@@ -2684,7 +2697,11 @@ begin
           begin
             // check for default values
             if ((FPatchCmd='patch') OR (FPatchCmd='gpatch'))
+              {$IF defined(BSD) and not defined(DARWIN)}
+              then LocalPatchCmd:=FPatchCmd + ' -p0 -N -i '
+              {$else}
                then LocalPatchCmd:=FPatchCmd + ' -p0 -N --no-backup-if-mismatch -i '
+              {$endif}
                else LocalPatchCmd:=Trim(FPatchCmd) + ' ';
             {$IFDEF MSWINDOWS}
             ReturnCode:=ExecuteCommandInDir(IncludeTrailingPathDelimiter(FMakeDir) + LocalPatchCmd + PatchFilePath, FSourceDirectory, Output, True);

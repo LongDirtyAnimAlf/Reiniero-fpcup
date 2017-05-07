@@ -522,6 +522,16 @@ begin
       continue;
     end;
 
+    {$ifdef OpenBSD}
+    // the packages lazdatadict and lazdbexport are not suitable for OpenBSD: their FPC units are not included !
+    // so skip them in case they are included.
+    if (Pos('lazdatadict',PackagePath)>0) OR (Pos('lazdbexport',PackagePath)>0) then
+    begin
+      infoln('TUniversalInstaller: incompatible package '+ExtractFileName(PackagePath)+' skipped.',etWarning);
+      continue;
+    end;
+    {$endif}
+
     {
     if (NOT FileExists(PackagePath)) OR (PackagePath='') then
     begin
@@ -543,8 +553,8 @@ begin
     result:=InstallPackage(PackagePath,WorkingDir);
     if not result then
     begin
-      infoln('TUniversalInstaller: error while installing package '+PackagePath+'. Stopping',eterror);
-      if FVerbose then WritelnLog('TUniversalInstaller: error while installing package '+PackagePath+'. Stopping',false);
+      infoln('TUniversalInstaller: error while installing package '+PackagePath+'.',etWarning);
+      if FVerbose then WritelnLog('TUniversalInstaller: error while installing package '+PackagePath+'.',false);
       break;
     end;
     {$endif}
@@ -1829,6 +1839,15 @@ begin
          {$ifdef Darwin}
          if (Pos('darwin',os)>0) then AddModule:=AND_OR_Values(AddModule,(Pos('-darwin',os)=0),NegativeList);
          {$endif}
+
+         {$ifdef OpenBSD}
+         if (Pos('openbsd',os)>0) then AddModule:=AND_OR_Values(AddModule,(Pos('-openbsd',os)=0),NegativeList);
+         {$endif}
+
+         {$ifdef FreeBSD}
+         if (Pos('freebsd',os)>0) then AddModule:=AND_OR_Values(AddModule,(Pos('-freebsd',os)=0),NegativeList);
+         {$endif}
+
       end;
 
       cpu:=GetValueSimple('CPU_OK',sl);
