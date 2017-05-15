@@ -200,12 +200,13 @@ function InsertFPCCFGSnippet(FPCCFG,Snippet: string): boolean;
 var
   ConfigText: TStringList;
   i:integer;
-  SnipBegin,SnipEnd: integer;
+  SnipBegin,SnipEnd,SnipEndLastResort: integer;
   SnippetText: TStringList;
 begin
   result:=false;
   SnipBegin:=-1;
   SnipEnd:=maxint;
+  SnipEndLastResort:=SnipEnd;
   ConfigText:=TStringList.Create;
   SnippetText:=TStringList.Create;
   try
@@ -216,7 +217,7 @@ begin
     if SnipBegin>-1 then
     begin
       infoln('fpc.cfg: found existing snippet in '+FPCCFG+'. Deleting it and writing new version.',etInfo);
-      for i:=SnipBegin to ConfigText.Count-1 do
+      for i:=(SnipBegin+1) to ConfigText.Count-1 do
       begin
         // Once again, look exactly for this text:
         if ConfigText.Strings[i]=SnipMagicEnd then
@@ -224,11 +225,19 @@ begin
           SnipEnd:=i;
           break;
         end;
+        // in case of failure, store beginning of next (magic) config segment
+        if Pos(SnipMagicBegin,ConfigText.Strings[i])>0 then
+        begin
+          SnipEndLastResort:=i;
+        end;
       end;
       if SnipEnd=maxint then
       begin
         //apparently snippet was not closed
         infoln('fpc.cfg: existing snippet was not closed. Replacing it anyway. Please check your fpc.cfg.',etWarning);
+        if SnipEndLastResort<>maxint then
+          SnipEnd:=(SnipEndLastResort-1)
+        else
         SnipEnd:=i;
       end;
       for i:=SnipEnd downto SnipBegin do
@@ -241,7 +250,8 @@ begin
       ConfigText.Add(LineEnding);
     ConfigText.Add(Snippet);
 
-    {$ifndef Darwin}
+    //{$ifndef Darwin}
+    {$ifdef MSWINDOWS}
     // remove pipeline assembling for Darwin when cross-compiling !!
     SnipBegin:=ConfigText.IndexOf('# use pipes instead of temporary files for assembling');
     if SnipBegin>-1 then
@@ -613,6 +623,9 @@ begin
            begin
              CrossOptions:=CrossOptions+' -FD'+ExcludeTrailingPathDelimiter(CrossInstaller.BinUtilsPath);
            end;
+           {$else}
+           //just for testing/debugging
+           //Options:=Options+' -sh -s-';
            {$endif}
         end;
 
@@ -775,10 +788,11 @@ begin
         end
         else
         begin
-          {$IFDEF UNIX}
 
           // get the name of the cross-compiler we just built.
           IntermediateCompiler:=GetCrossCompilerName(CrossInstaller.TargetCPU);
+
+          {$IFDEF UNIX}
 
           {$IFDEF Darwin}
           // on Darwin, the normal compiler names are used for the final cross-target compiler !!
@@ -797,6 +811,10 @@ begin
             fpChmod(IncludeTrailingPathDelimiter(FBinPath)+s,&755);
           end;
           {$ENDIF}
+
+          // delete cross-compiler in source-directory
+          SysUtils.DeleteFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler/'+IntermediateCompiler);
+
             // Modify fpc.cfg
           // always add this, to be able to detect which cross-compilers are installed
           // helpfull for later bulk-update of all cross-compilers
@@ -903,7 +921,7 @@ begin
     else //raise error;
     begin
       ProcessEx.Parameters.Add('--help'); // this should render make harmless
-      WritelnLog('BuildModule: Invalid module name ' + ModuleName + ' specified! Please fix the code.', true);
+      WritelnLog(etError, 'BuildModule: Invalid module name ' + ModuleName + ' specified! Please fix the code.', true);
       OperationSucceeded := false;
       Result := false;
       exit;
@@ -917,13 +935,13 @@ begin
     if ProcessEx.ExitStatus <> 0 then
     begin
       OperationSucceeded := False;
-      WritelnLog('FPC: Error running make failed with exit code '+inttostr(ProcessEx.ExitStatus)+LineEnding+'. Details: '+FErrorLog.Text,true);
+      WritelnLog(etError, 'FPC: Error running make failed with exit code '+inttostr(ProcessEx.ExitStatus)+LineEnding+'. Details: '+FErrorLog.Text,true);
     end;
   except
     on E: Exception do
     begin
       OperationSucceeded := False;
-      WritelnLog('FPC: Running fpc make failed with an exception!'+LineEnding+'. Details: '+E.Message,true);
+      WritelnLog(etError, 'FPC: Running fpc make failed with an exception!'+LineEnding+'. Details: '+E.Message,true);
     end;
   end;
 
@@ -945,7 +963,7 @@ begin
     // Verify it exists
     if not(FileExistsUTF8(FCompiler)) then
       begin
-      WritelnLog('FPC: error: could not find compiler '+FCompiler+' that should have been created.',true);
+      WritelnLog(etError, 'FPC: could not find compiler '+FCompiler+' that should have been created.',true);
       OperationSucceeded:=false;
       end;
     end
@@ -1521,8 +1539,6 @@ begin
 end;
 
 function TFPCInstaller.InitModule(aBootstrapVersion:string):boolean;
-const
-  FpcupdeluxeGitRepo='https://github.com/newpascal/fpcupdeluxe';
 var
   aCompilerList:TStringList;
   i,j:integer;
@@ -1633,7 +1649,7 @@ begin
 
           aCompilerList.Clear;
 
-          aDownLoader.getFTPFileList('ftp://ftp.freepascal.org/pub/fpc/dist/'+aLocalBootstrapVersion+'/bootstrap/',aCompilerList);
+          aDownLoader.getFTPFileList(FPCFTPURL+'/'+aLocalBootstrapVersion+'/bootstrap/',aCompilerList);
 
           if FVerbose then
           begin
@@ -1698,7 +1714,7 @@ begin
         if FBootstrapCompilerURL='' then
         begin
           infoln('Got a bootstrap compiler from official FPC bootstrap sources.',etInfo);
-          FBootstrapCompilerURL := 'ftp://ftp.freepascal.org/pub/fpc/dist/'+aLocalBootstrapVersion+'/bootstrap/'+aCompilerArchive;
+          FBootstrapCompilerURL := FPCFTPURL+'/'+aLocalBootstrapVersion+'/bootstrap/'+aCompilerArchive;
         end;
       end;
 
@@ -1723,7 +1739,7 @@ begin
           while ((NOT aCompilerFound) AND (GetNumericalVersion(aLocalBootstrapVersion)>0)) do
           begin
             infoln('Looking online for a FPCUP bootstrapper with version '+aLocalBootstrapVersion,etDebug);
-            aGithubBootstrapURL:=FpcupdeluxeGitRepo+
+            aGithubBootstrapURL:=FPCUPGITREPO+
               '/releases/download/bootstrappers_v1.0/'+
               'fpcup-'+StringReplace(aLocalBootstrapVersion,'.','_',[rfReplaceAll])+'-'+SourceCPU+'-'+SourceOS+'-'+GetCompilerName(SourceCPU);
             infoln('Checking existence of: '+aGithubBootstrapURL,etInfo);
@@ -2051,7 +2067,7 @@ begin
 
     infoln('Getting the sources of the FPC ' + RequiredBootstrapVersion + ' intermediate compiler.',etInfo);
 
-    s:='http://svn.freepascal.org/svn/fpc/tags/release_'+StringReplace(RequiredBootstrapVersion,'.','_',[rfReplaceAll,rfIgnoreCase]);
+    s:=FPCSVNURL+'/fpc/tags/release_'+StringReplace(RequiredBootstrapVersion,'.','_',[rfReplaceAll,rfIgnoreCase]);
     if (ReturnCode = 0)
         then ICSVNCommand:='update --non-interactive --quiet'
         else ICSVNCommand:='checkout --non-interactive --quiet --depth=files ' + s;
@@ -2218,7 +2234,7 @@ begin
     if ProcessEx.ExitStatus <> 0 then
     begin
       result := False;
-      WritelnLog('FPC: Failed to build ppcx64 bootstrap compiler ');
+      WritelnLog(etError, 'FPC: Failed to build ppcx64 bootstrap compiler.');
       exit;
     end;
     FileUtil.CopyFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler\ppcx64.exe',
@@ -2248,7 +2264,7 @@ begin
     if ProcessEx.ExitStatus <> 0 then
     begin
       result := False;
-      WritelnLog('FPC: Failed to build ppc386 bootstrap compiler ');
+      WritelnLog(etError, 'FPC: Failed to build ppc386 bootstrap compiler.');
       exit;
     end;
     FileUtil.CopyFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler/ppc386',
@@ -2335,7 +2351,7 @@ begin
       except
         on E: Exception do
           begin
-          WritelnLog('FPC: Running fpcmkcfg failed with an exception!'+LineEnding+
+          WritelnLog(etError, 'FPC: Running fpcmkcfg failed with an exception!'+LineEnding+
             'Details: '+E.Message,true);
           OperationSucceeded := False;
           end;
@@ -2344,7 +2360,7 @@ begin
       if ProcessEx.ExitStatus <> 0 then
       begin
         OperationSucceeded := False;
-        WritelnLog('FPC: Running fpcmkcfg failed with exit code '+inttostr(ProcessEx.ExitStatus),true);
+        WritelnLog(etError, 'FPC: Running fpcmkcfg failed with exit code '+inttostr(ProcessEx.ExitStatus),true);
       end;
 
       // if, for one reason or another, there is no cfg file, create a minimal one by ourselves
@@ -2393,8 +2409,8 @@ begin
           writeln(TxtFile,'# Write always a nice FPC logo ;)');
           writeln(TxtFile,'-l');
           writeln(TxtFile,'');
-          writeln(TxtFile,'# Display Info, Warnings, Notes and Hints');
-          writeln(TxtFile,'-viwn');
+          writeln(TxtFile,'# Display Info, Warnings and Notes and supress Hints');
+          writeln(TxtFile,'-viwnh-');
           writeln(TxtFile,'');
         finally
           CloseFile(TxtFile);
@@ -2471,7 +2487,7 @@ begin
   // current directory
   if not DirectoryExistsUTF8(FSourceDirectory) then
   begin
-    infoln('TFPCInstaller: clean module '+ModuleName + ' directory '+FSourceDirectory+' does not exist. Exiting CleanModule.',etWarning);
+    //infoln('TFPCInstaller: clean module '+ModuleName + ' directory '+FSourceDirectory+' does not exist. Exiting CleanModule.',etInfo);
     exit;
   end;
 
@@ -2539,7 +2555,7 @@ begin
         on E: Exception do
         begin
           result:=false;
-          WritelnLog('FPC: running make distclean failed with an exception!'+LineEnding+'Details: '+E.Message,true);
+          WritelnLog(etError, 'FPC: running make distclean failed with an exception!'+LineEnding+'Details: '+E.Message,true);
         end;
       end;
     finally
@@ -2740,9 +2756,14 @@ begin
                then infoln('FPC has been patched successfully with '+UpdateWarnings[i],etInfo)
                else
                begin
-                 writelnlog(ModuleName+' ERROR: Patching FPC with ' + UpdateWarnings[i] + ' failed.', true);
+                 writelnlog(etError, ModuleName+' Patching FPC with ' + UpdateWarnings[i] + ' failed.', true);
                  writelnlog(ModuleName+' patch output: ' + Output, true);
                end;
+          end
+          else
+          begin
+            infoln('Strange: could not find patchfile '+PatchFilePath, etWarning);
+            writelnlog(etError, ModuleName+' Patching FPC with ' + UpdateWarnings[i] + ' failed due to missing patch file.', true);
           end;
         end;
       finally

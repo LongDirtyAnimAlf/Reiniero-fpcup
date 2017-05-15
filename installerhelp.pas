@@ -185,7 +185,8 @@ end;
 
 THelpLazarusInstaller = class(THelpInstaller)
 private
-  FFPCDirectory: string;
+  FFPCBinDirectory: string;
+  FFPCSourceDirectory: string;
   FLazarusPrimaryConfigPath: string;
 protected
   // Build module descendant customisation
@@ -198,8 +199,10 @@ public
   function ConfigModule(ModuleName:string): boolean; override;
   // Install update sources
   function GetModule(ModuleName:string): boolean; override;
-  // Root directory of FPC; needed for finding fpdoc tool
-  property FPCDirectory: string write FFPCDirectory;
+  // Root bins directory of FPC; needed for finding fpdoc tool
+  property FPCBinDirectory: string write FFPCBinDirectory;
+  // Root source directory of FPC; needed for finding fpdoc files
+  property FPCSourceDirectory: string write FFPCSourceDirectory;
   // Configuration for Lazarus; required for configuration
   property LazarusPrimaryConfigPath: string read FLazarusPrimaryConfigPath write FLazarusPrimaryConfigPath;
   // Uninstall module
@@ -638,7 +641,7 @@ begin
             writelnlog('Execute: '+ProcessEx.Executable+' exit code: '+InttoStr(ProcessEx.ExitStatus), true);
             if ProcessEx.ExitStatus <> 0 then
             begin
-              writelnlog(ModuleName+': error compiling build_lcl_docs docs builder.', true);
+              writelnlog(etError,ModuleName+': error compiling build_lcl_docs docs builder.', true);
               OperationSucceeded := False;
             end;
           end;
@@ -647,20 +650,20 @@ begin
 
       // Check for proper fpdoc
       { Preferably use the fpdoc in ./utils/fpdoc/ }
-      FPDocExe:=IncludeTrailingPathDelimiter(FFPCDirectory)+
+      FPDocExe:=IncludeTrailingPathDelimiter(FFPCSourceDirectory)+
         'utils'+DirectorySeparator+
         'fpdoc'+DirectorySeparator+
         'fpdoc'+GetExeExt;
       if (CheckExecutable(FPDocExe, '--help', 'FPDoc')=false) then
       begin
         // Try again, in bin directory; newer FPC releases may have migrated to this
-        FPDocExes:=FindAllFiles(IncludeTrailingPathDelimiter(FFPCDirectory)+'bin'+DirectorySeparator,
+        FPDocExes:=FindAllFiles(IncludeTrailingPathDelimiter(FFPCBinDirectory)+'bin'+DirectorySeparator,
           'fpdoc'+GetExeExt,true);
         try
           if FPDocExes.Count>0 then FPDocExe:=FPDocExes[0]; //take only the first
           if (CheckExecutable(FPDocExe, '--help', 'FPDoc')=false) then
           begin
-            writelnlog(ModuleName+': no valid fpdoc executable found ('+FPDocExe+'). Please recompile fpc.', true);
+            writelnlog(etError,ModuleName+': no valid fpdoc executable found ('+FPDocExe+'). Please recompile fpc.', true);
             OperationSucceeded := False;
           end
           else
@@ -694,7 +697,7 @@ begin
         //
         // So specify path explicitly
         // --css-file argument available since r42283
-        ProcessEx.Parameters.Add('--css-file='+IncludeTrailingPathDelimiter(FFPCDirectory)+
+        ProcessEx.Parameters.Add('--css-file='+IncludeTrailingPathDelimiter(FFPCSourceDirectory)+
           'utils'+DirectorySeparator+'fpdoc'+DirectorySeparator+'fpdoc.css');
 
         ProcessEx.Parameters.Add('--outfmt');
@@ -717,7 +720,7 @@ begin
         BuildResult:=ProcessEx.ExitStatus;
         if BuildResult <> 0 then
         begin
-          writelnlog(ModuleName+': error creating chm help docs. build_lcl_docs exit status: '+inttostr(BuildResult), true);
+          writelnlog(etError,ModuleName+': error creating chm help docs. build_lcl_docs exit status: '+inttostr(BuildResult), true);
           OperationSucceeded := False;
         end;
       end;
@@ -735,7 +738,7 @@ begin
           else
           begin
             // File exists, but is empty. We might have an older file still present
-            writelnlog(ModuleName+': WARNING: '+GeneratedLCLHelp+
+            writelnlog(etWarning, ModuleName+': WARNING: '+GeneratedLCLHelp+
             ' was created but is empty (perhaps due to FPC bugs). Lcl.chm may be out of date! Try running with --verbose to see build_lcl_docs error messages.', true);
             // Todo: change this once fixes for fpdoc chm generation are in fixes_26:
             OperationSucceeded:=true;
@@ -753,7 +756,7 @@ begin
     end;
   end;
 
-  if NOT OperationSucceeded then writelnlog(ModuleName+': Fatal error. But I will continue !!', true);
+  if NOT OperationSucceeded then writelnlog(etError, ModuleName+': Fatal error. But I will continue !!', true);
   //result:=OperationSucceeded;
   // always continue,  even when docs were not build !!
   result:=True;

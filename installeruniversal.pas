@@ -567,7 +567,7 @@ function TUniversalInstaller.CreateInstallers(Directive: string; sl: TStringList
 // For now only support WINDOWS/WINDOWS32/WIN32/WINX86, and ignore others
 var
   i:integer;
-  InstallDir,exec,output:string;
+  InstallDir,exec:string;
   Installer: TWinInstaller;
   Workingdir:string;
   BaseWorkingdir:string;
@@ -647,7 +647,9 @@ begin
       {$IFDEF DEBUG}
       exec:=StringReplace(exec,'lazbuild','lazbuild --verbose',[rfIgnoreCase]);
       {$ELSE}
-      exec:=StringReplace(exec,'lazbuild','lazbuild --quiet --quiet',[rfIgnoreCase]);
+      // See compileroptions.pp
+      // Quiet:=ConsoleVerbosity<=-3;
+      exec:=StringReplace(exec,'lazbuild','lazbuild --quiet --quiet --quiet --quiet',[rfIgnoreCase]);
       {$ENDIF}
     end;
     Workingdir:=GetValue('Workingdir'+IntToStr(i),sl);
@@ -733,7 +735,7 @@ begin
         end;
       LazarusConfig.DeletePath(xmlfile, 'UserPkgLinks/Item'+IntToStr(cnt)+'/');
       end;
-    xmlfile:='miscellaneousoptions.xml';
+    xmlfile:=MiscellaneousConfig;
     key:='MiscellaneousOptions/BuildLazarusOptions/StaticAutoInstallPackages/'
       +'Count';
     cnt:=LazarusConfig.GetVariable(xmlfile, key, 0);
@@ -1043,12 +1045,15 @@ begin
         {$IFDEF DEBUG}
         ProcessEx.Parameters.Add('--verbose');
         {$ELSE}
+        // See compileroptions.pp
+        // Quiet:=ConsoleVerbosity<=-3;
+        ProcessEx.Parameters.Add('--quiet');
+        ProcessEx.Parameters.Add('--quiet');
         ProcessEx.Parameters.Add('--quiet');
         ProcessEx.Parameters.Add('--quiet');
         {$ENDIF}
         ProcessEx.Parameters.Add('--pcp='+FLazarusPrimaryConfigPath);
         ProcessEx.Parameters.Add('--build-ide=-dKeepInstalledPackages ' + FLazarusCompilerOptions);
-        ProcessEx.Parameters.Add('--build-mode=');
         try
           ProcessEx.Execute;
           result := ProcessEx.ExitStatus=0;
@@ -1513,12 +1518,15 @@ begin
       {$IFDEF DEBUG}
       ProcessEx.Parameters.Add('--verbose');
       {$ELSE}
+      // See compileroptions.pp
+      // Quiet:=ConsoleVerbosity<=-3;
+      ProcessEx.Parameters.Add('--quiet');
+      ProcessEx.Parameters.Add('--quiet');
       ProcessEx.Parameters.Add('--quiet');
       ProcessEx.Parameters.Add('--quiet');
       {$ENDIF}
       ProcessEx.Parameters.Add('--pcp='+FLazarusPrimaryConfigPath);
       ProcessEx.Parameters.Add('--build-ide=-dKeepInstalledPackages ' + FLazarusCompilerOptions);
-      ProcessEx.Parameters.Add('--build-mode=');
       try
         ProcessEx.Execute;
         result := ProcessEx.ExitStatus=0;
@@ -1572,7 +1580,12 @@ var
 begin
   sl:=TStringList.Create;
   ini:=TMemIniFile.Create(CurrentConfigFile);
+  {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
+  ini.Options:=ini.Options-[ifoCaseSensitive];
+  {$ELSE}
   ini.CaseSensitive:=false;
+  {$ENDIF}
+
   try
     ini.ReadSection('ALIAS'+Dictionary,sl);
     if Uppercase(KeyWord)='LIST' then
@@ -1586,9 +1599,9 @@ begin
         if Uppercase(KeyWord)='DEFAULT' then
         begin
           infoln('InstallerUniversal: no default source alias found: using fpcup default',etInfo);
-          if Dictionary='fpcURL' then result:='http://svn.freepascal.org/svn/fpc/tags/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll]);
+          if Dictionary='fpcURL' then result:=FPCSVNURL+'/fpc/tags/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll]);
           {$ifndef FPCONLY}
-          if Dictionary='lazURL' then result:='http://svn.freepascal.org/svn/lazarus/tags/lazarus_'+StringReplace(DEFAULTLAZARUSVERSION,'.','_',[rfReplaceAll]);
+          if Dictionary='lazURL' then result:=FPCSVNURL+'/lazarus/tags/lazarus_'+StringReplace(DEFAULTLAZARUSVERSION,'.','_',[rfReplaceAll]);
           {$endif}
         end;
         if Uppercase(KeyWord)='SKIP' then result:='SKIP';
@@ -1786,10 +1799,14 @@ begin
   result:=False;
 
   ini:=TMemIniFile.Create(SafeGetApplicationPath+CONFIGFILENAME);
-  try
+  {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
+  ini.Options:=ini.Options-[ifoCaseSensitive]+[ifoStripQuotes];
+  {$ELSE}
     ini.CaseSensitive:=false;
     ini.StripQuotes:=true; //helps read description lines
+  {$ENDIF}
 
+  try
     AddModule:=True;
 
     j:=UniModuleList.IndexOf(ModuleName);
@@ -1836,6 +1853,7 @@ begin
          {$ifdef linux}
          if (Pos('linux',os)>0) then AddModule:=AND_OR_Values(AddModule,(Pos('-linux',os)=0),NegativeList);
          {$endif}
+
          {$ifdef Darwin}
          if (Pos('darwin',os)>0) then AddModule:=AND_OR_Values(AddModule,(Pos('-darwin',os)=0),NegativeList);
          {$endif}

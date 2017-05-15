@@ -77,6 +77,8 @@ const
   HelpConfig='helpoptions.xml';
   // Packages:
   PackageConfig='packagefiles.xml';
+  // Miscellaneous Options
+  MiscellaneousConfig='miscellaneousoptions.xml';
   // FPC defines (source cache):
   FPCDefines='fpcdefines.xml';
 
@@ -172,7 +174,7 @@ procedure LazDocPathAdd(const PathToAdd: string; LazarusConfig: TUpdateLazConfig
 implementation
 
 uses
-  FileUtil, LazFileUtils, LazUTF8, math, fpcuputil;
+  FileUtil, LazFileUtils, LazUTF8, math, installercore, fpcuputil;
 
 procedure LazDocPathAdd(const PathToAdd: string; LazarusConfig: TUpdateLazConfig);
 var
@@ -423,7 +425,6 @@ end;
 procedure TUpdateLazConfig.DeletePath(ConfigFile, Path: string);
 var
   Config: TConfig;
-  VariableIndex: integer;
 begin
   Config:=GetConfig(ConfigFile);
   Config.DeletePath(Path);
@@ -521,6 +522,7 @@ begin
             NewConfig.SetValue('UserPkgLinks/Version', VersionNewPackageConfig);
             NewConfig.SetValue('UserPkgLinks/Count', '0');
           end;
+
       end;
     end;
     //NewConfig.Free; //This would remove object from stringlist

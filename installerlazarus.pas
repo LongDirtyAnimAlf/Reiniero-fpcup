@@ -292,6 +292,10 @@ begin
         {$IFDEF DEBUG}
         ProcessEx.Parameters.Add('--verbose');
         {$ELSE}
+        // See compileroptions.pp
+        // Quiet:=ConsoleVerbosity<=-3;
+        ProcessEx.Parameters.Add('--quiet');
+        ProcessEx.Parameters.Add('--quiet');
         ProcessEx.Parameters.Add('--quiet');
         ProcessEx.Parameters.Add('--quiet');
         {$ENDIF}
@@ -313,13 +317,13 @@ begin
         ProcessEx.Execute;
         Result := ProcessEx.ExitStatus = 0;
         if not Result then
-          WritelnLog('Lazarus: error compiling LCL for ' + FCrossCPU_Target + '-' + FCrossOS_Target + ' ' + FCrossLCL_Platform + LineEnding +
+          WritelnLog(etError,'Lazarus: error compiling LCL for ' + FCrossCPU_Target + '-' + FCrossOS_Target + ' ' + FCrossLCL_Platform + LineEnding +
             'Details: ' + FErrorLog.Text, true);
       except
         on E: Exception do
         begin
           Result := false;
-          WritelnLog('Lazarus: exception compiling LCL for ' + FCrossCPU_Target + '-' + FCrossOS_Target + LineEnding +
+          WritelnLog(etError,'Lazarus: exception compiling LCL for ' + FCrossCPU_Target + '-' + FCrossOS_Target + LineEnding +
             'Details: ' + E.Message, true);
         end;
       end;
@@ -339,7 +343,7 @@ begin
         {$endif win64}
         if Result then
           infoln('Lazarus: Cross compiling LCL for ' + FCrossCPU_Target + '-' + FCrossOS_Target +
-            ' failed. Optional module; continuing regardless.', etInfo)
+            ' failed. Optional module; continuing regardless.', etWarning)
         else
           infoln('Lazarus: Cross compiling LCL for ' + FCrossCPU_Target + '-' + FCrossOS_Target + ' failed.', etError);
         // No use in going on, but
@@ -506,6 +510,10 @@ begin
       {$IFDEF DEBUG}
       ProcessEx.Parameters.Add('--verbose');
       {$ELSE}
+      // See compileroptions.pp
+      // Quiet:=ConsoleVerbosity<=-3;
+      ProcessEx.Parameters.Add('--quiet');
+      ProcessEx.Parameters.Add('--quiet');
       ProcessEx.Parameters.Add('--quiet');
       ProcessEx.Parameters.Add('--quiet');
       {$ENDIF}
@@ -516,7 +524,6 @@ begin
       if strtointdef(Revision, 38971) >= 38971 then
       begin
         ProcessEx.Parameters.Add('--build-ide=-dKeepInstalledPackages ' + FCompilerOptions);
-        ProcessEx.Parameters.Add('--build-mode=');
       end
       else
       begin
@@ -524,9 +531,9 @@ begin
         // We can specify a build mode; otherwise probably the latest build mode will be used
         // which could well be a stripped IDE
         // Let's see how/if FCompilerOptions clashes with the settings in normal build mode
-        writelnlog('LazBuild: building UserIDE but falling back to --build-mode=Normal IDE', true);
+        writelnlog('LazBuild: building UserIDE but falling back to --build-mode="Normal IDE"', true);
         ProcessEx.Parameters.Add('--build-ide= ' + FCompilerOptions);
-        ProcessEx.Parameters.Add('--build-mode=Normal IDE');
+        ProcessEx.Parameters.Add('--build-mode="Normal IDE"');
       end;
 
       if FCrossLCL_Platform <> '' then
@@ -1181,7 +1188,8 @@ begin
           end
           else
           begin
-            infoln('Strange error: could not find patchfile '+PatchFilePath,etInfo);
+            infoln('Strange: could not find patchfile '+PatchFilePath, etWarning);
+            writelnlog(etError, ModuleName+' Patching Lazarus with ' + UpdateWarnings[i] + ' failed due to missing patch file.', true);
           end;
         end;
       finally

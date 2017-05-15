@@ -39,19 +39,22 @@ uses
 
 const
 
+  NEWPASCALGITREPO='https://github.com/newpascal';
+  FPCUPGITREPO=NEWPASCALGITREPO+'/fpcupdeluxe';
+
   FPCTRUNKVERSION  = '3.1.1';
   LAZARUSTRUNKVERSION  = '1.9';
 
-  FPCSVNURL = 'http://svn.freepascal.org/svn';
+  FPCSVNURL = 'https://svn.freepascal.org/svn';
+  FPCFTPURL = 'ftp://ftp.freepascal.org/pub/fpc/dist';
   BINUTILSURL = FPCSVNURL + '/fpcbuild';
   DEFAULTFPCVERSION = '3.0.2';
   DEFAULTLAZARUSVERSION = '1.6.4';
 
   {$IFDEF DEBUG}
-  STANDARDCOMPILEROPTIONS='-vew';
+  //STANDARDCOMPILEROPTIONS='-vew';
+  STANDARDCOMPILEROPTIONS='-va';
   {$ELSE}
-  //STANDARDCOMPILEROPTIONS='-veqw -vm2024,2031,3005,3018,3057,4105,4104,4044,4045,4055,4056,4066,5024,5033,5043,5044,5066,5074,5075,5076,6018,11047';
-  //STANDARDCOMPILEROPTIONS='-veqw';
   STANDARDCOMPILEROPTIONS='-vw-n-h-i-l-d-u-t-p-c-x-';
   {$ENDIF}
 
@@ -240,19 +243,19 @@ type
     procedure WritelnLog(msg: string; ToConsole: boolean = true);overload;
     procedure WritelnLog(EventType: TEventType; msg: string; ToConsole: boolean = true);overload;
     // Build module
-    function BuildModule(ModuleName: string): boolean; virtual; abstract;
+    function BuildModule(ModuleName: string): boolean; virtual;
     // Clean up environment
-    function CleanModule(ModuleName: string): boolean; virtual; abstract;
+    function CleanModule(ModuleName: string): boolean; virtual;
     // Config module
-    function ConfigModule(ModuleName: string): boolean; virtual; abstract;
+    function ConfigModule(ModuleName: string): boolean; virtual;
     // Constructs compiler path from directory and architecture
     // Corrects for use of our fpc.sh launcher on *nix
     // Does not verify compiler actually exists.
     function GetCompilerInDir(Dir: string): string;
     // Install update sources
-    function GetModule(ModuleName: string): boolean; virtual; abstract;
+    function GetModule(ModuleName: string): boolean; virtual;
     // Uninstall module
-    function UnInstallModule(ModuleName: string): boolean; virtual; abstract;
+    function UnInstallModule(ModuleName: string): boolean; virtual;
     constructor Create;
     destructor Destroy; override;
   end;
@@ -428,15 +431,6 @@ begin
     // Download('ftp://ftp.equation.com/make/'+{$ifdef win64}'64'{$else}'32'{$endif}+'/'+ExtractFileName(Make), Make);
     {$endif}
 
-
-    // Get unzip binary from default binutils URL
-    FUnzip := IncludeTrailingPathDelimiter(FMakeDir) + 'unzip.exe';
-    GetFile(BINUTILSURL+'/tags/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll])+'/install/binw32/'+ExtractFileName(FUnzip),FUnzip);
-
-    // Get patch binary from default binutils URL
-    GetFile(BINUTILSURL+'/tags/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll])+'/install/binw32/patch.exe',IncludeTrailingPathDelimiter(FMakeDir) + 'patch.exe');
-    GetFile(BINUTILSURL+'/tags/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll])+'/install/binw32/patch.exe.manifest',IncludeTrailingPathDelimiter(FMakeDir) + 'patch.exe.manifest');
-
     if OperationSucceeded then
     begin
       // check availability of OpenSSL libraries. Just continue in case of error
@@ -450,6 +444,14 @@ begin
         DownloadOpenSSL;
       end;
     end;
+
+    // Get unzip binary from default binutils URL
+    FUnzip := IncludeTrailingPathDelimiter(FMakeDir) + 'unzip.exe';
+    GetFile(BINUTILSURL+'/tags/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll])+'/install/binw32/'+ExtractFileName(FUnzip),FUnzip);
+
+    // Get patch binary from default binutils URL
+    GetFile(BINUTILSURL+'/tags/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll])+'/install/binw32/patch.exe',IncludeTrailingPathDelimiter(FMakeDir) + 'patch.exe');
+    GetFile(BINUTILSURL+'/tags/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll])+'/install/binw32/patch.exe.manifest',IncludeTrailingPathDelimiter(FMakeDir) + 'patch.exe.manifest');
 
     F7zip := IncludeTrailingPathDelimiter(FMakeDir) + '\7Zip\7za.exe';
     if Not FileExists(F7zip) then
@@ -989,7 +991,7 @@ begin
     begin
       FRepositoryUpdated := false;
       Result := false;
-      writelnlog(aClientName+' ERROR: repository URL in local directory and remote repository don''t match.', true);
+      writelnlog(etError, aClientName+' ERROR: repository URL in local directory and remote repository don''t match.', true);
       writelnlog('Local directory: ' + aClient.LocalRepository, true);
       infoln('Have you specified the wrong directory or a directory with an old repository checkout?',etDebug);
     end;
@@ -1053,7 +1055,7 @@ begin
          // Report error, but continue !
          if ReturnCode<>0 then
          begin
-           writelnlog(aClientName+' ERROR: Patching with ' + DiffFile + ' failed.', true);
+           writelnlog(etError, aClientName+' ERROR: Patching with ' + DiffFile + ' failed.', true);
            writelnlog(aClientName+' output: ' + Output, true);
            writelnlog('Verify the state of the source, correct and rebuild with make.', true);
          end;
@@ -1104,18 +1106,18 @@ begin
   else
   begin
     // We could insist on the repo existing, but then we wouldn't be able to checkout!!
-    writelnlog('INFO: directory ' + FSourceDirectory + ' is not an SVN repository (or a repository with the wrong remote URL).');
+    writelnlog('Directory ' + FSourceDirectory + ' is not an SVN repository (or a repository with the wrong remote URL).');
     if not(DirectoryExistsUTF8(FSVNClient.LocalRepository)) then
     begin
-      writelnlog('INFO: creating directory '+FSourceDirectory+' for SVN checkout.');
+      writelnlog('Creating directory '+FSourceDirectory+' for SVN checkout.');
       ForceDirectoriesUTF8(FSourceDirectory);
     end;
   end;
 
   if (FSVNClient.LocalRevisionWholeRepo = FRET_UNKNOWN_REVISION) and (FSVNClient.Returncode=FRET_WORKING_COPY_TOO_OLD) then
   begin
-    writelnlog('ERROR: The working copy in ' + FSourceDirectory + ' was created with an older, incompatible version of svn.', true);
-    writelnlog('  Run svn upgrade in the directory or make sure the original svn executable is the first in the search path.', true);
+    writelnlog(etError, 'The working copy in ' + FSourceDirectory + ' was created with an older, incompatible version of svn.', true);
+    writelnlog(etError, 'Run svn upgrade in the directory or make sure the original svn executable is the first in the search path.', true);
     result := false;  //fail
     exit;
   end;
@@ -1153,7 +1155,7 @@ begin
     begin
       FRepositoryUpdated := false;
       Result := false;
-      writelnlog('ERROR: repository URL in local directory and remote repository don''t match.', true);
+      writelnlog(etError, 'Repository URL in local directory and remote repository don''t match.', true);
       writelnlog('Local directory: ' + FSVNClient.LocalRepository, true);
       infoln('Have you specified the wrong directory or a directory with an old repository checkout?',etDebug);
     end;
@@ -1225,7 +1227,7 @@ begin
         // Report error, but continue !
         if CheckoutOrUpdateReturnCode<>0 then
         begin
-          writelnlog('SVNClient ERROR: Patching with ' + DiffFile + ' failed.', true);
+          writelnlog(etError, 'SVNClient error: Patching with ' + DiffFile + ' failed.', true);
           writelnlog('SVNClient output: ' + Output, true);
           writelnlog('Verify the state of the source, correct and rebuild with make.', true);
         end;
@@ -1274,7 +1276,7 @@ begin
   // This svn version won't work on windows 2K
   if GetWin32Version(MajorVersion,MinorVersion,BuildNumber) and (MajorVersion=5) and (Minorversion=0) then
   begin
-    writelnlog('ERROR: it seems this PC is running Windows 2000. Cannot install svn.exe. Please manually install e.g. TortoiseSVN first.', true);
+    writelnlog(etError, 'It seems this PC is running Windows 2000. Cannot install svn.exe. Please manually install e.g. TortoiseSVN first.', true);
     exit(false);
   end;
 
@@ -1298,7 +1300,7 @@ begin
     on E: Exception do
     begin
       OperationSucceeded := false;
-      writelnlog('ERROR: exception ' + E.ClassName + '/' + E.Message + ' downloading SVN client from ' + SourceURL, true);
+      writelnlog(etError, 'Exception ' + E.ClassName + '/' + E.Message + ' downloading SVN client from ' + SourceURL, true);
     end;
   end;
 
@@ -1309,12 +1311,12 @@ begin
     if resultcode <> 0 then
     begin
       OperationSucceeded := false;
-      writelnlog('DownloadSVN: ERROR: unzip returned result code: ' + IntToStr(ResultCode));
+      writelnlog(etError, 'DownloadSVN error: unzip returned result code: ' + IntToStr(ResultCode));
     end;
   end
   else
   begin
-    writelnlog('ERROR downloading SVN client from ' + SourceURL, true);
+    writelnlog(etError, 'Downloading SVN client from ' + SourceURL, true);
   end;
 
   if OperationSucceeded then
@@ -1364,7 +1366,7 @@ begin
     on E: Exception do
     begin
       OperationSucceeded := false;
-      writelnlog('ERROR: exception ' + E.ClassName + '/' + E.Message + ' downloading OpenSSL library from ' + SourceURL, true);
+      writelnlog(etError, 'Exception ' + E.ClassName + '/' + E.Message + ' downloading OpenSSL library from ' + SourceURL, true);
     end;
   end;
 
@@ -1384,7 +1386,7 @@ begin
     if resultcode <> 0 then
     begin
       OperationSucceeded := false;
-      writelnlog('Download OpenSSL: ERROR: unzip returned result code: ' + IntToStr(ResultCode));
+      writelnlog(etError, 'Download OpenSSL error: unzip returned result code: ' + IntToStr(ResultCode));
     end;
   end;
 
@@ -1437,7 +1439,7 @@ begin
       on E: Exception do
       begin
         OperationSucceeded := false;
-        writelnlog('ERROR: exception ' + E.ClassName + '/' + E.Message + ' downloading Jasmin assembler from ' + SourceURL, true);
+        writelnlog(etError, 'Exception ' + E.ClassName + '/' + E.Message + ' downloading Jasmin assembler from ' + SourceURL, true);
       end;
     end;
 
@@ -1451,18 +1453,18 @@ begin
         //MoveFile
         if NOT OperationSucceeded then
         begin
-          writelnlog('Could not move jasmin.jar into '+JasminDir);
+          writelnlog(etError, 'Could not move jasmin.jar into '+JasminDir);
         end;
       end
       else
       begin
         OperationSucceeded := false;
-        writelnlog('DownloadJasmin: ERROR: unzip returned result code: ' + IntToStr(ResultCode));
+        writelnlog(etError, 'DownloadJasmin error: unzip returned result code: ' + IntToStr(ResultCode));
       end;
     end
     else
     begin
-      writelnlog('ERROR downloading Jasmin assembler from ' + SourceURL, true);
+      writelnlog(etError, 'Downloading Jasmin assembler from ' + SourceURL + ' failed.', true);
     end;
 
     if OperationSucceeded then
@@ -1564,12 +1566,8 @@ function TInstaller.GetFPCTarget(Native: boolean): string;
 var
   processorname, os: string;
 begin
-  processorname := 'notfound';
-  os := processorname;
-  os := {$I %FPCTARGETOS%};
-  processorname := {$I %FPCTARGETCPU%};
-  os := LowerCase(os); //match usage in makefiles
-  processorname := LowerCase(processorname); //match usage in makefiles
+  os := Self.SourceOS;
+  processorname := SourceCPU;
 
   if not Native then
   begin
@@ -1594,13 +1592,13 @@ begin
   TempFileName := SysUtils.GetTempFileName;
   if IsException then
   begin
-    WritelnLog('Exception raised running ' + Sender.ResultingCommand, true);
-    WritelnLog(Sender.ExceptionInfo, true);
+    WritelnLog(etError, 'Exception raised running ' + Sender.ResultingCommand, true);
+    WritelnLog(etError, Sender.ExceptionInfo, true);
   end
   else
   begin
-    writelnlog('ERROR running ' + Sender.ResultingCommand, true);
-    writelnlog('Command returned non-zero ExitStatus: ' + IntToStr(Sender.ExitStatus), true);
+    writelnlog(etError, 'Running ' + Sender.ResultingCommand + ' failed.', true);
+    writelnlog(etError, 'Command returned non-zero ExitStatus: ' + IntToStr(Sender.ExitStatus), true);
     writelnlog('Command path set to: ' + Sender.Environment.GetVar(PATHVARNAME), true);
     writelnlog('Command current directory: ' + Sender.CurrentDirectory, true);
     writelnlog('Command output:', true);
@@ -1679,6 +1677,28 @@ begin
   end;
   {$ENDIF UNIX}
 end;
+
+function TInstaller.BuildModule(ModuleName: string): boolean;
+begin
+  writelnlog(etWarning, 'Should not happen: calling non-implemented BuildModule for '+ModuleName);
+end;
+function TInstaller.CleanModule(ModuleName: string): boolean;
+begin
+  writelnlog(etWarning, 'Should not happen: calling non-implemented CleanModule for '+ModuleName);
+end;
+function TInstaller.ConfigModule(ModuleName: string): boolean;
+begin
+  writelnlog(etWarning, 'Should not happen: calling non-implemented ConfigModule for '+ModuleName);
+end;
+function TInstaller.GetModule(ModuleName: string): boolean;
+begin
+  writelnlog(etWarning, 'Should not happen: calling non-implemented GetModule for '+ModuleName);
+end;
+function TInstaller.UnInstallModule(ModuleName: string): boolean;
+begin
+  writelnlog(etWarning, 'Should not happen: calling non-implemented UnInstallModule for '+ModuleName);
+end;
+
 
 constructor TInstaller.Create;
 begin

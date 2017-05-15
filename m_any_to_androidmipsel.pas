@@ -82,7 +82,6 @@ const
 var
   delphiversion,ndkversion,platform:byte;
   PresetLibPath:string;
-  AsFile: string;
 begin
 
   result:=FLibsFound;
@@ -206,8 +205,7 @@ begin
     '-XR'+IncludeTrailingPathDelimiter(FLibsPath);
     }
     //todo: possibly adapt for android:
-    {'-Xr/usr/lib'+LineEnding+ {buildfaq 3.3.1: makes the linker create the binary so that it searches in the specified directory on the target system for libraries}
-    }
+    //'-Xr/usr/lib'+LineEnding+ //buildfaq 3.3.1: makes the linker create the binary so that it searches in the specified directory on the target system for libraries
   end
   else
   begin
