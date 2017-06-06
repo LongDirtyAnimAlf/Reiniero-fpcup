@@ -117,6 +117,9 @@ end;"/>
         </CompilerOptions>
       </Item3>
       <Item4 Name="win64">
+        <MacroValues Count="1">
+          <Macro1 Name="LCLWidgetType" Value="nogui"/>
+        </MacroValues>
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -153,6 +156,9 @@ end;"/>
         </CompilerOptions>
       </Item4>
       <Item5 Name="linuxi386">
+        <MacroValues Count="1">
+          <Macro1 Name="LCLWidgetType" Value="nogui"/>
+        </MacroValues>
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -189,6 +195,9 @@ end;"/>
         </CompilerOptions>
       </Item5>
       <Item6 Name="linux64">
+        <MacroValues Count="1">
+          <Macro1 Name="LCLWidgetType" Value="nogui"/>
+        </MacroValues>
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -225,6 +234,9 @@ end;"/>
         </CompilerOptions>
       </Item6>
       <Item7 Name="linuxaarch64">
+        <MacroValues Count="1">
+          <Macro1 Name="LCLWidgetType" Value="nogui"/>
+        </MacroValues>
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -261,6 +273,9 @@ end;"/>
         </CompilerOptions>
       </Item7>
       <Item8 Name="freebsdi386">
+        <MacroValues Count="1">
+          <Macro1 Name="LCLWidgetType" Value="nogui"/>
+        </MacroValues>
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -297,6 +312,9 @@ end;"/>
         </CompilerOptions>
       </Item8>
       <Item9 Name="freebsdx64">
+        <MacroValues Count="1">
+          <Macro1 Name="LCLWidgetType" Value="nogui"/>
+        </MacroValues>
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -333,7 +351,7 @@ end;"/>
         </CompilerOptions>
       </Item9>
       <SharedMatrixOptions Count="1">
-        <Item1 ID="233755810855" Modes="Default,Debug,win32" Type="IDEMacro" MacroName="LCLWidgetType" Value="nogui"/>
+        <Item1 ID="233755810855" Modes="Default,Debug,win32,win64,linuxi386,linux64,linuxaarch64,freebsdi386,freebsdx64" Type="IDEMacro" MacroName="LCLWidgetType" Value="nogui"/>
       </SharedMatrixOptions>
     </BuildModes>
     <PublishOptions>

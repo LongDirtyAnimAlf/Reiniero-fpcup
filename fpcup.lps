@@ -5,6 +5,9 @@
     <Version Value="10"/>
     <BuildModes Count="3" Active="Default">
       <Item1 Name="linuxarmhf">
+        <MacroValues Count="1">
+          <Macro1 Name="LCLWidgetType" Value="nogui"/>
+        </MacroValues>
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -43,6 +46,9 @@
         </CompilerOptions>
       </Item1>
       <Item2 Name="darwin32">
+        <MacroValues Count="1">
+          <Macro1 Name="LCLWidgetType" Value="nogui"/>
+        </MacroValues>
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -84,6 +90,9 @@ end;"/>
         </CompilerOptions>
       </Item2>
       <Item3 Name="darwin64">
+        <MacroValues Count="1">
+          <Macro1 Name="LCLWidgetType" Value="nogui"/>
+        </MacroValues>
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -124,6 +133,11 @@ end;"/>
           </Other>
         </CompilerOptions>
       </Item3>
+      <SessionEnabledMatrixOptions Count="3">
+        <Item1 Mode="linuxarmhf" Option="233755810855"/>
+        <Item2 Mode="darwin32" Option="233755810855"/>
+        <Item3 Mode="darwin64" Option="233755810855"/>
+      </SessionEnabledMatrixOptions>
     </BuildModes>
     <Units Count="46">
       <Unit0>

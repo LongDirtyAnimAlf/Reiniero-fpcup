@@ -102,9 +102,11 @@ type
     FFileList:TStrings;
     FTotalFileCnt: cardinal;
     FCurrentFile: string;
+    FFlat:boolean;
     procedure DoOnFile(Sender : TObject; Const AFileName : string);
   public
     function DoUnZip(const ASrcFile, ADstDir: String; Files:array of string):boolean;
+    property Flat:boolean read FFlat write FFlat default False;
   end;
 
 
@@ -272,6 +274,9 @@ function DoubleQuoteIfNeeded(FileName: string): string;
 function GetNumericalVersion(aVersion: string): word;
 function UppercaseFirstChar(s: String): String;
 function DirectoryIsEmpty(Directory: string): Boolean;
+function GetTargetCPU:string;
+function GetTargetOS:string;
+function GetTargetCPUOS:string;
 
 implementation
 
@@ -1381,6 +1386,20 @@ begin
   SysUtils.FindClose(SR);
 end;
 
+function GetTargetCPU:string;
+begin
+  result:=lowercase({$i %FPCTARGETCPU%});
+end;
+
+function GetTargetOS:string;
+begin
+  result:=lowercase({$i %FPCTARGETOS%});
+end;
+
+function GetTargetCPUOS:string;
+begin
+  result:=GetTargetCPU+'-'+GetTargetOS;
+end;
 
 {TThreadedUnzipper}
 
@@ -1507,6 +1526,7 @@ var
   i:word;
 begin
   if FStarted then exit;
+  infoln('TThreadedUnzipper: Going to extract files from ' + ASrcFile + ' into ' + ADstDir,etInfo);
   FUnZipper.Clear;
   FUnZipper.OnPercent:=10;
   FUnZipper.FileName := ASrcFile;
@@ -1559,6 +1579,7 @@ var
   x:cardinal;
   s:string;
 begin
+  infoln('TNormalUnzipper: Going to extract files from ' + ASrcFile + ' into ' + ADstDir,etInfo);
   result:=false;
   FUnzipper := TUnzipper.Create;
   try
@@ -1607,6 +1628,58 @@ begin
       if FFileList.Count=0
         then FUnZipper.UnZipAllFiles
         else FUnZipper.UnZipFiles(FFileList);
+
+      if Flat then
+      begin
+
+        if FFileList.Count=0 then
+        begin
+          for x:=0 to FUnZipper.Entries.Count-1 do
+          begin
+
+            if FUnZipper.Entries.Entries[x].IsDirectory then continue;
+            if FUnZipper.Entries.Entries[x].IsLink then continue;
+
+            { UTF8 features are only available in FPC >= 3.1 }
+            {$IF FPC_FULLVERSION > 30100}
+            if FUnZipper.UseUTF8
+               then s:=FUnZipper.Entries.Entries[x].UTF8ArchiveFileName
+               else
+            {$endif}
+            s:=FUnZipper.Entries.Entries[x].ArchiveFileName;
+
+            if (Pos('/.',s)>0) OR (Pos('\.',s)>0) then continue;
+            if (Length(s)>0) AND (s[1]='.') then continue;
+
+            FFileList.Append(s);
+          end;
+        end;
+
+        for x:=0 to FFileList.Count-1 do
+        begin
+          s:=FFileList.Strings[x];
+          if DirectorySeparator<>'/' then s:=StringReplace(s, '/', DirectorySeparator, [rfReplaceAll]);
+          MoveFile(IncludeTrailingPathDelimiter(ADstDir)+s, IncludeTrailingPathDelimiter(ADstDir)+ExtractFileName(s));
+        end;
+
+        for x:=0 to FUnZipper.Entries.Count-1 do
+        begin
+          if FUnZipper.Entries.Entries[x].IsDirectory then
+          begin
+            { UTF8 features are only available in FPC >= 3.1 }
+            {$IF FPC_FULLVERSION > 30100}
+            if FUnZipper.UseUTF8
+               then s:=FUnZipper.Entries.Entries[x].UTF8ArchiveFileName
+               else
+            {$endif}
+            s:=FUnZipper.Entries.Entries[x].ArchiveFileName;
+            if DirectorySeparator<>'/' then s:=StringReplace(s, '/', DirectorySeparator, [rfReplaceAll]);
+            if (s='.') or (s=DirectorySeparator+'.') or (Pos('..',s)>0) then continue;
+            DeleteDirectoryEx(IncludeTrailingPathDelimiter(ADstDir)+s);
+          end;
+        end;
+
+      end;
 
     result:=true;
 

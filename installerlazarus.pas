@@ -195,6 +195,30 @@ uses
   , baseunix
   {$ENDIF UNIX}  ;
 
+// remove stale compiled files
+procedure RemoveStaleBuildDirectories(aBaseDir,aArch:string);
+var
+  OldPath:string;
+  FileInfo: TSearchRec;
+  DeleteList:TStringList;
+begin
+  OldPath:=IncludeTrailingPathDelimiter(aBaseDir)+'components'+DirectorySeparator;
+  if FindFirstUTF8(OldPath+'*',faDirectory{$ifdef unix} or faSymLink {$endif unix},FileInfo)=0 then
+  begin
+    repeat
+      if (FileInfo.Name<>'.') and (FileInfo.Name<>'..') and (FileInfo.Name<>'') then
+      begin
+        if (FileInfo.Attr and faDirectory) = faDirectory then
+        begin
+          if DeleteDirectoryEx(OldPath+FileInfo.Name+DirectorySeparator+'lib'+DirectorySeparator+aArch) then
+            RemoveDir(OldPath+FileInfo.Name+DirectorySeparator+'lib');
+        end;
+      end;
+    until FindNextUTF8(FileInfo)<>0;
+    FindCloseUTF8(FileInfo);
+  end;
+end;
+
 { TLazarusCrossInstaller }
 
 function TLazarusCrossInstaller.BuildModuleCustom(ModuleName: string): boolean;
@@ -351,6 +375,9 @@ begin
         exit(Result);
       end;
     end; //prereqs in place
+
+    RemoveStaleBuildDirectories(FSourceDirectory,FCrossCPU_Target+'-'+FCrossOS_Target);
+
   end    //valid cross compile setup
   else
     infoln('Lazarus: can''t find cross installer for ' + FCrossCPU_Target + '-' + FCrossOS_Target, eterror);
@@ -415,6 +442,11 @@ begin
       begin
         ProcessEx.Parameters.Add('-C ide idepkg');
         infoln(ModuleName + ': running make -C ide idepkg:', etInfo);
+      end;
+      'BIGIDE':
+      begin
+        ProcessEx.Parameters.Add('-C bigide');
+        infoln(ModuleName + ': running make -C bigide:', etInfo);
       end;
       'LAZARUS':
       begin
@@ -607,6 +639,7 @@ begin
       end;
     end;
   end;
+  RemoveStaleBuildDirectories(FSourceDirectory,GetTargetCPUOS);
   Result := OperationSucceeded;
 end;
 
@@ -884,8 +917,7 @@ begin
          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop2/IDECoolBarOptions/Visible/Value', 'True');
 
       // add default projects path
-      DebuggerPath := ExpandFileName(IncludeTrailingPathDelimiter(FInstallDirectory) + '..');
-      DebuggerPath := ResolveDots(IncludeTrailingPathDelimiter(DebuggerPath)+'projects');
+      DebuggerPath := IncludeTrailingPathDelimiter(FBaseDirectory) + 'projects';
       ForceDirectoriesUTF8(DebuggerPath);
       //LazarusConfig.SetVariable(EnvironmentConfig, 'EnvironmentOptions/AutoSave/LastSavedProjectFile', IncludeTrailingPathDelimiter(DebuggerPath)+'project1.lpi');
       LazarusConfig.SetVariable(EnvironmentConfig, 'EnvironmentOptions/TestBuildDirectory/Value', IncludeTrailingPathDelimiter(DebuggerPath));
@@ -1059,7 +1091,8 @@ begin
      then aRepoClient:=FGitClient
      else aRepoClient:=FSVNClient;
 
-  infoln('Checking out/updating Lazarus sources:', etInfo);
+  infoln(Self.ClassName+': checking out/updating ' + ModuleName + ' sources.',etInfo);
+
   UpdateWarnings := TStringList.Create;
   try
     aRepoClient.Verbose:=FVerbose;
@@ -1108,9 +1141,8 @@ begin
     end;
   end;
 
-  if Result
-     then infoln('Checking out/updating Lazarus sources ok', etInfo)
-     else infoln('Checking out/updating Lazarus sources failure', etError);
+  if (NOT Result) then
+    infoln(Self.ClassName+': checking out/updating ' + ModuleName + ' sources failure.',etError);
 
   // Download Qt bindings if not present yet
   Errors := 0;

@@ -246,7 +246,9 @@ begin
         len:=length(macro)+3; // the brackets
         // For the directory macros, the user expects to add path separators himself in fpcup.ini,
         // so strip them out if they are there.
-        if macro='FPCDIR' then //$(FPCDIR)
+        if macro='BASEDIR' then
+          macro:=ExcludeTrailingPathDelimiter(FBaseDirectory)
+        else if macro='FPCDIR' then //$(FPCDIR)
           macro:=ExcludeTrailingPathDelimiter(FFPCDir)
         else if macro='FPCBINDIR' then //$(FPCBINDIR)
             macro:=ExcludeTrailingPathDelimiter(FBinPath)
@@ -531,6 +533,26 @@ begin
       continue;
     end;
     {$endif}
+
+    {$if (NOT defined(CPUI386)) AND (NOT defined(CPUX86_64)) AND (NOT defined(CPUARM))}
+    // the package PascalScript is only suitable for i386, x86_64 and arm !
+    // so skip in case package was included.
+    if (Pos('pascalscript',PackagePath)>0) then
+    begin
+      infoln('TUniversalInstaller: incompatible package '+ExtractFileName(PackagePath)+' skipped.',etWarning);
+      continue;
+    end;
+    {$endif}
+
+    {$ifdef CPUAARCH64}
+    // the package macroscript is not working on aarch64 (and perhaps others) !
+    // so skip in case package was included.
+    if (Pos('editormacroscript',PackagePath)>0) then
+    begin
+      infoln('TUniversalInstaller: incompatible package '+ExtractFileName(PackagePath)+' skipped.',etWarning);
+      continue;
+    end;
+    {$endif CPUAARCH64}
 
     {
     if (NOT FileExists(PackagePath)) OR (PackagePath='') then
@@ -1221,7 +1243,7 @@ begin
       if result then
       begin
         WritelnLog('Download ok',True);
-        // Extract, overwrite, flatten path/junk paths
+        // Extract, overwrite
         case UpperCase(sysutils.ExtractFileExt(TempArchive)) of
            '.ZIP':
               begin
@@ -1390,7 +1412,16 @@ begin
       TempArchive := RemoteURL;
       case UpperCase(sysutils.ExtractFileExt(TempArchive)) of
          '.ZIP':
-            ResultCode:=ExecuteCommand(FUnzip+' -o -d '+IncludeTrailingPathDelimiter(InstallDir)+' '+TempArchive,FVerbose);
+         begin
+           with TNormalUnzipper.Create do
+           begin
+             try
+               ResultCode:=Ord(NOT DoUnZip(TempArchive,IncludeTrailingPathDelimiter(InstallDir),[]));
+             finally
+               Free;
+             end;
+           end;
+         end;
          '.7Z':
          begin
            ResultCode:=ExecuteCommand(F7zip+' x -o"'+IncludeTrailingPathDelimiter(InstallDir)+'" '+TempArchive,FVerbose);
@@ -1811,7 +1842,9 @@ begin
 
     j:=UniModuleList.IndexOf(ModuleName);
 
-    if j=-1 then AddModule:=false else
+    if j=-1 then AddModule:=false;
+
+    if AddModule=true then
     begin
 
       sl:=TStringList(UniModuleList.Objects[j]);
@@ -1901,6 +1934,12 @@ begin
          if (Pos('cpuarm',cpu)>0) then AddModule:=AND_OR_Values(AddModule,(Pos('-cpuarm',cpu)=0),NegativeList) else
          begin
            if (Pos('arm',cpu)>0) then AddModule:=AND_OR_Values(AddModule,(Pos('-arm',cpu)=0),NegativeList);
+         end;
+         {$endif}
+         {$ifdef CPUAARCH64}
+         if (Pos('cpuaarch64',cpu)>0) then AddModule:=AND_OR_Values(AddModule,(Pos('-cpuaarch64',cpu)=0),NegativeList) else
+         begin
+           if (Pos('aarch64',cpu)>0) then AddModule:=AND_OR_Values(AddModule,(Pos('-aarch64',cpu)=0),NegativeList);
          end;
          {$endif}
       end;

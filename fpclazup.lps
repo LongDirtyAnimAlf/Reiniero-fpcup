@@ -3,8 +3,11 @@
   <ProjectSession>
     <PathDelim Value="\"/>
     <Version Value="10"/>
-    <BuildModes Count="3" Active="Default">
+    <BuildModes Count="3" Active="darwin32">
       <Item1 Name="linuxarmhf">
+        <MacroValues Count="1">
+          <Macro1 Name="LCLWidgetType" Value="nogui"/>
+        </MacroValues>
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -43,6 +46,9 @@
         </CompilerOptions>
       </Item1>
       <Item2 Name="darwin32">
+        <MacroValues Count="1">
+          <Macro1 Name="LCLWidgetType" Value="nogui"/>
+        </MacroValues>
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -82,6 +88,9 @@ end;"/>
         </CompilerOptions>
       </Item2>
       <Item3 Name="darwin64">
+        <MacroValues Count="1">
+          <Macro1 Name="LCLWidgetType" Value="nogui"/>
+        </MacroValues>
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -121,11 +130,17 @@ end;"/>
           </Other>
         </CompilerOptions>
       </Item3>
+      <SessionEnabledMatrixOptions Count="3">
+        <Item1 Mode="linuxarmhf" Option="233755810855"/>
+        <Item2 Mode="darwin32" Option="233755810855"/>
+        <Item3 Mode="darwin64" Option="233755810855"/>
+      </SessionEnabledMatrixOptions>
     </BuildModes>
     <Units Count="47">
       <Unit0>
         <Filename Value="fpclazup.lpr"/>
         <IsPartOfProject Value="True"/>
+        <IsVisibleTab Value="True"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
       </Unit0>
@@ -197,7 +212,6 @@ end;"/>
       <Unit9>
         <Filename Value="fpcup.ini"/>
         <IsPartOfProject Value="True"/>
-        <IsVisibleTab Value="True"/>
         <EditorIndex Value="1"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
@@ -301,7 +315,6 @@ end;"/>
         <Filename Value="settings.ini"/>
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="2"/>
-        <TopLine Value="25"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
         <DefaultSyntaxHighlighter Value="Ini"/>

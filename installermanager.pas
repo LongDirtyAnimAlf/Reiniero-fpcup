@@ -253,6 +253,7 @@ type
     FHTTPProxyPort: integer;
     FHTTPProxyUser: string;
     FPersistentOptions: string;
+    FBaseDirectory: string;
     FBootstrapCompiler: string;
     FBootstrapCompilerDirectory: string;
     FBootstrapCompilerURL: string;
@@ -310,6 +311,7 @@ type
     procedure SetLazarusURL(AValue: string);
     {$endif}
     function GetLogFileName: string;
+    procedure SetBaseDirectory(AValue: string);
     procedure SetBootstrapCompilerDirectory(AValue: string);
     procedure SetFPCSourceDirectory(AValue: string);
     procedure SetFPCInstallDirectory(AValue: string);
@@ -342,6 +344,7 @@ type
     property PersistentOptions: string read FPersistentOptions write FPersistentOptions;
     // Full path to bootstrap compiler
     property BootstrapCompiler: string read FBootstrapCompiler write FBootstrapCompiler;
+    property BaseDirectory: string read FBaseDirectory write SetBaseDirectory;
     // Directory where bootstrap compiler is installed/downloaded
     property BootstrapCompilerDirectory: string read FBootstrapCompilerDirectory write SetBootstrapCompilerDirectory;
     // URL to download the bootstrap compiler from
@@ -516,6 +519,11 @@ begin
   result:=FLog.LogFile;
 end;
 
+procedure TFPCupManager.SetBaseDirectory(AValue: string);
+begin
+  FBaseDirectory:=SafeExpandFileName(AValue);
+end;
+
 procedure TFPCupManager.SetBootstrapCompilerDirectory(AValue: string);
 begin
   FBootstrapCompilerDirectory:=ExcludeTrailingPathDelimiter(SafeExpandFileName(AValue));
@@ -643,9 +651,9 @@ begin
   result:=false;
 
   if
-    (lowercase(FSequencer.FParent.CrossCPU_Target)=lowercase({$i %FPCTARGETCPU%}))
+    (lowercase(FSequencer.FParent.CrossCPU_Target)=GetTargetCPU)
     AND
-    (lowercase(FSequencer.FParent.CrossOS_Target)=lowercase({$i %FPCTARGETOS%}))
+    (lowercase(FSequencer.FParent.CrossOS_Target)=GetTargetOS)
   then
   begin
     infoln('No crosscompiling to own target !!',etError);
@@ -953,7 +961,7 @@ function TSequencer.DoExec(FunctionName: string): boolean;
     result:=true;
 
     // these libs are always needed !!
-    AdvicedLibs:='make gdb binutils unzip unrar patch wget ';
+    AdvicedLibs:='make gdb binutils unrar patch wget ';
 
     AllOutput:=TStringList.Create;
     try
@@ -1019,7 +1027,7 @@ function TSequencer.DoExec(FunctionName: string): boolean;
 
         Output:='libX11-dev libgtk2.0-dev libcairo2-dev libpango1.0-dev libxtst-dev libgdk-pixbuf2.0-dev libatk1.0-dev libghc-x11-dev';
         AdvicedLibs:=AdvicedLibs+
-                     'make binutils build-essential gdb gcc subversion unzip unrar devscripts libc6-dev freeglut3-dev libgl1-mesa libgl1-mesa-dev '+
+                     'make binutils build-essential gdb gcc subversion unrar devscripts libc6-dev freeglut3-dev libgl1-mesa libgl1-mesa-dev '+
                      'libglu1-mesa libglu1-mesa-dev libgpmg1-dev libsdl-dev libXxf86vm-dev libxtst-dev '+
                      'libxft2 libfontconfig1 xfonts-scalable gtk2-engines-pixbuf unrar';
       end
@@ -1304,6 +1312,10 @@ begin
         FInstaller.Compiler:=FParent.CompilerName;
     end;
 
+
+  if assigned(FInstaller) then
+  begin
+    FInstaller.BaseDirectory:=FParent.BaseDirectory;
   if Assigned(FInstaller.SVNClient) then
     FInstaller.SVNClient.RepoExecutable := FParent.SVNExecutable;
   FInstaller.HTTPProxyHost:=FParent.HTTPProxyHost;
@@ -1321,6 +1333,7 @@ begin
   {$IFDEF MSWINDOWS}
   FInstaller.MakeDirectory:=FParent.MakeDirectory;
   {$ENDIF}
+end;
 end;
 
 function TSequencer.GetText: string;

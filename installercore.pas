@@ -47,7 +47,15 @@ const
 
   FPCSVNURL = 'https://svn.freepascal.org/svn';
   FPCFTPURL = 'ftp://ftp.freepascal.org/pub/fpc/dist';
+
+  {$IFDEF MSWINDOWS}
   BINUTILSURL = FPCSVNURL + '/fpcbuild';
+  //FPC prebuilt binaries of the GNU Binutils
+  PREBUILTBINUTILSURL = BINUTILSURL + '/binaries/i386-win32';
+  {$ENDIF}
+
+  CHM_URL_LATEST_SVN = FPCSVNURL + '/lazarus/binaries/docs/chm';
+
   DEFAULTFPCVERSION = '3.0.2';
   DEFAULTLAZARUSVERSION = '1.6.4';
 
@@ -85,14 +93,13 @@ type
     FReApplyLocalChanges: boolean;
     procedure SetURL(value:string);
     function GetMake: string;
-    function GetSourceCPU:string;
-    function GetSourceOS:string;
     procedure SetHTTPProxyHost(AValue: string);
     procedure SetHTTPProxyPassword(AValue: string);
     procedure SetHTTPProxyPort(AValue: integer);
     procedure SetHTTPProxyUser(AValue: string);
     function DownloadFromBase(aClient:TRepoClient; ModuleName: string; var BeforeRevision, AfterRevision: string; UpdateWarnings: TStringList; const aUserName:string=''; const aPassword:string=''): boolean;
   protected
+    FBaseDirectory: string; //Base directory for fpc(laz)up(deluxe) itself
     FSourceDirectory: string; //Top source directory for a product (FPC, Lazarus)
     FInstallDirectory: string; //Top install directory for a product (FPC, Lazarus)
     FCompiler: string; // Compiler executable
@@ -105,6 +112,7 @@ type
     FCrossToolsDirectory: string;
     FCrossLibraryDirectory: string;
     FDesiredRevision: string;
+    FActualRevision: string;
     FDesiredBranch: string;
     // Stores tprocessex exception info:
     FErrorLog: TStringList;
@@ -135,7 +143,6 @@ type
     FVerbose: boolean;
     FUseWget: boolean;
     FTar: string;
-    FUnzip: string;
     FBunzip2: string;
     F7zip: string;
     FUnrar: string;
@@ -183,8 +190,6 @@ type
     procedure SetPath(NewPath: string; Prepend: boolean; Append: boolean);
     function GetFile(aURL,aFile:string; forceoverwrite:boolean=false):boolean;
   public
-    property SourceCPU:string read GetSourceCPU;
-    property SourceOS:string read GetSourceOS;
     property SVNClient: TSVNClient read FSVNClient;
     // Get processor for termination of running processes
     property Processor: TProcessEx read ProcessEx;
@@ -192,6 +197,8 @@ type
     procedure ProcessError(Sender:TProcessEx;IsException:boolean);
     // Source directory for installation (fpcdir, lazdir,... option)
     property SourceDirectory: string write FSourceDirectory;
+    //Base directory for fpc(laz)up(deluxe) itself
+    property BaseDirectory: string write FBaseDirectory;
     // Source directory for installation (fpcdir, lazdir,... option)
     property InstallDirectory: string write FInstallDirectory;
     // Compiler to use for building. Specify empty string when using bootstrap compiler.
@@ -210,6 +217,7 @@ type
     property CrossLibraryDirectory:string read FCrossLibraryDirectory write FCrossLibraryDirectory;
     // SVN revision override. Default is HEAD/latest revision
     property DesiredRevision: string write FDesiredRevision;
+    property ActualRevision: string read FActualRevision;
     property DesiredBranch: string write FDesiredBranch;
     // If using HTTP proxy: host
     property HTTPProxyHost: string read FHTTPProxyHost write SetHTTPProxyHost;
@@ -276,16 +284,6 @@ uses
 
 { TInstaller }
 
-
-function TInstaller.GetSourceCPU:string;
-begin
-  result:=lowercase({$i %FPCTARGETCPU%});
-end;
-
-function TInstaller.GetSourceOS:string;
-begin
-  result:=lowercase({$i %FPCTARGETOS%});
-end;
 
 function TInstaller.GetCompiler: string;
 begin
@@ -395,7 +393,6 @@ begin
     {$IFDEF LINUX}
     FBunzip2 := 'bunzip2';
     FTar := 'tar';
-    FUnzip := 'unzip'; //unzip needed at least for FPC chm help
     F7zip := '7za';
     FUnrar := 'unrar';
     {$ENDIF LINUX}
@@ -403,13 +400,11 @@ begin
     {$IFDEF DARWIN}
     FBunzip2 := ''; //not really necessary now
     FTar := 'bsdtar'; //gnutar is not available by default on Mavericks
-    FUnzip := 'unzip'; //unzip needed at least for FPC chm help
     F7zip := '7za';
     FUnrar := 'unrar';
     {$ELSE} //FreeBSD, OpenBSD, NetBSD
     FBunzip2 := 'bunzip2';
     FTar := 'tar'; //At least FreeBSD tar apparently takes some gnu tar options nowadays.
-    FUnzip := 'unzip'; //unzip needed at least for FPC chm help
     F7zip := '7za';
     FUnrar := 'unrar';
     {$ENDIF DARWIN}
@@ -444,10 +439,6 @@ begin
         DownloadOpenSSL;
       end;
     end;
-
-    // Get unzip binary from default binutils URL
-    FUnzip := IncludeTrailingPathDelimiter(FMakeDir) + 'unzip.exe';
-    GetFile(BINUTILSURL+'/tags/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll])+'/install/binw32/'+ExtractFileName(FUnzip),FUnzip);
 
     // Get patch binary from default binutils URL
     GetFile(BINUTILSURL+'/tags/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll])+'/install/binw32/patch.exe',IncludeTrailingPathDelimiter(FMakeDir) + 'patch.exe');
@@ -541,22 +532,6 @@ begin
       end;
     end;
     {$ENDIF defined(LINUX) or (defined(BSD) and (not defined(DARWIN)))}
-
-    if OperationSucceeded then
-    begin
-      // Check for valid unzip executable, if it is needed
-      if FUnzip <> EmptyStr then
-      begin
-        {$IF (defined(BSD)) and (not defined(Darwin))}
-        // FreeBSD doesn't have an unzip applicationt that responds without needing a zip file
-        // No motivation to go feed it a zip file just to test it
-        OperationSucceeded := true;
-        {$ELSE}
-        // OSes with a normal unzip
-        OperationSucceeded := CheckExecutable(FUnzip, '-v', '');
-        {$ENDIF (defined(BSD)) and (not defined(Darwin))}
-      end;
-    end;
 
     if OperationSucceeded then
     begin
@@ -1001,7 +976,11 @@ begin
       // we do the AfterRevision check as well.
       Result := true;
 
-      AfterRevision := 'revision '+aClient.LocalRevision;
+      if FExportOnly then
+        AfterRevision := FDesiredRevision
+      else
+        AfterRevision := aClient.LocalRevision;
+
       if (aClient.LocalRevision<>FRET_UNKNOWN_REVISION) and (BeforeRevisionShort <> aClient.LocalRevision) then
         FRepositoryUpdated := true
       else
@@ -1164,10 +1143,15 @@ begin
       // If there are svn errors, return a false result.
       // We used to do a check for the revision, but that does not check the integrity
       // or existence of all files in the svn repo.
+
+      if FExportOnly then AfterRevision := FDesiredRevision else
+      begin
       if FSVNClient.LocalRevision=FSVNClient.LocalRevisionWholeRepo then
-        AfterRevision := 'revision '+FSVNClient.LocalRevisionWholeRepo
+          AfterRevision := FSVNClient.LocalRevisionWholeRepo
       else
-        AfterRevision := 'branch revision '+FSVNClient.LocalRevision+' (repository revision '+FSVNClient.LocalRevisionWholeRepo+')';
+          AfterRevision := FSVNClient.LocalRevision;
+      end;
+
       if (FSVNClient.LocalRevision<>FRET_UNKNOWN_REVISION) and (BeforeRevisionShort <> FSVNClient.LocalRevision) then
         FRepositoryUpdated := true
       else
@@ -1247,14 +1231,14 @@ const
   //SourceURL = 'https://www.visualsvn.com/files/Apache-Subversion-1.8.14.zip';
   //SourceURL = 'https://www.visualsvn.com/files/Apache-Subversion-1.9.0.zip';
   //SourceURL = 'https://www.visualsvn.com/files/Apache-Subversion-1.9.1.zip';
-  SourceURL = 'https://www.visualsvn.com/files/Apache-Subversion-1.9.4.zip';
+  //SourceURL = 'https://www.visualsvn.com/files/Apache-Subversion-1.9.4.zip';
+  SourceURL = 'https://www.visualsvn.com/files/Apache-Subversion-1.9.5.zip';
   //SourceURL = 'https://sourceforge.net/projects/win32svn/files/1.8.15/apache24/svn-win32-1.8.15-ap24.zip/download';
   // confirmed by winetricks bug report that this is the only one left...
   // this link seems down 'http://download.microsoft.com/download/vc60pro/update/1/w9xnt4/en-us/vc6redistsetup_enu.exe';
 var
   MajorVersion,MinorVersion,BuildNumber: integer;
   OperationSucceeded: boolean;
-  ResultCode: longint;
   SVNZip: string;
 begin
   // Download SVN in make path. Not required for making FPC/Lazarus, but when downloading FPC/Lazarus from... SVN ;)
@@ -1307,11 +1291,14 @@ begin
   if OperationSucceeded then
   begin
     // Extract, overwrite
-    resultcode:=ExecuteCommand(FUnzip + ' -o -d ' + FSVNDirectory + ' ' + SVNZip, FVerbose);
-    if resultcode <> 0 then
+    with TNormalUnzipper.Create do
     begin
-      OperationSucceeded := false;
-      writelnlog(etError, 'DownloadSVN error: unzip returned result code: ' + IntToStr(ResultCode));
+      try
+        DeleteDirectoryEx(FSVNDirectory);
+        OperationSucceeded:=DoUnZip(SVNZip,FSVNDirectory,[]);
+      finally
+        Free;
+      end;
     end;
   end
   else
@@ -1413,7 +1400,6 @@ const
   //SourceURL = 'http://svn.freepascal.org/svn/fpcbuild/trunk/install/jvm/jasmin.jar';
 var
   OperationSucceeded: boolean;
-  ResultCode: longint;
   JasminZip,JasminDir: string;
 begin
   // for now, just put jasmin.jar in bin directory ... easy and simple and working
@@ -1446,8 +1432,16 @@ begin
     if OperationSucceeded then
     begin
       // Extract, overwrite
-      resultcode:=ExecuteCommand(FUnzip + ' -o -d ' + SysUtils.GetTempDir + ' ' + JasminZip, FVerbose);
-      if resultcode = 0 then
+      with TNormalUnzipper.Create do
+      begin
+        try
+          OperationSucceeded:=DoUnZip(JasminZip,SysUtils.GetTempDir,[]);
+        finally
+          Free;
+        end;
+      end;
+
+      if OperationSucceeded then
       begin
         OperationSucceeded := MoveFile(IncludeTrailingPathDelimiter(SysUtils.GetTempDir) + 'jasmin-' + JasminVersion + DirectorySeparator + 'jasmin.jar',JasminDir+'jasmin.jar');
         //MoveFile
@@ -1459,7 +1453,7 @@ begin
       else
       begin
         OperationSucceeded := false;
-        writelnlog(etError, 'DownloadJasmin error: unzip returned result code: ' + IntToStr(ResultCode));
+        writelnlog(etError, 'DownloadJasmin error: unzip failed due to unknown error.');
       end;
     end
     else
@@ -1566,8 +1560,8 @@ function TInstaller.GetFPCTarget(Native: boolean): string;
 var
   processorname, os: string;
 begin
-  os := Self.SourceOS;
-  processorname := SourceCPU;
+  os := GetTargetOS;
+  processorname := GetTargetCPU;
 
   if not Native then
   begin
