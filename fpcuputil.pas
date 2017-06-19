@@ -53,6 +53,17 @@ uses
 Const
   // Maximum retries when downloading a file
   DefMaxRetries = 5;
+  {$ifdef LCL}
+  BeginSnippet='fpcupdeluxe:'; //helps identify messages as coming from fpcupdeluxe instead of make etc
+  {$else}
+  {$ifndef FPCONLY}
+  BeginSnippet='fpclazup:'; //helps identify messages as coming from fpclazup instead of make etc
+  {$else}
+  BeginSnippet='fpcup:'; //helps identify messages as coming from fpcup instead of make etc
+  {$endif}
+  {$endif}
+  Seriousness: array [TEventType] of string = ('custom:', 'info:', 'WARNING:', 'ERROR:', 'debug:');
+
 
 type
   //callback = class
@@ -192,6 +203,7 @@ type
     function FTPDownload(Const URL : String; Dest : TStream):boolean;
     function HTTPDownload(Const URL : String; Dest : TStream):boolean;
   public
+    constructor Create;override;
     function getFile(const URL,filename:string):boolean;override;
     function getFTPFileList(const URL:string; filelist:TStringList):boolean;override;
     function checkURL(const URL:string):boolean;override;
@@ -256,7 +268,7 @@ function SafeExpandFileNameUTF8 (Const FileName : String): String;
 function SafeGetApplicationPath: String;
 // Copies specified resource (e.g. fpcup.ini, settings.ini)
 // to application directory
-procedure SaveInisFromResource(filename,resourcename:string);
+function SaveInisFromResource(filename,resourcename:string):boolean;
 // Searches for SearchFor in the stringlist and returns the index if found; -1 if not
 // Search optionally starts from position SearchFor
 function StringListStartsWith(SearchIn:TStringList; SearchFor:string; StartIndex:integer=0; CS:boolean=false): integer;
@@ -416,7 +428,7 @@ begin
  result:=AppendPathDelim(result);
 end;
 
-procedure SaveInisFromResource(filename,resourcename:string);
+function SaveInisFromResource(filename,resourcename:string):boolean;
 var
   fs:Tfilestream;
   ms:TMemoryStream;
@@ -424,7 +436,9 @@ var
   Ini:TMemIniFile;
   OldIniVersion,NewIniVersion:string;
 begin
+  result:=false;
 
+  try
   if NOT FileExists(filename) then
   begin
     // create inifile
@@ -476,7 +490,6 @@ begin
      begin
        BackupFileName:=ChangeFileExt(filename,'.bak');
        while FileExists(BackupFileName) do BackupFileName := BackupFileName + 'k';
-       try
          FileUtil.CopyFile(filename,BackupFileName);
          if SysUtils.DeleteFile(filename) then
          begin
@@ -488,15 +501,19 @@ begin
              FreeAndNil(fs);
            end;
          end;
-       except
-         infoln('Could not make a backup copy of old inifile',etError);
-       end;
      end;
 
     finally
       ms.Free;
     end;
 
+  end;
+
+    result:=FileExists(filename);
+
+  except
+    on E: Exception do
+      infoln('File creation error: '+E.Message,etError);
   end;
 
 end;
@@ -608,7 +625,7 @@ begin
     ScriptText.Add(Target+' '+TargetArguments);
     try
       ScriptText.SaveToFile(ScriptFile);
-      FPChmod(ScriptFile, &700); //rwx------
+      FPChmod(ScriptFile, &755); //rwxr-xr-x
     except
       on E: Exception do
         infoln('CreateHomeStartLink: could not create link: '+E.Message,etWarning);
@@ -1016,24 +1033,13 @@ end;
 {$ENDIF MSWINDOWS}
 
 procedure infoln(Message: string; Level: TEventType);
-const
-  {$ifdef LCL}
-  BeginSnippet='fpcupdeluxe: '; //helps identify messages as coming from fpcupdeluxe instead of make etc
-  {$else}
-  {$ifndef FPCONLY}
-  BeginSnippet='fpclazup: '; //helps identify messages as coming from fpclazup instead of make etc
-  {$else}
-  BeginSnippet='fpcup: '; //helps identify messages as coming from fpcup instead of make etc
-  {$endif}
-  {$endif}
-  Seriousness: array [TEventType] of string = ('custom:', 'info:', 'WARNING:', 'ERROR:', 'debug:');
 begin
 {$IFNDEF NOCONSOLE}
   // Note: these strings should remain as is so any fpcupgui highlighter can pick it up
   if (Level<>etDebug) then
     begin
       if AnsiPos(LineEnding, Message)>0 then writeln(''); //Write an empty line before multiline messagse
-      writeln(BeginSnippet+Seriousness[Level]+' '+ Message); //we misuse this for info output
+      writeln(BeginSnippet+' '+Seriousness[Level]+' '+ Message); //we misuse this for info output
       //sleep(200); //hopefully allow output to be written without interfering with other output
       sleep(1);
     end
@@ -1043,7 +1049,7 @@ begin
     {DEBUG conditional symbol is defined using
     Project Options/Other/Custom Options using -dDEBUG}
     if AnsiPos(LineEnding, Message)>0 then writeln(''); //Write an empty line before multiline messagse
-    writeln(BeginSnippet+Seriousness[Level]+' '+ Message); //we misuse this for info output
+    writeln(BeginSnippet+' '+Seriousness[Level]+' '+ Message); //we misuse this for info output
     //sleep(200); //hopefully allow output to be written without interfering with other output
     sleep(1);
     {$ENDIF}
@@ -1239,7 +1245,7 @@ begin
       begin
         // This is not a warning/error message as sometimes we can use multiple different versions of executables
         infoln(Executable + ' is not a valid ' + ExeName + ' application. ' +
-          ExeName + ' exists but shows no (' + ExpectOutput + ') in its output.',etDebug);
+          ExeName + ' exists but shows no (' + ExpectOutput + ') in its output.',etError);
         OperationSucceeded := false;
       end
       else
@@ -1251,14 +1257,14 @@ begin
     else
     begin
       // This is not a warning/error message as sometimes we can use multiple different versions of executables
-      infoln(Executable + ' is not a valid ' + ExeName + ' application (' + ExeName + ' result code was: ' + IntToStr(ResultCode) + ')',etDebug);
+      infoln(Executable + ' is not a valid ' + ExeName + ' application (' + ExeName + ' result code was: ' + IntToStr(ResultCode) + ')',etError);
       OperationSucceeded := false;
     end;
   except
     on E: Exception do
     begin
       // This is not a warning/error message as sometimes we can use multiple different versions of executables
-      infoln(Executable + ' is not a valid ' + ExeName + ' application (' + 'Exception: ' + E.ClassName + '/' + E.Message + ')', etDebug);
+      infoln(Executable + ' is not a valid ' + ExeName + ' application (' + 'Exception: ' + E.ClassName + '/' + E.Message + ')', etError);
       OperationSucceeded := false;
     end;
   end;
@@ -1587,6 +1593,10 @@ begin
   try
       FUnZipper.Clear;
       FUnZipper.OnPercent:=10;
+      { Flat option only available in FPC >= 3.1 }
+      {$IF FPC_FULLVERSION > 30100}
+      FUnZipper.Flat:=Flat;
+      {$ENDIF}
       FUnZipper.FileName := ASrcFile;
       FUnZipper.OutputPath := ADstDir;
       FUnZipper.OnStartFile:= @DoOnFile;
@@ -1629,6 +1639,8 @@ begin
         then FUnZipper.UnZipAllFiles
         else FUnZipper.UnZipFiles(FFileList);
 
+      { Flat option only available in FPC >= 3.1 }
+      {$IF FPC_FULLVERSION < 30100}
       if Flat then
       begin
 
@@ -1680,6 +1692,7 @@ begin
         end;
 
       end;
+      {$ENDIF}
 
     result:=true;
 
@@ -1815,6 +1828,29 @@ begin
   end;
 end;
 
+constructor TUseNativeDownLoader.Create;
+begin
+  Inherited;
+  aFPHTTPClient:=TFPHTTPClient.Create(Nil);
+  with aFPHTTPClient do
+  begin
+    AllowRedirect:=True;
+    FMaxRetries:=DefMaxRetries;
+    OnPassword:=@DoPassword;
+    if FVerbose then
+    begin
+      OnRedirect:=@ShowRedirect;
+      OnDataReceived:=@DoProgress;
+      OnHeaders:=@DoHeaders;
+    end;
+  end;
+end;
+
+destructor TUseNativeDownLoader.Destroy;
+begin
+  FreeAndNil(aFPHTTPClient);
+  inherited;
+end;
 
 procedure TUseNativeDownLoader.DoHeaders(Sender : TObject);
 Var
@@ -1881,23 +1917,6 @@ procedure TUseNativeDownLoader.ShowRedirect(ASender: TObject; const ASrc: String
   var ADest: String);
 begin
   writeln('Following redirect from ',ASrc,'  ==> ',ADest);
-end;
-
-constructor TUseNativeDownLoader.Create;
-begin
-  aFPHTTPClient:=TFPHTTPClient.Create(Nil);
-  with aFPHTTPClient do
-  begin
-    AllowRedirect:=True;
-    FMaxRetries:=DefMaxRetries;
-    OnPassword:=@DoPassword;
-    if FVerbose then
-    begin
-      OnRedirect:=@ShowRedirect;
-      OnDataReceived:=@DoProgress;
-      OnHeaders:=@DoHeaders;
-    end;
-  end;
 end;
 
 procedure TUseNativeDownLoader.SetVerbose(aValue:boolean);
@@ -2123,12 +2142,6 @@ begin
   end;
 end;
 
-destructor TUseNativeDownLoader.Destroy;
-begin
-  FreeAndNil(aFPHTTPClient);
-  inherited;
-end;
-
 function TUseNativeDownLoader.Download(const URL: String; filename:string):boolean;
 Var
   URI : TURI;
@@ -2150,6 +2163,29 @@ end;
 {$IFDEF ENABLEWGET}
 
 // proxy still to do !!
+
+constructor TUseWGetDownloader.Create;
+var
+  success:boolean;
+begin
+  Inherited;
+
+  success:=LoadCurlLibrary;
+  if NOT success then
+  begin
+    infoln('Libcurl error: Could not initialize the libcurl library: expect failures !',etWarning);
+  end;
+
+  success:=CheckExecutable('wget', '-V', '');
+  if NOT success then
+  begin
+    {$IFDEF OPENBSD}
+    infoln('Wget: Could not find a wget executable: expect fatal errors !',etError);
+    {$ELSE}
+    infoln('Wget error: Could not find a wget executable: expect failures if used !',etWarning);
+    {$ENDIF}
+  end;
+end;
 
 function TUseWGetDownloader.WGetDownload(Const URL : String; Dest : TStream):boolean;
 var

@@ -79,7 +79,8 @@ Const
     {$endif}
     'End;'+ //keyword End specifies the end of the sequence
 
-//default sequence for win32
+    {$ifdef win32}
+    //default sequences for win32
     'Declare defaultwin32;'+
     {$ifndef FPCONLY}
     'Exec CheckDevLibs;'+ //keyword Exec executes a function/procedure; must be defined in TSequencer.DoExec
@@ -95,14 +96,9 @@ Const
     // Recompile user IDE so any packages selected by the
     // universal installer are compiled into the IDE:
     'Do USERIDE;'+
-    {$endif}
-    {$ifdef mswindows} //not really necessary as crosswin checks arechitecture anyway
-    'Do crosswin32-64;'+  //this has to be the last. All TExecState reset!
-    {$endif}
-    {$ifndef FPCONLY}
-    // Any further cross compilation; must be at end because it resets state machine run memory
     'Do LCLCross;'+
     {$endif}
+    'Do crosswin32-64;'+  //this has to be the last. All TExecState reset!
     'End;'+
 
 //cross sequence for win32. Note: if changing this name,
@@ -113,11 +109,10 @@ Const
     'Do LazarusCrossWin32-64;'+
     {$endif}
     'End;'+
+    {$endif win32}
 
-//default sequence for win64
-{todo: win64 sequence currently not enabled; see
-$elseif defined(win64)
-below}
+    //default sequences for win64
+    {$ifdef win64}
     'Declare defaultwin64;'+
     {$ifndef FPCONLY}
     // CheckDevLibs has stubs for anything except Linux, where it does check development library presence
@@ -134,11 +129,10 @@ below}
     //Recompile user IDE so any packages selected by the
     //universal installer are compiled into the IDE:
     'Do USERIDE;'+
+    'Do LCLCross;'+
     {$endif}
     'Do crosswin64-32;'+  //this has to be the last. All TExecState reset!
     {$ifndef FPCONLY}
-    //Any cross compilation; must be at end because it resets state machine run memory
-    'Do LCLCross;'+
     {$endif}
     'End;'+
 
@@ -151,12 +145,10 @@ below}
     'Cleanmodule fpc;'+
     'Buildmodule fpc;'+
     {$ifndef FPCONLY}
-    //Getmodule has already been done
-    // Don't use cleanmodule; make distclean will remove lazbuild.exe etc
-    //'Cleanmodule LCL;'+
-    'Buildmodule LCL;'+
+    'Do LCL;'+
     {$endif}
     'End;'+
+    {$endif win64}
 
     //default sequence for ARM: some packages give errors and memory is limited, so keep it simple
     'Declare defaultARM;'+
@@ -232,6 +224,14 @@ below}
 //default uninstall sequence for win64
     'Declare defaultwin64uninstall;'+
     'Do defaultuninstall;'+
+    'End;'+
+
+//default check sequence
+    'Declare defaultcheck;'+
+    'Checkmodule fpc;'+
+    {$ifndef FPCONLY}
+    'Checkmodule lazarus;'+
+    {$endif}
     'End;';
 
 
@@ -304,6 +304,7 @@ type
     FExportOnly:boolean;
     FNoJobs:boolean;
     FUseGitClient:boolean;
+    FSwitchURL:boolean;
     FSequencer: TSequencer;
     {$ifndef FPCONLY}
     function GetLazarusPrimaryConfigPath: string;
@@ -320,7 +321,6 @@ type
     procedure SetCrossLibraryDirectory(AValue: string);
     procedure SetLogFileName(AValue: string);
     procedure SetMakeDirectory(AValue: string);
-    function GetUseWget:boolean;
   protected
     FLog:TLogger;
     FModuleList:TStringList;
@@ -407,10 +407,11 @@ type
     property OnlyModules:string read FOnlyModules write FOnlyModules;
     property Uninstall: boolean read FUninstall write FUninstall;
     property Verbose:boolean read FVerbose write FVerbose;
-    property UseWget:boolean read GetUseWget write FUseWget;
+    property UseWget:boolean read FUseWget write FUseWget;
     property ExportOnly:boolean read FExportOnly write FExportOnly;
     property NoJobs:boolean read FNoJobs write FNoJobs;
     property UseGitClient:boolean read FUseGitClient write FUseGitClient;
+    property SwitchURL:boolean read FSwitchURL write FSwitchURL;
     // Fill in ModulePublishedList and ModuleEnabledList and load other config elements
     function LoadFPCUPConfig:boolean;
     // Stop talking. Do it! Returns success status
@@ -430,7 +431,7 @@ type
   PSequenceAttributes=^TSequenceAttributes;
 
   TKeyword=(SMdeclare, SMdeclareHidden, SMdo, SMrequire, SMexec, SMend, SMcleanmodule, SMgetmodule, SMbuildmodule,
-    SMuninstallmodule, SMconfigmodule{$ifndef FPCONLY}, SMResetLCL{$endif}, SMSetOS, SMSetCPU, SMInvalid);
+    SMcheckmodule, SMuninstallmodule, SMconfigmodule{$ifndef FPCONLY}, SMResetLCL{$endif}, SMSetOS, SMSetCPU, SMInvalid);
 
   TState=record
     instr:TKeyword;
@@ -447,6 +448,7 @@ type
       FSkipList:TStringList;
       FStateMachine:array of TState;
       procedure AddToModuleList(ModuleName:string;EntryPoint:integer);
+      function DoCheckModule(ModuleName:string):boolean;
       function DoBuildModule(ModuleName:string):boolean;
       function DoCleanModule(ModuleName:string):boolean;
       function DoConfigModule(ModuleName:string):boolean;
@@ -485,10 +487,19 @@ type
 
 implementation
 
+{$IFDEF DEBUG}
+uses
+  {$ifdef linux}
+  processutils,
+  {$endif}
+  typinfo;
+{$ELSE}
 {$ifdef linux}
 uses
   processutils;
 {$endif}
+
+{$ENDIF DEBUG}
 
 { TFPCupManager }
 
@@ -600,16 +611,6 @@ end;
 procedure TFPCupManager.SetMakeDirectory(AValue: string);
 begin
   FMakeDirectory:=SafeExpandFileName(AValue);
-end;
-
-function TFPCupManager.GetUseWget:boolean;
-begin
-  {$ifdef OpenBSD}
-  // only curl / wget works on OpenBSD (yet)
-  result:=True;
-  {$else}
-  result:=FUseWget;
-  {$endif}
 end;
 
 procedure TFPCupManager.WritelnLog(msg: string; ToConsole: boolean);
@@ -810,6 +811,12 @@ begin
   FParent.FModuleList.AddObject(ModuleName,TObject(SeqAttr));
 end;
 
+function TSequencer.DoCheckModule(ModuleName: string): boolean;
+begin
+  infoln('TSequencer: DoCheckModule for module '+ModuleName+' called.',etDebug);
+  result:= GetInstaller(ModuleName) and FInstaller.CheckModule(ModuleName);
+end;
+
 function TSequencer.DoBuildModule(ModuleName: string): boolean;
 begin
   infoln('TSequencer: DoBuildModule for module '+ModuleName+' called.',etDebug);
@@ -855,7 +862,7 @@ function TSequencer.DoExec(FunctionName: string): boolean;
   result:=true;
   if FParent.ShortCutNameLazarus<>EmptyStr then
   begin
-    infoln('Lazarus: creating desktop shortcut:',etInfo);
+    infoln('TSequencer.DoExec (Lazarus): creating desktop shortcut:',etInfo);
     try
       // Create shortcut; we don't care very much if it fails=>don't mess with OperationSucceeded
       InstalledLazarus:=IncludeTrailingPathDelimiter(FParent.LazarusDirectory)+'lazarus'+GetExeExt;
@@ -906,7 +913,7 @@ function TSequencer.DoExec(FunctionName: string): boolean;
   result:=true;
   if FParent.ShortCutNameLazarus<>EmptyStr then
   begin
-    infoln('Lazarus: deleting desktop shortcut:',etInfo);
+    infoln('TSequencer.DoExec (Lazarus): deleting desktop shortcut:',etInfo);
     try
       //Delete shortcut; we don't care very much if it fails=>don't mess with OperationSucceeded
       {$IFDEF MSWINDOWS}
@@ -1039,7 +1046,7 @@ function TSequencer.DoExec(FunctionName: string): boolean;
       else
       if (Output='openbsd') then
       begin
-        Output:='libiconv xorg-libraries libx11 libXtst xorg-fonts-type1 liberation-fonts-ttf gtkglext';
+        Output:='libiconv xorg-libraries libx11 libXtst xorg-fonts-type1 liberation-fonts-ttf gtkglext wget';
         //Output:='gmake gdk-pixbuf gtk+2';
       end
       else
@@ -1117,7 +1124,7 @@ end;
 
 function TSequencer.DoSetOS(OS: string): boolean;
 begin
-  infoln('TSequencer: called DoSetOS for OS '+OS,etDebug);
+  infoln('TSequencer: DoSetOS for OS '+OS+' called.',etDebug);
   FParent.CrossOS_Target:=OS;
   ResetAllExecuted;
   result:=true;
@@ -1193,8 +1200,15 @@ begin
 
   {$ifndef FPCONLY}
   // Lazarus:
-  else if (uppercase(ModuleName)='LAZARUS') or (uppercase(ModuleName)='LAZBUILD') or (uppercase(ModuleName)='LCL') or
-    (uppercase(ModuleName)='USERIDE') then
+  else
+    if (uppercase(ModuleName)='LAZARUS')
+    or (uppercase(ModuleName)='LAZBUILD')
+    or (uppercase(ModuleName)='LCL')
+    or (uppercase(ModuleName)='LCLCROSS')
+    or (uppercase(ModuleName)='IDE')
+    or (uppercase(ModuleName)='BIGIDE')
+    or (uppercase(ModuleName)='USERIDE')
+    then
     begin
     if assigned(FInstaller) then
       begin
@@ -1326,13 +1340,19 @@ begin
   FInstaller.ReApplyLocalChanges:=FParent.ReApplyLocalChanges;
   FInstaller.PatchCmd:=FParent.PatchCmd;
   FInstaller.Verbose:=FParent.Verbose;
+    // only curl / wget works on OpenBSD (yet)
+    {$IFDEF OPENBSD}
+    FInstaller.UseWget:=True;
+    {$ELSE}
   FInstaller.UseWget:=FParent.UseWget;
+    {$ENDIF}
   FInstaller.ExportOnly:=FParent.ExportOnly;
   FInstaller.NoJobs:=FParent.NoJobs;
   FInstaller.Log:=FParent.FLog;
   {$IFDEF MSWINDOWS}
   FInstaller.MakeDirectory:=FParent.MakeDirectory;
   {$ENDIF}
+    FInstaller.SwitchURL:=FParent.SwitchURL;
 end;
 end;
 
@@ -1391,6 +1411,7 @@ var
     else if key='CLEANMODULE' then result:=SMcleanmodule
     else if key='GETMODULE' then result:=SMgetmodule
     else if key='BUILDMODULE' then result:=SMbuildmodule
+    else if key='CHECKMODULE' then result:=SMcheckmodule
     else if key='UNINSTALLMODULE' then result:=SMuninstallmodule
     else if key='CONFIGMODULE' then result:=SMconfigmodule
     {$ifndef FPCONLY}
@@ -1516,6 +1537,7 @@ var
   EntryPoint,InstructionPointer:integer;
   idx:integer;
   SeqAttr:^TSequenceAttributes;
+  localinfotext:string;
 
   Procedure CleanUpInstaller;
   begin
@@ -1527,10 +1549,11 @@ var
   end;
 
 begin
+  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' ('+SequenceName+'): ';
   if not assigned(FParent.FModuleList) then
     begin
     result:=false;
-    FParent.WritelnLog('Error: No sequences loaded while trying to find sequence name ' + SequenceName);
+    FParent.WritelnLog(etError,localinfotext+'No sequences loaded while trying to find sequence name ' + SequenceName);
     exit;
     end;
   // --clean or --install ??
@@ -1553,12 +1576,12 @@ begin
     // Don't run sequence if already run
     case SeqAttr^.Executed of
       ESFailed : begin
-        infoln('State machine: already ran sequence name '+SequenceName+' ending in failure. Not running again.',etWarning);
+        infoln(localinfotext+'Already ran sequence name '+SequenceName+' ending in failure. Not running again.',etWarning);
         result:=false;
         exit;
         end;
       ESSucceeded : begin
-        infoln('State machine: already succesfully ran sequence name '+SequenceName+'. Not running again.',etInfo);
+        infoln(localinfotext+'Already succesfully ran sequence name '+SequenceName+'. Not running again.',etInfo);
         exit;
         end;
       end;
@@ -1568,11 +1591,12 @@ begin
     // run sequence until end or failure
     while true do
       begin
-      { For debugging state machine sequence:
-      FParent.writelnlog('State machine: ',true);
-      FParent.writelnlog(FStateMachine[InstructionPointer].instr,true);
-      FParent.writelnlog(FStateMachine[InstructionPointer].param,true);
-      }
+      //For debugging state machine sequence:
+      {$IFDEF DEBUG}
+      infoln(localinfotext+'State machine running sequence '+SequenceName,etDebug);
+      infoln(localinfotext+'State machine [instr]: '+GetEnumName(TypeInfo(TKeyword),Ord(FStateMachine[InstructionPointer].instr)),etDebug);
+      infoln(localinfotext+'State machine [param]: '+FStateMachine[InstructionPointer].param,etDebug);
+      {$ENDIF DEBUG}
       case FStateMachine[InstructionPointer].instr of
         SMdeclare     :;
         SMdeclareHidden :;
@@ -1588,6 +1612,7 @@ begin
         SMcleanmodule : result:=DoCleanModule(FStateMachine[InstructionPointer].param);
         SMgetmodule   : result:=DoGetModule(FStateMachine[InstructionPointer].param);
         SMbuildmodule : result:=DoBuildModule(FStateMachine[InstructionPointer].param);
+        SMcheckmodule : result:=DoCheckModule(FStateMachine[InstructionPointer].param);
         SMuninstallmodule: result:=DoUnInstallModule(FStateMachine[InstructionPointer].param);
         SMconfigmodule: result:=DoConfigModule(FStateMachine[InstructionPointer].param);
         {$ifndef FPCONLY}
@@ -1599,7 +1624,7 @@ begin
       if not result then
         begin
         SeqAttr^.Executed:=ESFailed;
-        FParent.WritelnLog('Error running fpcup. Technical details: error executing sequence '+SequenceName+
+        FParent.WritelnLog(etError,localinfotext+'Failure running fpcup. Technical details: error executing sequence '+SequenceName+
           '; line: '+IntTostr(InstructionPointer - EntryPoint+1)+
           ', param: '+FStateMachine[InstructionPointer].param);
         CleanUpInstaller;
@@ -1617,7 +1642,7 @@ begin
   else
     begin
     result:=false;  // sequence not found
-    FParent.WritelnLog('Error: Failed to load sequence :' + SequenceName);
+    FParent.WritelnLog(localinfotext+'Failed to load sequence :' + SequenceName);
     end;
 end;
 

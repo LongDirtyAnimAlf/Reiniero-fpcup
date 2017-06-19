@@ -66,9 +66,13 @@ function Tany_linuxarm.GetLibs(Basepath:string): boolean;
 const
   DirName='arm-linux';
   LibName='libc.so';
+//var
+//  requirehardfloat:boolean;
 begin
   result:=FLibsFound;
   if result then exit;
+
+  //requirehardfloat:=(StringListStartsWith(FCrossOpts,'-CaEABIHF')>-1);
 
   // begin simple: check presence of library file in basedir
   result:=SearchLibrary(Basepath,LibName);
@@ -131,46 +135,81 @@ var
   AsFile: string;
   BinPrefixTry:string;
   i:integer;
+  hardfloat:boolean;
+  requirehardfloat:boolean;
 begin
   result:=inherited;
   if result then exit;
 
-  // Start with any names user may have given
+  hardfloat:=false;
+  requirehardfloat:=(StringListStartsWith(FCrossOpts,'-CaEABIHF')>-1);
+
+  if (NOT requirehardfloat) then
+  begin
   AsFile:=FBinUtilsPrefix+'as'+GetExeExt;
+    result:=SearchBinUtil(BasePath,AsFile);
+    if not result then
+      result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+  end;
+
+  // Also allow for crossfpc naming
+  if (not result) AND (NOT requirehardfloat) then
+  begin
+    BinPrefixTry:='arm-linux-eabi-';
+    AsFile:=BinPrefixTry+'as'+GetExeExt;
 
   result:=SearchBinUtil(BasePath,AsFile);
   if not result then
     result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
 
-  //FSubArch
-  (*
-  if StringListStartsWith(FCrossOpts,'-Cp')=-1 then
-      begin
-        FCrossOpts.Add('-CpARMV6 '); //apparently earlier instruction sets unsupported by Android and Raspberry Pi
-        ShowInfo('Did not find any -Cp architecture parameter; using -CpARMV6.',etInfo);
+    // also check in the eabi directory
+    if not result then
+       result:=SimpleSearchBinUtil(BasePath,DirName+'-eabi',AsFile);
       end;
 
-      // Warn user to check things
-      if StringListStartsWith(FCrossOpts,'-CaEABIHF')>-1 then
+  // Also allow for baremetal crossfpc naming
+  if (not result) AND (NOT requirehardfloat) then
       begin
-        // Source: http://forum.lazarus.freepascal.org/index.php/topic,23075.msg137838.html#msg137838
-        // http://lists.freepascal.org/lists/fpc-devel/2013-May/032093.html
-        // -dFPC_ARMHF is only used for (cross) compiler generation, not useful when compiling end user
-        ShowInfo('Found -CaEABIHF cross compile option. Please make sure you specified -dFPC_ARMHF in your FPCOPT in order to build a hard-float cross-compiler.',etWarning);
+    BinPrefixTry:='arm-none-eabi-';
+    AsFile:=BinPrefixTry+'as'+GetExeExt;
+
+    result:=SearchBinUtil(BasePath,AsFile);
+    if not result then
+      result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+
+    // also check in the eabi directory
+    if not result then
+       result:=SimpleSearchBinUtil(BasePath,DirName+'-eabi',AsFile);
       end;
-  *)
 
-
-
-  // Also allow for crossfpc naming
-  if not result then
+  if (not result) AND (NOT requirehardfloat) then
   begin
     BinPrefixTry:='arm-linux-gnueabi-';
     AsFile:=BinPrefixTry+'as'+GetExeExt;
+
+    result:=SearchBinUtil(BasePath,AsFile);
+    if not result then
+      result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+
+    // also check in the gnueabi directory
+  if not result then
+       result:=SimpleSearchBinUtil(BasePath,DirName+'-gnueabi',AsFile);
+  end;
+
+  if (not result) AND (NOT requirehardfloat) then
+  begin
+    BinPrefixTry:='arm-none-gnueabi-';
+    AsFile:=BinPrefixTry+'as'+GetExeExt;
+
+    result:=SearchBinUtil(BasePath,AsFile);
+    if not result then
     result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
     // also check in the gnueabi directory
     if not result then
        result:=SimpleSearchBinUtil(BasePath,DirName+'-gnueabi',AsFile);
+  end;
+
+
     {$ifdef Darwin}
     if not result then
     begin
@@ -180,6 +219,7 @@ begin
       result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
       if result then
       begin
+      hardfloat:=true;
         // remove floating point option, if any, as this toolchain does not like them
         // tricky !
         i:=StringListStartsWith(FCrossOpts,'-CfVFPV');
@@ -200,22 +240,36 @@ begin
       end;
     end;
     {$endif}
-    if result then FBinUtilsPrefix:=BinPrefixTry;
-  end;
 
   // Also allow for hardfloat crossbinutils
   if not result then
   begin
-    //if StringListStartsWith(FCrossOpts,'-CaEABIHF')>-1 then
-    begin
       BinPrefixTry:='arm-linux-gnueabihf-';
       AsFile:=BinPrefixTry+'as'+GetExeExt;
+
+    result:=SearchBinUtil(BasePath,AsFile);
+    if not result then
       result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
       // also check in the gnueabihf directory
       if not result then
          result:=SimpleSearchBinUtil(BasePath,DirName+'-gnueabihf',AsFile);
-      if result then FBinUtilsPrefix:=BinPrefixTry;
+    if result then hardfloat:=true;
     end;
+
+  // baremetal
+  if not result then
+  begin
+    BinPrefixTry:='arm-none-gnueabihf-';
+    AsFile:=BinPrefixTry+'as'+GetExeExt;
+
+    result:=SearchBinUtil(BasePath,AsFile);
+    if not result then
+      result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+
+    // also check in the gnueabihf directory
+    if not result then
+       result:=SimpleSearchBinUtil(BasePath,DirName+'-gnueabihf',AsFile);
+    if result then hardfloat:=true;
   end;
 
   // Also allow for android crossbinutils
@@ -224,7 +278,6 @@ begin
     BinPrefixTry:='arm-linux-androideabi-';//standard eg in Android NDK 9
     AsFile:=BinPrefixTry+'as'+GetExeExt;
     result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
-    if result then FBinUtilsPrefix:=BinPrefixTry;
   end;
 
   // Last resort: also allow for crossbinutils without prefix, but in correct directory
@@ -234,13 +287,17 @@ begin
     AsFile:=BinPrefixTry+'as'+GetExeExt;
     result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
     // also check in the gnueabi directory
-    if not result then
+    if (not result) AND (NOT requirehardfloat) then
        result:=SimpleSearchBinUtil(BasePath,DirName+'-gnueabi',AsFile);
     // also check in the gnueabihf directory
     if not result then
+    begin
        result:=SimpleSearchBinUtil(BasePath,DirName+'-gnueabihf',AsFile);
-    if result then FBinUtilsPrefix:=BinPrefixTry;
+      if result then hardfloat:=true;
+    end;
   end;
+
+    if result then FBinUtilsPrefix:=BinPrefixTry;
 
   SearchBinUtilsInfo(result);
 
@@ -251,6 +308,8 @@ begin
   else
   begin
     FBinsFound:=true;
+
+    if hardfloat then ShowInfo('Found hardfloat binary utilities. Please make sure you specified -dFPC_ARMHF in your FPCOPT in order to build a hard-float cross-compiler.',etWarning);
 
     { for raspberry pi look into
     instruction set
@@ -271,7 +330,7 @@ begin
     end;
 
     // Warn user to check things
-    if StringListStartsWith(FCrossOpts,'-CaEABIHF')>-1 then
+    if (StringListStartsWith(FCrossOpts,'-CaEABIHF')>-1) AND (NOT hardfloat) then
     begin
       // Source: http://forum.lazarus.freepascal.org/index.php/topic,23075.msg137838.html#msg137838
       // http://lists.freepascal.org/lists/fpc-devel/2013-May/032093.html
@@ -287,12 +346,31 @@ begin
     '-darm'+LineEnding+
     }
   end;
+
+  //FSubArch
+  (*
+  if StringListStartsWith(FCrossOpts,'-Cp')=-1 then
+      begin
+        FCrossOpts.Add('-CpARMV6 '); //apparently earlier instruction sets unsupported by Android and Raspberry Pi
+        ShowInfo('Did not find any -Cp architecture parameter; using -CpARMV6.',etInfo);
+      end;
+
+      // Warn user to check things
+      if StringListStartsWith(FCrossOpts,'-CaEABIHF')>-1 then
+      begin
+        // Source: http://forum.lazarus.freepascal.org/index.php/topic,23075.msg137838.html#msg137838
+        // http://lists.freepascal.org/lists/fpc-devel/2013-May/032093.html
+        // -dFPC_ARMHF is only used for (cross) compiler generation, not useful when compiling end user
+        ShowInfo('Found -CaEABIHF cross compile option. Please make sure you specified -dFPC_ARMHF in your FPCOPT in order to build a hard-float cross-compiler.',etWarning);
+      end;
+  *)
+
 end;
 
 constructor Tany_linuxarm.Create;
 begin
   inherited Create;
-  FBinUtilsPrefix:='arm-linux-'; //crossfpc nomenclature; module will also search for android crossbinutils
+  FBinUtilsPrefix:='arm-linux-';
   FBinUtilsPath:='';
   FCompilerUsed:=ctBootstrap;
   FFPCCFGSnippet:=''; //will be filled in later
