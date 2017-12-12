@@ -3,7 +3,7 @@
   <ProjectSession>
     <PathDelim Value="\"/>
     <Version Value="10"/>
-    <BuildModes Count="3" Active="Default">
+    <BuildModes Count="3" Active="win32">
       <Item1 Name="linuxarmhf">
         <MacroValues Count="1">
           <Macro1 Name="LCLWidgetType" Value="nogui"/>
@@ -180,8 +180,8 @@ end;"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerFpc"/>
         <EditorIndex Value="-1"/>
-        <TopLine Value="482"/>
-        <CursorPos Y="502"/>
+        <TopLine Value="2133"/>
+        <CursorPos X="2" Y="2149"/>
         <UsageCount Value="200"/>
       </Unit5>
       <Unit6>
@@ -463,9 +463,9 @@ end;"/>
       <Unit41>
         <Filename Value="revision.inc"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="-1"/>
-        <CursorPos X="12"/>
+        <EditorIndex Value="3"/>
         <UsageCount Value="200"/>
+        <Loaded Value="True"/>
       </Unit41>
       <Unit42>
         <Filename Value="m_any_to_linuxarm.pas"/>
@@ -477,21 +477,21 @@ end;"/>
         <Filename Value="m_any_to_androidjvm.pas"/>
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="-1"/>
-        <UsageCount Value="165"/>
+        <UsageCount Value="166"/>
       </Unit43>
       <Unit44>
         <Filename Value="m_any_to_javajvm.pas"/>
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="-1"/>
-        <UsageCount Value="165"/>
+        <UsageCount Value="166"/>
       </Unit44>
       <Unit45>
         <Filename Value="fpcuputil.pas"/>
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="-1"/>
-        <TopLine Value="29"/>
-        <CursorPos X="66" Y="32"/>
-        <UsageCount Value="163"/>
+        <TopLine Value="448"/>
+        <CursorPos X="36" Y="454"/>
+        <UsageCount Value="164"/>
       </Unit45>
       <Unit46>
         <Filename Value="m_any_to_linuxaarch64.pas"/>
@@ -499,7 +499,7 @@ end;"/>
         <EditorIndex Value="-1"/>
         <TopLine Value="77"/>
         <CursorPos Y="93"/>
-        <UsageCount Value="124"/>
+        <UsageCount Value="125"/>
       </Unit46>
     </Units>
   </ProjectSession>

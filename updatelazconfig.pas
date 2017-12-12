@@ -81,7 +81,8 @@ const
   MiscellaneousConfig='miscellaneousoptions.xml';
   // FPC defines (source cache):
   FPCDefines='fpcdefines.xml';
-
+  // File history:
+  History='inputhistory.xml';
   // Versions used when new config files are generated.
   // Lazarus pre 1.0: 106
   // We can assume Lazarus trunk can parse this version:
@@ -348,6 +349,7 @@ end;
 
 procedure TConfig.Save;
 begin
+  infoln('TConfig: Saving configchanges into '+FFilename,etDebug);
   WriteXMLFile(Doc,FFilename);
 end;
 
@@ -388,11 +390,11 @@ begin
   FFilename:=AFilename;
   FNew:=not(FileExistsUTF8(AFileName));
   if FNew then
-    begin
+  begin
     Doc:=TXMLDocument.Create;
     // CONFIG node present in all Lazarus configs=>we ensure the config file gets created if it doesn't exist yet:
     Doc.AppendChild(Doc.CreateElement('CONFIG'));
-    end
+  end
   else
     ReadXMLFile(Doc,AFilename,[xrfAllowLowerThanInAttributeValue,xrfAllowSpecialCharsInAttributeValue,xrfAllowSpecialCharsInComments]);
   bChanged:=false;

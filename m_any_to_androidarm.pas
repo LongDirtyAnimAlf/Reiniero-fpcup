@@ -58,12 +58,10 @@ const
   ARCH='arm';
   ARCHSHORT='arm';
   OS='android';
-  NDKVERSIONBASENAME='android-ndk-r';
-  NDKVERSIONNAMES:array[0..16] of string = ('7','7b','7c','8','8b','8c','8d','8e','9','9b','9c','9d','10','10b','10c','10d','10e');
+  NDKVERSIONBASENAME=OS+'-ndk-r';
   NDKTOOLCHAINVERSIONS:array[0..3] of string = (ARCH+'-linux-'+OS+'eabi-4.4.7',ARCH+'-linux-'+OS+'eabi-4.6',ARCH+'-linux-'+OS+'eabi-4.8',ARCH+'-linux-'+OS+'eabi-4.9');
   NDKARCHDIRNAME='arch-'+ARCHSHORT;
   PLATFORMVERSIONBASENAME=OS+'-';
-  PLATFORMVERSIONSNUMBERS:array[0..13] of byte = (9,10,11,12,13,14,15,16,17,18,19,20,21,22); //23 does not yet work due to text allocations
 
 
 type
@@ -83,7 +81,7 @@ end;
 
 function TAny_ARMAndroid.GetLibs(Basepath:string): boolean;
 const
-  DirName='arm-android';
+  DirName=ARCH+'-'+OS;
   // we presume, libc.so has to be present in a cross-library for arm
   LibName='libc.so';
   // we presume, libandroid.so has to be present in a cross-library for arm
@@ -226,9 +224,10 @@ function TAny_ARMAndroid.GetBinUtils(Basepath:string): boolean;
 const
   DirName=ARCH+'-'+OS;
 var
-  AsFile: string;
+  AsFile,aOption: string;
   PresetBinPath:string;
   ndkversion,toolchain:byte;
+  i:integer;
   {$IFDEF MSWINDOWS}
   delphiversion:byte;
   {$ENDIF}
@@ -397,22 +396,22 @@ begin
   if result then
   begin
     FBinsFound:=true;
-    // Set some defaults if user hasn't specified otherwise
-    // Architecture: e.g. ARMv6, ARMv7,...
-    if StringListStartsWith(FCrossOpts,'-Cp')=-1 then
-    begin
-      //AsFile:='-CpARMV7A -CfVFPV3 -OoFASTMATH ';
-      AsFile:='-CpARMV7A ';
-      FCrossOpts.Add(AsFile); //apparently earlier instruction sets unsupported by Android
-      ShowInfo('Did not find any -Cp architecture parameter; using '+AsFile+'.');
-      AsFile:=StringReplace(AsFile,' ',LineEnding,[rfReplaceAll]);
-      FFPCCFGSnippet:=FFPCCFGSnippet+AsFile;
-    end;
 
     // Configuration snippet for FPC
-    FFPCCFGSnippet:=FFPCCFGSnippet+LineEnding+
-      '-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath)+LineEnding+
-      '-XP'+FBinUtilsPrefix; {Prepend the binutils names};
+    AddFPCCFGSnippet('-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath));
+    AddFPCCFGSnippet('-XP'+FBinUtilsPrefix); {Prepend the binutils names};
+
+    // Set some defaults if user hasn't specified otherwise
+    // Architecture: e.g. ARMv6, ARMv7,...
+    i:=StringListStartsWith(FCrossOpts,'-Cp');
+    if i=-1 then
+    begin
+      aOption:='-Cp'+DEFAULTARMCPU;
+      FCrossOpts.Add(aOption+' ');
+      ShowInfo('Did not find any -Cp architecture parameter; using '+aOption+'.');
+    end else aOption:=Trim(FCrossOpts[i]);
+    AddFPCCFGSnippet(aOption);
+
   end
   else
   begin

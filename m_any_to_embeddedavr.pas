@@ -1,5 +1,5 @@
-unit m_any_to_embeddedarm;
-{ Cross compiles from any platform with correct binutils to Embedded ARM
+unit m_any_to_embeddedavr;
+{ Cross compiles from any platform with correct binutils to Embedded AVR
 Copyright (C) 2017 Alf
 
 This library is free software; you can redistribute it and/or modify it
@@ -28,6 +28,22 @@ along with this library; if not, write to the Free Software Foundation,
 Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 }
 
+{
+Setup: based on cross binaries from
+http://svn.freepascal.org/svn/fpcbuild/binaries/i386-win32/
+with binutils 2.22
+
+Add a cross directory under the fpcup "root" installdir directory (e.g. c:\development\cross, and e.g. regular fpc sources in c:\development\fpc)
+Then place the binaries in c:\development\cross\bin\avr-embedded
+Binaries include
+avr-embedded-ar.exe
+avr-embedded-as.exe
+avr-embedded-ld.exe
+avr-embedded-objcopy.exe
+avr-embedded-objdump.exe
+avr-embedded-strip.exe
+}
+
 {$mode objfpc}{$H+}
 
 interface
@@ -37,14 +53,10 @@ uses
 
 implementation
 
-const
-  ARCH='arm';
-  OS='embedded';
-
 type
 
-{ TAny_Embeddedarm }
-TAny_Embeddedarm = class(TCrossInstaller)
+{ TAny_Embeddedavr }
+TAny_Embeddedavr = class(TCrossInstaller)
 private
   FAlreadyWarned: boolean; //did we warn user about errors and fixes already?
 public
@@ -57,14 +69,19 @@ public
   destructor Destroy; override;
 end;
 
-{ TAny_Embeddedarm }
+{ TAny_Embeddedavr }
 
-function TAny_Embeddedarm.GetLibs(Basepath:string): boolean;
+function TAny_Embeddedavr.GetLibs(Basepath:string): boolean;
 const
-  DirName=ARCH+'-'+OS;
-  LibName='libgcc.a';  // is this correct ??
+  DirName='avr-embedded';
+  LibName='libc.a';
+  {$ifdef unix}
+  UnixAVRLibDirs :array[0..3] of string = ('/usr/local/lib/avr/lib','/usr/lib/avr/lib','/usr/lib/avr','/lib/avr');
+var
+  i:integer;
+  {$endif}
 begin
-  // Arm-embedded does not need libs by default, but user can add them.
+  // AVR-embedded does not need libs by default, but user can add them.
 
   result:=FLibsFound;
   if result then exit;
@@ -81,9 +98,31 @@ begin
   if not result then
      result:=SimpleSearchLibrary(BasePath,DirName,LibName);
 
+  {$ifdef unix}
+  // User may also have placed them into their regular search path:
+  if not result then
+  begin
+    if length(FSubArch)>0 then
+    begin
+      for i:=Low(UnixAVRLibDirs) to High(UnixAVRLibDirs) do
+      begin
+        result:=SearchLibrary(IncludeTrailingPathDelimiter(UnixAVRLibDirs[i])+FSubArch,LibName);
+        if result then break;
+      end;
+    end;
+  end;
+  if not result then
+  begin
+    for i:=Low(UnixAVRLibDirs) to High(UnixAVRLibDirs) do
+    begin
+      result:=SearchLibrary(UnixAVRLibDirs[i],LibName);
+      if result then break;
+    end;
+  end;
+  {$endif unix}
+
   if result then
   begin
-    //todo: check if -XR is needed for fpc root dir Prepend <x> to all linker search paths
     FFPCCFGSnippet:=FFPCCFGSnippet+LineEnding+
     '-Fl'+IncludeTrailingPathDelimiter(FLibsPath) {buildfaq 1.6.4/3.3.1:  the directory to look for the target  libraries};
     SearchLibraryInfo(result);
@@ -98,7 +137,7 @@ begin
 end;
 
 {$ifndef FPCONLY}
-function TAny_Embeddedarm.GetLibsLCL(LCL_Platform: string; Basepath: string): boolean;
+function TAny_Embeddedavr.GetLibsLCL(LCL_Platform: string; Basepath: string): boolean;
 begin
   // todo: get gtk at least, add to FFPCCFGSnippet
   ShowInfo('Todo: implement lcl libs path from basepath '+BasePath,etdebug);
@@ -106,9 +145,9 @@ begin
 end;
 {$endif}
 
-function TAny_Embeddedarm.GetBinUtils(Basepath:string): boolean;
+function TAny_Embeddedavr.GetBinUtils(Basepath:string): boolean;
 const
-  DirName=ARCH+'-'+OS;
+  DirName='avr-embedded';
 var
   AsFile,aOption: string;
   BinPrefixTry: string;
@@ -136,13 +175,25 @@ begin
   end;
   {$endif unix}
 
-  // Now also allow for arm-none-eabi- binutilsprefix (e.g. launchpadlibrarian)
+  // Now also allow for avr- binutilsprefix
   if not result then
   begin
-    BinPrefixTry:='arm-none-eabi-';
+    BinPrefixTry:='avr-';
     AsFile:=BinPrefixTry+'as'+GetExeExt;
     result:=SearchBinUtil(BasePath,AsFile);
     if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+    {$ifdef unix}
+    // User may also have placed them into their regular search path:
+    if not result then
+    begin
+      for i:=Low(UnixBinDirs) to High(UnixBinDirs) do
+      begin
+        result:=SearchBinUtil(IncludeTrailingPathDelimiter(UnixBinDirs[i])+DirName, AsFile);
+        if not result then result:=SearchBinUtil(UnixBinDirs[i], AsFile);
+        if result then break;
+      end;
+    end;
+    {$endif unix}
     if result then FBinUtilsPrefix:=BinPrefixTry;
   end;
 
@@ -161,70 +212,57 @@ begin
   if not result then
   begin
     {$ifdef mswindows}
-    ShowInfo('Suggestion for cross binutils: the crossfpc binutils (arm-embedded) at http://svn.freepascal.org/svn/fpcbuild/binaries/i386-win32/.');
-    {$else}
-    ShowInfo('Suggestion for cross binutils: the crossfpc binutils (arm-embedded) at https://launchpad.net/gcc-arm-embedded.');
+    ShowInfo('Suggestion for cross binutils: the crossfpc binutils (avr-embedded) at http://svn.freepascal.org/svn/fpcbuild/binaries/i386-win32/.');
     {$endif}
     FAlreadyWarned:=true;
   end
   else
   begin
     FBinsFound:=true;
-    { for Teensy 3.0 and 3.1 and 3.2 add
-    -Cparmv7em ... -Wpmk20dx256XXX7
-
-    for NXP LPC 2124 add
-    -Cparmv4
-
-    for mbed add
-    -Cparmv7m
-    }
 
     // Configuration snippet for FPC
     AddFPCCFGSnippet('-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath));
     AddFPCCFGSnippet('-XP'+FBinUtilsPrefix); {Prepend the binutils names};
 
-    // Set some defaults if user hasn't specified otherwise
-    // Architecture: e.g. ARMv6, ARMv7,...
     i:=StringListStartsWith(FCrossOpts,'-Cp');
     if i=-1 then
     begin
-      aOption:='-CpARMV7M';  // cortex-m3/embed default
+      aOption:='-Cpavr5';
       FCrossOpts.Add(aOption+' ');
-      // When compiling for arm-embedded, a sub-architecture (e.g. SUBARCH=armv4t or SUBARCH=armv7m) must be defined)
-      FSubArch:='armv7m';
-      ShowInfo('Did not find any -Cp architecture parameter; using '+aOption+' (cortex-m3/embed default).');
+      //When compiling for avr-embedded, a sub-architecture (e.g. SUBARCH=avr25 or SUBARCH=avr35) must be defined)
+      FSubArch:='avr5';
+      ShowInfo('Did not find any -Cp architecture parameter; using -Cpavr5 and SUBARCH=avr5.');
     end else aOption:=Trim(FCrossOpts[i]);
     AddFPCCFGSnippet(aOption);
   end;
 end;
 
-constructor TAny_Embeddedarm.Create;
+constructor TAny_Embeddedavr.Create;
 begin
   inherited Create;
-  FTargetCPU:=ARCH;
-  FTargetOS:=OS;
-  FBinUtilsPrefix:=ARCH+'-'+OS+'-'; //crossfpc nomenclature; module will also search for android crossbinutils
+  FBinUtilsPrefix:='avr-embedded-'; //crossfpc nomenclature; module will also search for android crossbinutils
   FBinUtilsPath:='';
   FFPCCFGSnippet:=''; //will be filled in later
   //FCompilerUsed:=ctInstalled;
   FLibsPath:='';
+  FTargetCPU:='avr';
+  FTargetOS:='embedded';
   FAlreadyWarned:=false;
   ShowInfo;
 end;
 
-destructor TAny_Embeddedarm.Destroy;
+destructor TAny_Embeddedavr.Destroy;
 begin
   inherited Destroy;
 end;
 
 var
-  Any_Embeddedarm:TAny_Embeddedarm;
+  Any_Embeddedavr:TAny_Embeddedavr;
 
 initialization
-  Any_Embeddedarm:=TAny_Embeddedarm.Create;
-  RegisterExtension(Any_Embeddedarm.TargetCPU+'-'+Any_Embeddedarm.TargetOS,Any_Embeddedarm);
+  Any_Embeddedavr:=TAny_Embeddedavr.Create;
+  RegisterExtension(Any_Embeddedavr.TargetCPU+'-'+Any_Embeddedavr.TargetOS,Any_Embeddedavr);
 finalization
-  Any_Embeddedarm.Destroy;
+  Any_Embeddedavr.Destroy;
 end.
 

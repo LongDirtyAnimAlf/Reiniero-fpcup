@@ -29,9 +29,10 @@ Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 }
 
 {$mode objfpc}{$H+}
+(*
 {Define NOCONSOLE e.g. if using Windows GUI {$APPTYPE GUI} or -WG
 this will disable writeln calls
-}
+*)
 {not $DEFINE NOCONSOLE}
 
 interface
@@ -171,7 +172,7 @@ Const
     'Do UniversalDefaultClean;'+
     {$endif}
     'End;'+
-    {
+    (*
 // Currently, make distclean LCL removes lazbuild.exe/lazarus.exe as well
 // Then, universal installer won't work because of missing lazbuild, and of
 // course Lazarus won't work either.
@@ -205,7 +206,7 @@ Const
     'Cleanmodule lazarus;'+
     {$endif}
     'End;'+
-    }
+    *)
 
 //default uninstall sequence
     'Declare defaultuninstall;'+
@@ -234,7 +235,169 @@ Const
     {$endif}
     'End;';
 
+type
 
+  // from systems.inc
+  tsystemcpu=
+         (
+               cpu_no,                       { 0 }
+               cpu_i386,                     { 1 }
+               cpu_m68k,                     { 2 }
+               cpu_alpha,                    { 3 }
+               cpu_powerpc,                  { 4 }
+               cpu_sparc,                    { 5 }
+               cpu_vm,                       { 6 }
+               cpu_iA64,                     { 7 }
+               cpu_x86_64,                   { 8 }
+               cpu_mipseb,                   { 9 }
+               cpu_arm,                      { 10 }
+               cpu_powerpc64,                { 11 }
+               cpu_avr,                      { 12 }
+               cpu_mipsel,                   { 13 }
+               cpu_jvm,                      { 14 }
+               cpu_i8086,                    { 15 }
+               cpu_aarch64,                  { 16 }
+               cpu_wasm,                     { 17 }
+               cpu_sparc64                   { 18 }
+         );
+
+
+  // from fpmake + fpmkunit !
+
+  TCpu=(cpuNone,
+      i386,m68k,powerpc,sparc,x86_64,arm,powerpc64,avr,armeb,
+      mips,mipsel,jvm,i8086,aarch64
+    );
+  TCPUS = Set of TCPU;
+  TOS=(osNone,
+      linux,go32v2,win32,os2,freebsd,beos,netbsd,
+      amiga,atari, solaris, qnx, netware, openbsd,wdosx,
+      palmos,macos,darwin,emx,watcom,morphos,netwlibc,
+      win64,wince,gba,nds,embedded,symbian,haiku,iphonesim,
+      aix,java,android,nativent,msdos,wii,aros,dragonfly,
+      win16
+    );
+  TOSes = Set of TOS;
+
+Const
+  // Aliases
+  Amd64   = X86_64;
+  PPC = PowerPC;
+  PPC64 = PowerPC64;
+  DOS = Go32v2;
+  MacOSX = Darwin;
+
+  AllOSes = [Low(TOS)..High(TOS)];
+  AllCPUs = [Low(TCPU)..High(TCPU)];
+  AllUnixOSes  = [Linux,FreeBSD,NetBSD,OpenBSD,Darwin,QNX,BeOS,Solaris,Haiku,iphonesim,aix,Android,dragonfly];
+  AllBSDOSes      = [FreeBSD,NetBSD,OpenBSD,Darwin,iphonesim,dragonfly];
+  AllWindowsOSes  = [Win32,Win64,WinCE];
+  AllAmigaLikeOSes = [Amiga,MorphOS,AROS];
+  AllLimit83fsOses = [go32v2,os2,emx,watcom,msdos,win16];
+
+  AllSmartLinkLibraryOSes = [Linux,msdos,amiga,morphos,aros,win16]; // OSes that use .a library files for smart-linking
+  AllImportLibraryOSes = AllWindowsOSes + [os2,emx,netwlibc,netware,watcom,go32v2,macos,nativent,msdos,win16];
+
+  OSCPUSupported : array[TOS,TCpu] of boolean = (
+    { os          none   i386    m68k  ppc    sparc  x86_64 arm    ppc64  avr    armeb  mips   mipsel jvm    i8086  aarch64 }
+    { none }    ( false, false, false, false, false, false, false, false, false, false, false, false, false, false, false),
+    { linux }   ( false, true,  true,  true,  true,  true,  true,  true,  false, true , true , true , false, false, true ),
+    { go32v2 }  ( false, true,  false, false, false, false, false, false, false, false, false, false, false, false, false),
+    { win32 }   ( false, true,  false, false, false, false, false, false, false, false, false, false, false, false, false),
+    { os2 }     ( false, true,  false, false, false, false, false, false, false, false, false, false, false, false, false),
+    { freebsd } ( false, true,  true,  false, false, true,  false, false, false, false, false, false, false, false, false),
+    { beos }    ( false, true,  false, false, false, false, false, false, false, false, false, false, false, false, false),
+    { netbsd }  ( false, true,  true,  true,  true,  true,  false, false, false, false, false, false, false, false, false),
+    { amiga }   ( false, false, true,  true,  false, false, false, false, false, false, false, false, false, false, false),
+    { atari }   ( false, false, true,  false, false, false, false, false, false, false, false, false, false, false, false),
+    { solaris } ( false, true,  false, false, true,  true,  false, false, false, false, false, false, false, false, false),
+    { qnx }     ( false, true,  false, false, false, false, false, false, false, false, false, false, false, false, false),
+    { netware } ( false, true,  false, false, false, false, false, false, false, false, false, false, false, false, false),
+    { openbsd } ( false, true,  true,  false, false, true,  false, false, false, false, false, false, false, false, false),
+    { wdosx }   ( false, true,  false, false, false, false, false, false, false, false, false, false, false, false, false),
+    { palmos }  ( false, false, true,  false, false, false, true,  false, false, false, false, false, false, false, false),
+    { macos }   ( false, false, false, true,  false, false, false, false, false, false, false, false, false, false, false),
+    { darwin }  ( false, true,  false, true,  false, true,  true,  true,  false, false, false, false, false, false, true ),
+    { emx }     ( false, true,  false, false, false, false, false, false, false, false, false, false, false, false, false),
+    { watcom }  ( false, true,  false, false, false ,false, false, false, false, false, false, false, false, false, false),
+    { morphos } ( false, false, false, true,  false ,false, false, false, false, false, false, false, false, false, false),
+    { netwlibc }( false, true,  false, false, false, false, false, false, false, false, false, false, false, false, false),
+    { win64   } ( false, false, false, false, false, true,  false, false, false, false, false, false, false, false, false),
+    { wince    }( false, true,  false, false, false, false, true,  false, false, false, false, false, false, false, false),
+    { gba    }  ( false, false, false, false, false, false, true,  false, false, false, false, false, false, false, false),
+    { nds    }  ( false, false, false, false, false, false, true,  false, false, false, false, false, false, false, false),
+    { embedded }( false, true,  true,  true,  true,  true,  true,  true,  true,  true , false, false, false, true , false),
+    { symbian } ( false, true,  false, false, false, false, true,  false, false, false, false, false, false, false, false),
+    { haiku }   ( false, true,  false, false, false, false, false, false, false, false, false, false, false, false, false),
+    { iphonesim}( false, true,  false, false, false, true,  false, false, false, false, false, false, false, false, false),
+    { aix    }  ( false, false, false, true,  false, false, false, true,  false, false, false, false, false, false, false),
+    { java }    ( false, false, false, false, false, false, false, false, false, false, false, false, true , false, false),
+    { android } ( false, true,  false, false, false, false, true,  false, false, false, false, true,  true , false, false),
+    { nativent }( false, true,  false, false, false, false, false, false, false, false, false, false, false, false, false),
+    { msdos }   ( false, false, false, false, false, false, false, false, false, false, false, false, false, true , false),
+    { wii }     ( false, false, false, true , false, false, false, false, false, false, false, false, false, false, false),
+    { aros }    ( true,  false, false, false, false, false, true,  false, false, false, false, false, false, false, false),
+    { dragonfly}( false, false, false, false, false, true,  false, false, false, false, false, false, false, false, false),
+    { win16 }   ( false, false, false, false, false, false, false, false, false, false, false, false, false, true , false)
+  );
+
+type
+  //TCPUBase = (i386,x86_64,arm,aarch64,powerpc,powerpc64,jvm,sparc,aix,mips,avr,m68k);
+  TCPUBaseSet = set of TCPU;
+  //TOSBase  = (windows,linux,android,darwin,freebsd,netbsd,ios,iphonesim,wince,java,embedded,dos,aros,haiku,go32,os2,solaris,amiga,atari);
+  TOSBaseSet = set of TOS;
+
+const
+
+  // list of what fpcupdeluxe is able to do !!
+  // this makes the user interaction better, by leaving out non-options
+
+  {$ifdef BSD}
+  {$ifdef Darwin}
+  {$define CPUOSSetDefined}
+  CPUset : TCPUBaseSet = [i386,x86_64,arm,aarch64];
+  OSset  : TOSBaseSet  = [win32,darwin];
+  {$else}
+  {$define CPUOSSetDefined}
+  CPUset : TCPUBaseSet = [i386,x86_64,arm,aarch64];
+  OSset  : TOSBaseSet  = [win32,darwin];
+  {$endif}
+  {$endif}
+
+  {$ifdef MsWindows}
+  {$define CPUOSSetDefined}
+  {$ifdef CPUX86}
+  {$define CPUOSSetDefined}
+  CPUset : TCPUBaseSet = [i386,x86_64,arm,aarch64,jvm];
+  OSset  : TOSBaseSet  = [win32,linux,android,darwin,freebsd,wince,java];
+  {$endif CPUX86}
+  {$ifdef CPUX64}
+  CPUset : TCPUBaseSet = [x86_64,arm,aarch64,jvm];
+  OSset  : TOSBaseSet  = [win32,linux,android,darwin,freebsd,wince,java];
+  {$endif CPUX64}
+  {$endif}
+
+  {$ifdef Linux}
+  {$ifdef CPUX86}
+  {$define CPUOSSetDefined}
+  CPUset : TCPUBaseSet = [i386,x86_64,arm,aarch64];
+  OSset  : TOSBaseSet  = [win32,linux,android,darwin,freebsd,java];
+  {$endif CPUX86}
+  {$ifdef CPUX64}
+  {$define CPUOSSetDefined}
+  CPUset : TCPUBaseSet = [i386,x86_64,arm,aarch64];
+  OSset  : TOSBaseSet  = [win32,linux,android,darwin,freebsd,java];
+  {$endif CPUX64}
+  {$ifdef CPUARM}
+  {$endif CPUARM}
+  {$ifdef CPUAARCH64}
+  {$endif CPUAARCH64}
+  {$endif}
+
+  {$ifndef CPUOSSetDefined}
+  CPUset : TCPUBaseSet = [];
+  OSset : TOSBaseSet = [];
+  {$endif}
 
 type
   TSequencer=class; //forward
@@ -414,6 +577,7 @@ type
     property SwitchURL:boolean read FSwitchURL write FSwitchURL;
     // Fill in ModulePublishedList and ModuleEnabledList and load other config elements
     function LoadFPCUPConfig:boolean;
+    function CheckValidCPUOS: boolean;
     // Stop talking. Do it! Returns success status
     function Run: boolean;
     constructor Create;
@@ -487,19 +651,12 @@ type
 
 implementation
 
-{$IFDEF DEBUG}
 uses
+  strutils
   {$ifdef linux}
-  processutils,
+  ,processutils
   {$endif}
-  typinfo;
-{$ELSE}
-{$ifdef linux}
-uses
-  processutils;
-{$endif}
-
-{$ENDIF DEBUG}
+  ;
 
 { TFPCupManager }
 
@@ -554,7 +711,7 @@ end;
 procedure TFPCupManager.SetFPCURL(AValue: string);
 begin
   if FFPCURL=AValue then Exit;
-  if pos('//',AValue)>0 then
+  if pos('://',AValue)>0 then
     FFPCURL:=AValue
   else
     FFPCURL:=installerUniversal.GetAlias('fpcURL',AValue);
@@ -582,7 +739,7 @@ end;
 procedure TFPCupManager.SetLazarusURL(AValue: string);
 begin
   if FLazarusURL=AValue then Exit;
-  if pos('//',AValue)>0 then
+  if pos('://',AValue)>0 then
     FLazarusURL:=AValue
   else
     FLazarusURL:=installerUniversal.GetAlias('lazURL',AValue);
@@ -641,6 +798,106 @@ begin
   result:=installerUniversal.GetModuleEnabledList(FModuleEnabledList);
 end;
 
+function TFPCupManager.CheckValidCPUOS: boolean;
+var
+  TxtFile:Text;
+  s:string;
+  x:integer;
+  sl:TStringList;
+  cpuindex:integer;
+begin
+  result:=false;
+
+  //parsing fpmkunit.pp for valid CPU / OS combos
+
+  s:=IncludeTrailingPathDelimiter(FPCSourceDirectory)+'packages'+DirectorySeparator+'fpmkunit'+DirectorySeparator+'src'+DirectorySeparator + 'fpmkunit.pp';
+  if FileExists(s) then
+  begin
+
+    AssignFile(TxtFile,s);
+    Reset(TxtFile);
+    while NOT EOF (TxtFile) do
+    begin
+      Readln(TxtFile,s);
+
+      x:=Pos('OSCPUSupported : array[TOS,TCpu]',s);
+      if x>0 then
+      begin
+        // read the line with all cpus
+        // { os          none   i386    m68k  ppc    sparc  x86_64 arm    ppc64  avr    armeb  mips   mipsel jvm    i8086 aarch64 sparc64}
+        Readln(TxtFile,s);
+        s:=DelChars(s,'{');
+        s:=DelChars(s,'}');
+        s:=Trim(s);
+        while true do
+        begin
+          x:=Pos('  ',s);
+          if x>0 then Delete(s,x,1) else break;
+        end;
+        sl:=TStringList.Create;
+        try
+          sl.Delimiter:=' ';
+          sl.StrictDelimiter:=true;
+          sl.DelimitedText:=s;
+          // slcpu now contains i386,m68k,....
+          s:=CrossCPU_Target;
+          if s='powerpc' then s:='ppc';
+          if s='powerpc64' then s:='ppc64';
+          cpuindex:=sl.IndexOf(s);
+          sl.Clear;
+          if cpuindex>=0 then
+          begin
+            repeat
+              // { none }    ( false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false),
+              Readln(TxtFile,s);
+
+              if Pos(');',s)>0 then break;
+              if Length(Trim(s))=0 then break;
+
+              s:=DelChars(s,'{');
+              s:=DelChars(s,'}');
+              s:=DelChars(s,'(');
+              s:=DelChars(s,')');
+              s:=StringReplace(s,',',' ',[rfReplaceAll]);
+              s:=Trim(s);
+              while true do
+              begin
+                x:=Pos('  ',s);
+                if x>0 then Delete(s,x,1) else break;
+              end;
+              sl.DelimitedText:=s;
+              if sl.Count>cpuindex then
+              begin
+                if sl[0]=CrossOS_Target then
+                begin
+                  if sl[cpuindex]='true' then
+                  begin
+                    result:=true;
+                    break;
+                  end;
+                end;
+              end;
+            until EOF(TxtFile);
+          end;
+
+        finally
+          sl.Free;
+        end;
+
+        break;
+
+      end;
+
+    end;
+
+    CloseFile(TxtFile);
+
+  end else infoln('Tried to get CPU OS combo from source, but failed.',etInfo);
+
+end;
+
+
+
 function TFPCupManager.Run: boolean;
 {$IFDEF MSWINDOWS}
 var
@@ -664,7 +921,7 @@ begin
   FResultSet:=[];
 
   try
-    WritelnLog(DateTimeToStr(now)+': fpcup'+RevisionStr+' ('+VersionDate+') started.',true);
+    WritelnLog(DateTimeToStr(now)+': '+BeginSnippet+' V'+RevisionStr+' ('+VersionDate+') started.',true);
   except
     // Writing to log failed, probably duplicate run. Inform user and get out.
     {$IFNDEF NOCONSOLE}
@@ -749,7 +1006,8 @@ begin
     {$endif}
 
     {$endif}
-    if (FIncludeModules<>'') and (result) then begin
+    if (FIncludeModules<>'') and (result) then
+    begin
       // run specified additional modules using the only mechanism
       infoln('InstallerManager: going to run sequencer for include modules '+FIncludeModules,etDebug);
       FSequencer.CreateOnly(FIncludeModules);
@@ -970,31 +1228,13 @@ function TSequencer.DoExec(FunctionName: string): boolean;
     // these libs are always needed !!
     AdvicedLibs:='make gdb binutils unrar patch wget ';
 
-    AllOutput:=TStringList.Create;
-    try
-      Output:='';
-      ExecuteCommand('cat /etc/os-release',Output,false);
-      AllOutput.Text := Output;
-      Output := lowercase(AllOutput.Values['ID_LIKE']);
-      if Length(Output)=0 then Output := lowercase(AllOutput.Values['DISTRIB_ID']);
-      if Length(Output)=0 then Output := lowercase(AllOutput.Values['ID']);
-
-      {$ifdef BSD}
-      {$ifndef Darwin}
-      if Length(Output)=0 then
-      begin
-        ExecuteCommand('uname -s',Output,false);
-        Output := lowercase(Output);
-      end;
-      {$endif}
-      {$endif}
-
-      if (Output='arch') OR (Output='manjaro') then
+    Output:=GetDistro;
+    if (AnsiContainsText(Output,'arch') OR AnsiContainsText(Output,'manjaro')) then
       begin
         Output:='libx11 gtk2 gdk-pixbuf2 pango cairo';
         AdvicedLibs:=AdvicedLibs+'libx11 gtk2 gdk-pixbuf2 pango cairo ibus-gtk and ibus-gtk3 xorg-fonts-100dpi xorg-fonts-75dpi ttf-freefont ttf-liberation unrar';
       end
-      else if (Output='debian') OR (Output='ubuntu') OR (Output='linuxmint') then
+    else if (AnsiContainsText(Output,'debian') OR AnsiContainsText(Output,'ubuntu') OR AnsiContainsText(Output,'linuxmint')) then
       begin
         {
         SetLength(LS,12);
@@ -1039,26 +1279,22 @@ function TSequencer.DoExec(FunctionName: string): boolean;
                      'libxft2 libfontconfig1 xfonts-scalable gtk2-engines-pixbuf unrar';
       end
       else
-      if (Output='rhel') OR (Output='centos') OR (Output='scientific') OR (Output='fedora')  then
+    if (AnsiContainsText(Output,'rhel') OR AnsiContainsText(Output,'centos') OR AnsiContainsText(Output,'scientific') OR AnsiContainsText(Output,'fedora') OR AnsiContainsText(Output,'redhat'))  then
       begin
         Output:='libX11-devel gtk2-devel gtk+extra gtk+-devel cairo-devel cairo-gobject-devel pango-devel';
       end
       else
-      if (Output='openbsd') then
+    if AnsiContainsText(Output,'openbsd') then
       begin
         Output:='libiconv xorg-libraries libx11 libXtst xorg-fonts-type1 liberation-fonts-ttf gtkglext wget';
         //Output:='gmake gdk-pixbuf gtk+2';
       end
       else
-      if (Output='freebsd') OR (Output='netbsd') then
+    if (AnsiContainsText(Output,'freebsd') OR AnsiContainsText(Output,'netbsd')) then
       begin
         Output:='xorg-libraries libX11 libXtst gtkglext iconv xorg-fonts-type1 liberation-fonts-ttf';
       end
       else Output:='the libraries to get libX11.so and libgdk_pixbuf-2.0.so and libpango-1.0.so and libgdk-x11-2.0.so, but also make and binutils';
-
-    finally
-      AllOutput.Free;
-    end;
 
     if (LCLPlatform='') or (Uppercase(LCLPlatform)='GTK2') then
       pll:=@LCLLIBS
@@ -1068,14 +1304,15 @@ function TSequencer.DoExec(FunctionName: string): boolean;
     begin
       if not TestLib(pll^[i]) then
       begin
-        FParent.WritelnLog(etError,'Required package is not installed for Lazarus: '+pll^[i], true);
+        if result=true then FParent.WritelnLog(etError,'Missing library:', true);
+        FParent.WritelnLog(etError, pll^[i], true);
         result:=false;
       end;
     end;
     if (NOT result) AND (Length(Output)>0) then
     begin
-      FParent.WritelnLog(etError,'You need to install at least '+Output+' to build Lazarus !!', true);
-      FParent.WritelnLog(etError,'Make, binutils, subversion/svn [and gdb] are also required !!', true);
+      FParent.WritelnLog(etWarning,'You need to install at least '+Output+' to build Lazarus !!', true);
+      FParent.WritelnLog(etWarning,'Make, binutils, subversion/svn [and gdb] are also required !!', true);
     end;
 
     // do not error out ... user could only install FPC
@@ -1083,7 +1320,7 @@ function TSequencer.DoExec(FunctionName: string): boolean;
 
   end;
   {$else} //stub for other platforms for now
-  function CheckDevLibs(LCLPlatform: string): boolean;
+  function CheckDevLibs({%H-}LCLPlatform: string): boolean;
   begin
     result:=true;
   end;
@@ -1177,10 +1414,8 @@ begin
     if CrossCompiling then
     begin
       FInstaller:=TFPCCrossInstaller.Create;
-      FInstaller.CrossCPU_Target:=FParent.CrossCPU_Target;
+      FInstaller.SetTarget(FParent.CrossCPU_Target,FParent.CrossOS_Target,FParent.CrossOS_SubArch);
       FInstaller.CrossOPT:=FParent.CrossOPT;
-      FInstaller.CrossOS_Target:=FParent.CrossOS_Target;
-      FInstaller.CrossOS_SubArch:=FParent.CrossOS_SubArch;
       FInstaller.CrossLibraryDirectory:=FParent.CrossLibraryDirectory;
       FInstaller.CrossToolsDirectory:=FParent.CrossToolsDirectory;
     end
@@ -1191,7 +1426,7 @@ begin
     (FInstaller as TFPCInstaller).BootstrapCompilerDirectory:=FParent.BootstrapCompilerDirectory;
     (FInstaller as TFPCInstaller).BootstrapCompilerURL:=FParent.BootstrapCompilerURL;
     (FInstaller as TFPCInstaller).SourcePatches:=FParent.FFPCPatches;
-    FInstaller.Compiler:='';  //bootstrap used
+    FInstaller.Compiler:=FParent.CompilerName;
     FInstaller.CompilerOptions:=FParent.FPCOPT;
     FInstaller.DesiredRevision:=FParent.FPCDesiredRevision;
     FInstaller.DesiredBranch:=FParent.FPCDesiredBranch;
@@ -1223,10 +1458,8 @@ begin
     if CrossCompiling then
       begin
       FInstaller:=TLazarusCrossInstaller.Create;
-      FInstaller.CrossCPU_Target:=FParent.CrossCPU_Target;
+      FInstaller.SetTarget(FParent.CrossCPU_Target,FParent.CrossOS_Target,FParent.CrossOS_SubArch);
       FInstaller.CrossOPT:=FParent.CrossOPT;
-      FInstaller.CrossOS_Target:=FParent.CrossOS_Target;
-      FInstaller.CrossOS_SubArch:=FParent.CrossOS_SubArch;
       end
     else
       FInstaller:=TLazarusNativeInstaller.Create;
@@ -1253,7 +1486,8 @@ begin
   //Convention: help modules start with HelpFPC
   //or HelpLazarus
   {$endif}
-  else if uppercase(ModuleName)='HELPFPC' then
+  else if uppercase(ModuleName)='HELPFPC'
+  then
       begin
       if assigned(FInstaller) then
         begin
@@ -1272,7 +1506,8 @@ begin
         FInstaller.Compiler:=FParent.CompilerName;
       end
   {$ifndef FPCONLY}
-  else if uppercase(ModuleName)='HELPLAZARUS' then
+  else if uppercase(ModuleName)='HELPLAZARUS'
+  then
       begin
       if assigned(FInstaller) then
         begin
@@ -1319,6 +1554,7 @@ begin
       (FInstaller as TUniversalInstaller).LazarusCompilerOptions:=FParent.FLazarusOPT;
       (FInstaller as TUniversalInstaller).LazarusDir:=FParent.FLazarusDirectory;
       (FInstaller as TUniversalInstaller).LazarusPrimaryConfigPath:=FParent.LazarusPrimaryConfigPath;
+      (FInstaller as TUniversalInstaller).LCL_Platform:=FParent.CrossLCL_Platform;
       {$endif}
       if FParent.CompilerName='' then
         FInstaller.Compiler:=FInstaller.GetCompilerInDir(FParent.FPCInstallDirectory)
@@ -1594,7 +1830,7 @@ begin
       //For debugging state machine sequence:
       {$IFDEF DEBUG}
       infoln(localinfotext+'State machine running sequence '+SequenceName,etDebug);
-      infoln(localinfotext+'State machine [instr]: '+GetEnumName(TypeInfo(TKeyword),Ord(FStateMachine[InstructionPointer].instr)),etDebug);
+      infoln(localinfotext+'State machine [instr]: '+GetEnumNameSimple(TypeInfo(TKeyword),Ord(FStateMachine[InstructionPointer].instr)),etDebug);
       infoln(localinfotext+'State machine [param]: '+FStateMachine[InstructionPointer].param,etDebug);
       {$ENDIF DEBUG}
       case FStateMachine[InstructionPointer].instr of
@@ -1624,9 +1860,12 @@ begin
       if not result then
         begin
         SeqAttr^.Executed:=ESFailed;
-        FParent.WritelnLog(etError,localinfotext+'Failure running fpcup. Technical details: error executing sequence '+SequenceName+
+        {$IFDEF DEBUG}
+        FParent.WritelnLog(etError,localinfotext+'Failure running '+BeginSnippet+' error executing sequence '+SequenceName+
+          '; instr: '+GetEnumNameSimple(TypeInfo(TKeyword),Ord(FStateMachine[InstructionPointer].instr))+
           '; line: '+IntTostr(InstructionPointer - EntryPoint+1)+
           ', param: '+FStateMachine[InstructionPointer].param);
+        {$ENDIF DEBUG}
         CleanUpInstaller;
         exit; //failure, bail out
         end;

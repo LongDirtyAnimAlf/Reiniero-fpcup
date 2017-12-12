@@ -80,6 +80,8 @@ type
     FLazarusNeedsRebuild:boolean;
     // Directory where configuration for Lazarus is stored:
     FLazarusPrimaryConfigPath:string;
+    // LCL widget set to be built
+    FLCL_Platform: string;
     {$endif}
     FPath:string; //Path to be used within this session (e.g. including compiler path)
     InitDone:boolean;
@@ -118,8 +120,10 @@ type
     property LazarusPrimaryConfigPath:string read FLazarusPrimaryConfigPath write FLazarusPrimaryConfigPath;
     // Lazarus base directory
     property LazarusDir:string read FLazarusDir write FLazarusDir;
-    // Build module
+    // LCL widget set to be built
+    property LCL_Platform: string read FLCL_Platform write FLCL_Platform;
     {$endif}
+    // Build module
     function BuildModule(ModuleName:string): boolean; override;
     // Clean up environment
     function CleanModule(ModuleName:string): boolean; override;
@@ -143,7 +147,8 @@ type
   function GetModuleList:string;
   // gets alias for keywords in Dictionary.
   //The keyword 'list' is reserved and returns the list of keywords as commatext
-  function GetAlias(Dictionary,keyword: string): string;
+  function GetAlias(aDictionary,aKeyword: string): string;
+  function GetKeyword(aDictionary,aAlias: string): string;
   // check if enabled modules are allowed !
   function CheckIncludeModule(ModuleName: string):boolean;
   function SetConfigFile(aConfigFile: string):boolean;
@@ -394,6 +399,9 @@ begin
   Processor.Parameters.Add('--cpu=' + GetTargetCPU);
   Processor.Parameters.Add('--os=' + GetTargetOS);
   Processor.Parameters.Add('--add-package');
+  if FLCL_Platform <> '' then
+            Processor.Parameters.Add('--ws=' + FLCL_Platform);
+
   Processor.Parameters.Add(PackageAbsolutePath);
   try
     Processor.Execute;
@@ -409,7 +417,7 @@ begin
       // if the package is only for runtime, just add an lpl file to inform Lazarus of its existence and location ->> set result to true
       if Pos('only for runtime',Processor.OutputString)>0
          then result:=True
-         else WritelnLog(localinfotext+'Rrror trying to add package '+PackageName+LineEnding+'Details: '+FErrorLog.Text,true);
+         else WritelnLog(localinfotext+'Error trying to add package '+PackageName+LineEnding+'Details: '+FErrorLog.Text,true);
     end;
   except
     on E: Exception do
@@ -549,6 +557,23 @@ begin
     end;
     {$endif}
 
+    {$ifdef Darwin}
+    {$ifdef CPUX64}
+    // the packages [onlinepackagemanager and] editormacroscript are not suitable for Darwin 64 bit !
+    // so skip them in case they are included.
+    if
+      {$ifdef LCLCOCOA}
+      // added in Lazarus revision 55937
+      // (Pos('onlinepackagemanager',PackagePath)>0) OR
+      {$endif}
+      (Pos('editormacroscript',PackagePath)>0) then
+    begin
+      infoln(localinfotext+'Incompatible package '+ExtractFileName(PackagePath)+' skipped.',etWarning);
+      continue;
+    end;
+    {$endif}
+    {$endif}
+
     {$if (NOT defined(CPUI386)) AND (NOT defined(CPUX86_64)) AND (NOT defined(CPUARM))}
     // the package PascalScript is only suitable for i386, x86_64 and arm !
     // so skip in case package was included.
@@ -559,15 +584,15 @@ begin
     end;
     {$endif}
 
-    {$ifdef CPUAARCH64}
-    // the package macroscript is not working on aarch64 (and perhaps others) !
+    {$if (NOT defined(CPUI386)) AND (NOT defined(CPUX86_64)) AND (NOT defined(CPUARM))}
+    // the package macroscript (depending on PascalScript) is only suitable for i386, x86_64 and arm !
     // so skip in case package was included.
     if (Pos('editormacroscript',PackagePath)>0) then
     begin
       infoln(localinfotext+'Incompatible package '+ExtractFileName(PackagePath)+' skipped.',etWarning);
       continue;
     end;
-    {$endif CPUAARCH64}
+    {$endif}
 
     {
     if (NOT FileExists(PackagePath)) OR (PackagePath='') then
@@ -678,6 +703,16 @@ begin
        else exec:=GetValue(Directive+IntToStr(i),sl);
     // Skip over missing numbers:
     if exec='' then continue;
+
+    if (Pos('fpgui',exec)>0) then
+     begin
+       {$ifdef MSWindows}
+       if (Pos('x11',exec)>0) then continue;
+       {$else}
+       if (Pos('gdi',exec)>0) then continue;
+       {$endif}
+     end;
+
     j:=Pos('lazbuild',lowerCase(exec));
     if j>0 then
     begin
@@ -685,6 +720,10 @@ begin
       j:=Pos('lazbuild.exe',lowerCase(exec));
       if j>0 then exec:=StringReplace(exec,'lazbuild.exe','lazbuild',[rfIgnoreCase]);
       {$ENDIF}
+
+      // TODO
+      // should more options for lazbuild be added here, as is been done on other places !!??
+
       {$IFDEF DEBUG}
       exec:=StringReplace(exec,'lazbuild','lazbuild --verbose',[rfIgnoreCase]);
       {$ELSE}
@@ -729,9 +768,12 @@ end;
 
 {$ifndef FPCONLY}
 function TUniversalInstaller.UnInstallPackage(PackagePath: string): boolean;
+const
+  PACKAGE_KEYSTART='UserPkgLinks/';
+  MISC_KEYSTART='MiscellaneousOptions/BuildLazarusOptions/StaticAutoInstallPackages/';
 var
   cnt, i: integer;
-  key: string;
+  key,value:string;
   LazarusConfig: TUpdateLazConfig;
   PackageName,PackageAbsolutePath: string;
   xmlfile: string;
@@ -740,10 +782,10 @@ var
 begin
   result:=false;
 
+  PackageName:=ExtractFileNameWithoutExt(ExtractFileNameOnly(PackagePath));
+
   localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (UnInstallPackage: '+PackageName+'): ';
   infoln(localinfotext+'Entering ...',etDebug);
-
-  PackageName:=ExtractFileNameWithoutExt(ExtractFileNameOnly(PackagePath));
 
   infoln(localinfotext+'Removing package from config-files',etInfo);
 
@@ -753,17 +795,19 @@ begin
   else
     PackageAbsolutePath:=SafeExpandFileName(PackagePath);
   if FVerbose then WritelnLog(localinfotext+'Going to uninstall package',true);
-  xmlfile:=PackageConfig;
-  key:='UserPkgLinks/Count';
+
   LazarusConfig:=TUpdateLazConfig.Create(FLazarusPrimaryConfigPath);
   try
-    cnt:=LazarusConfig.GetVariable(xmlfile, key, 0);
+    try
+
+      xmlfile:=PackageConfig;
+      cnt:=LazarusConfig.GetVariable(xmlfile, PACKAGE_KEYSTART+'Count', 0);
     // check if package is already registered
     i:=cnt;
     while i>0 do
       begin
       // Ignore package name casing
-      if UpperCase(LazarusConfig.GetVariable(xmlfile, 'UserPkgLinks/Item'+IntToStr(i)+'/'
+        if UpperCase(LazarusConfig.GetVariable(xmlfile, PACKAGE_KEYSTART+'Item'+IntToStr(i)+'/'
         +'Name/Value'))
         =UpperCase(PackageName) then
           break;
@@ -771,61 +815,66 @@ begin
       end;
     if i>1 then // found
       begin
-      infoln(localinfotext+'Removing package from '+xmlfile,etInfo);
+        infoln(localinfotext+'Found the package as item '+IntToStr(i)+' ... removing it from '+xmlfile,etInfo);
       FLazarusNeedsRebuild:=true;
-      LazarusConfig.SetVariable(xmlfile, key, cnt-1);
-      key:='UserPkgLinks/Item'+IntToStr(cnt)+'/';
       while i<cnt do
         begin
-        LazarusConfig.MovePath(xmlfile, 'UserPkgLinks/Item'+IntToStr(i+1)+'/',
-           'UserPkgLinks/Item'+IntToStr(i)+'/');
+          LazarusConfig.MovePath(
+            xmlfile,
+            PACKAGE_KEYSTART+'Item'+IntToStr(i+1)+'/',
+            PACKAGE_KEYSTART+'Item'+IntToStr(i)+'/');
         i:=i+1;
         end;
-      LazarusConfig.DeletePath(xmlfile, 'UserPkgLinks/Item'+IntToStr(cnt)+'/');
+        LazarusConfig.DeletePath(xmlfile, PACKAGE_KEYSTART+'Item'+IntToStr(cnt)+'/');
+        LazarusConfig.SetVariable(xmlfile, PACKAGE_KEYSTART+'Count', cnt-1);
       end;
     xmlfile:=MiscellaneousConfig;
-    key:='MiscellaneousOptions/BuildLazarusOptions/StaticAutoInstallPackages/'
-      +'Count';
-    cnt:=LazarusConfig.GetVariable(xmlfile, key, 0);
+      cnt:=LazarusConfig.GetVariable(xmlfile, MISC_KEYSTART+'Count', 0);
     // check if package is already registered
     i:=cnt;
     while i>0 do
       begin
       // Ignore package name casing
-      if UpperCase(LazarusConfig.GetVariable(xmlfile, 'MiscellaneousOptions/'
-        +'BuildLazarusOptions/StaticAutoInstallPackages/Item'+
-        IntToStr(i)+'/Value'))
-        =UpperCase(PackageName) then
-          break;
+        if UpperCase(LazarusConfig.GetVariable(xmlfile, MISC_KEYSTART+'Item'+IntToStr(i)+'/Value'))=UpperCase(PackageName) then break;
       i:=i-1;
       end;
     if i>1 then // found
       begin
-      infoln(localinfotext+'Removing package from '+xmlfile,etInfo);
+        infoln(localinfotext+'Found the package as item '+IntToStr(i)+' ... removing it from '+xmlfile,etInfo);
       FLazarusNeedsRebuild:=true;
-      LazarusConfig.SetVariable(xmlfile, key, cnt-1);
-      key:='MiscellaneousOptions/BuildLazarusOptions/StaticAutoInstallPackages'
-        +'/Item'+IntToStr(cnt)+'/';
       while i<cnt do
         begin
-        LazarusConfig.MovePath(xmlfile, 'MiscellaneousOptions/'
-          +'BuildLazarusOptions/StaticAutoInstallPackages/Item'+IntToStr(i+1)+
-            '/',
-           'MiscellaneousOptions/BuildLazarusOptions/StaticAutoInstallPackages'
-             +'/Item'+IntToStr(i)+'/');
+          value:=LazarusConfig.GetVariable(xmlfile, MISC_KEYSTART+'Item'+IntToStr(i+1)+'/Value');
+          LazarusConfig.SetVariable(xmlfile, MISC_KEYSTART+'Item'+IntToStr(i)+'/Value', value);
+          // Move does mot work. ToDo !
+          //infoln(localinfotext+'Moving '+MISC_KEYSTART+'Item'+IntToStr(i+1)+' towards '+MISC_KEYSTART+'Item'+IntToStr(i),etDebug);
+          //LazarusConfig.MovePath(xmlfile,
+          //  MISC_KEYSTART+'Item'+IntToStr(i+1)+'/',
+          //  MISC_KEYSTART+'Item'+IntToStr(i)+'/');
         i:=i+1;
         end;
-      LazarusConfig.DeletePath(xmlfile, 'MiscellaneousOptions/'
-        +'BuildLazarusOptions/StaticAutoInstallPackages/Item'+IntToStr(cnt)+'/'
-          );
-      end
+        infoln(localinfotext+'Deleting duplicate '+MISC_KEYSTART+'Item'+IntToStr(cnt),etDebug);
+        LazarusConfig.DeletePath(xmlfile, MISC_KEYSTART+'Item'+IntToStr(cnt)+'/');
+        infoln(localinfotext+'Setting '+MISC_KEYSTART+'Count to '+IntToStr(cnt-1),etDebug);
+        LazarusConfig.SetVariable(xmlfile, MISC_KEYSTART+'Count', cnt-1);
+      end;
+
+    except
+      on E: Exception do
+      begin
+        Result := false;
+        infoln(localinfotext+'Failure setting Lazarus config: ' + E.ClassName + '/' + E.Message, etError);
+      end;
+    end;
   finally
-    LazarusConfig.Destroy;
+    LazarusConfig.Free;
   end;
 
   if (ExtractFileName(PackagePath)<>PackagePath) then
   begin
-    if FVerbose then WritelnLog(localinfotext+'Removing lpl file for '+ExtractFileName(PackagePath),true);
+    if FVerbose then WritelnLog(localinfotext+'Checking lpl file for '+ExtractFileName(PackagePath),true);
+    if FileExists(PackageAbsolutePath) then
+    begin
     lpkdoc:=TConfig.Create(PackageAbsolutePath);
     key:='Package/';
     try
@@ -843,10 +892,8 @@ begin
                              'packager'+DirectorySeparator+
                              'globallinks'+DirectorySeparator+
                              LowerCase(lpkversion.Name)+'-'+lpkversion.AsString+'.lpl';
-
-      if FileExists(PackageAbsolutePath) then
-      begin
-        SysUtils.DeleteFile(PackageAbsolutePath);
+        if SysUtils.DeleteFile(PackageAbsolutePath) then
+          infoln(localinfotext+'Package '+PackageAbsolutePath+' deleted',etInfo);
       end;
     end;
   end;
@@ -913,6 +960,8 @@ var
     exec,key,counter,oldcounter,filename:string;
     count:integer;
   begin
+  //filename:=xmlfile;
+  //if rightstr(filename,4)<>'.xml' then
   filename:=xmlfile+'.xml';
   oldcounter:='';
   for i:=0 to MAXINSTRUCTIONS do
@@ -1104,8 +1153,12 @@ begin
         Processor.Parameters.Add('--cpu=' + GetTargetCPU);
         Processor.Parameters.Add('--os=' + GetTargetOS);
 
+        if FLCL_Platform <> '' then
+          Processor.Parameters.Add('--ws=' + FLCL_Platform);
+
         Processor.Parameters.Add('--build-ide=-dKeepInstalledPackages ' + FLazarusCompilerOptions);
         try
+          result := false;
           Processor.Execute;
           result := Processor.ExitStatus=0;
           if result then
@@ -1119,11 +1172,26 @@ begin
         except
           on E: Exception do
             begin
+            result:=false;
             WritelnLog(etError, infotext+'Exception trying to rebuild Lazarus '+LineEnding+
               'Details: '+E.Message,true);
-            result:=false;
             end;
         end;
+
+        (*
+        // still does not work as expected: disable for now !
+        if (NOT result) then
+        begin
+          //uninstall module in case of error except suggestedpackages
+          if LowerCase(ModuleName)<>'suggestedpackages' then
+          begin
+            WritelnLog(etWarning,infotext+'Going to remove '+ModuleName+' from Lazarus !',true);
+            //result:=UnInstallModule(ModuleName);
+            result:=RemovePackages(sl);
+          end;
+        end;
+        *)
+
       end;
     end
   else
@@ -1586,6 +1654,8 @@ begin
       Processor.Parameters.Add('--pcp=' + FLazarusPrimaryConfigPath);
       Processor.Parameters.Add('--cpu=' + GetTargetCPU);
       Processor.Parameters.Add('--os=' + GetTargetOS);
+      if FLCL_Platform <> '' then
+        Processor.Parameters.Add('--ws=' + FLCL_Platform);
       Processor.Parameters.Add('--build-ide=-dKeepInstalledPackages ' + FLazarusCompilerOptions);
       try
         Processor.Execute;
@@ -1632,12 +1702,15 @@ begin
     TStringList(UniModuleList.Objects[i]).free;
 end;
 
-function GetAlias(Dictionary,KeyWord: string): string;
+function GetKeyword(aDictionary,aAlias: string): string;
 var
   ini:TMemIniFile;
   sl:TStringList;
   e:Exception;
+  i:integer;
 begin
+  result:='';
+
   sl:=TStringList.Create;
   ini:=TMemIniFile.Create(CurrentConfigFile);
   {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
@@ -1647,28 +1720,57 @@ begin
   {$ENDIF}
 
   try
-    ini.ReadSection('ALIAS'+Dictionary,sl);
-    if Uppercase(KeyWord)='LIST' then
+    ini.ReadSectionValues('ALIAS'+aDictionary,sl);
+    for i:=0 to sl.Count-1 do
+    begin
+      if sl.ValueFromIndex[i]=aAlias then
+      begin
+        result:=sl.Names[i];
+        break;
+      end;
+    end;
+  finally
+    ini.Free;
+    sl.free;
+  end;
+end;
+
+function GetAlias(aDictionary,aKeyWord: string): string;
+var
+  ini:TMemIniFile;
+  sl:TStringList;
+  e:Exception;
+begin
+  sl:=TStringList.Create;
+
+  ini:=TMemIniFile.Create(CurrentConfigFile);
+  {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
+  ini.Options:=ini.Options-[ifoCaseSensitive];
+  {$ELSE}
+  ini.CaseSensitive:=false;
+  {$ENDIF}
+
+  try
+    ini.ReadSection('ALIAS'+aDictionary,sl);
+    if Uppercase(aKeyWord)='LIST' then
       result:=sl.CommaText
     else
     begin
-      result:=ini.ReadString('ALIAS'+Dictionary,KeyWord,'');
+      result:=ini.ReadString('ALIAS'+aDictionary,aKeyWord,'');
       if result='' then
       begin
-        // added because older fpc.ini or equivalent may not have the default keyword !!
-        if Uppercase(KeyWord)='DEFAULT' then
+        if (result='') then
         begin
-          infoln('InstallerUniversal (GetAlias): no default source alias found: using fpcup default',etInfo);
-          if Dictionary='fpcURL' then result:=FPCSVNURL+'/fpc/tags/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll]);
+          infoln('InstallerUniversal (GetAlias): no source alias found: using fpcup default',etInfo);
+          if aDictionary='fpcURL' then result:=FPCSVNURL+'/fpc/tags/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll]);
           {$ifndef FPCONLY}
-          if Dictionary='lazURL' then result:=FPCSVNURL+'/lazarus/tags/lazarus_'+StringReplace(DEFAULTLAZARUSVERSION,'.','_',[rfReplaceAll]);
+          if aDictionary='lazURL' then result:=FPCSVNURL+'/lazarus/tags/lazarus_'+StringReplace(DEFAULTLAZARUSVERSION,'.','_',[rfReplaceAll]);
           {$endif}
         end;
-        if Uppercase(KeyWord)='SKIP' then result:='SKIP';
 
         if (result='') then
         begin
-          e:=Exception.CreateFmt('--%s=%s : Invalid keyword. Accepted keywords are: %s',[Dictionary,KeyWord,sl.CommaText]);
+          e:=Exception.CreateFmt('--%s=%s : Invalid keyword. Accepted keywords are: %s',[aDictionary,aKeyWord,sl.CommaText]);
           raise e;
         end;
       end;
@@ -1946,6 +2048,8 @@ begin
          // if we have a negative define list, then default to true until an negative setting is encountered
          // if we have a positive define list, then default to false until a positive setting is encountered
          AddModule:=NegativeList;
+
+
 
          {$ifdef CPU32}
          if (Pos('cpu32',cpu)>0) then AddModule:=AND_OR_Values(AddModule,(Pos('-cpu32',cpu)=0),NegativeList);

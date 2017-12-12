@@ -56,8 +56,7 @@ public
   function GetLibsLCL(LCL_Platform:string; Basepath:string):boolean;override;
   {$endif}
   function GetBinUtils(Basepath:string):boolean;override;
-  constructor Create;
-  destructor Destroy; override;
+  procedure Reset;override;
 end;
 
 { Tany_linuxarm }
@@ -98,6 +97,7 @@ begin
     AddFPCCFGSnippet('-Xd');
     AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath));
     AddFPCCFGSnippet('-Xr/usr/lib');
+
     {
     Actually leaving this out seems to work ok on the target system.
     if StringListStartsWith(FCrossOpts,'-FL')=-1 then
@@ -132,7 +132,7 @@ function Tany_linuxarm.GetBinUtils(Basepath:string): boolean;
 const
   DirName='arm-linux';
 var
-  AsFile: string;
+  AsFile,aOption: string;
   BinPrefixTry:string;
   i:integer;
   hardfloat:boolean;
@@ -146,7 +146,7 @@ begin
 
   if (NOT requirehardfloat) then
   begin
-  AsFile:=FBinUtilsPrefix+'as'+GetExeExt;
+    AsFile:=FBinUtilsPrefix+'as'+GetExeExt;
     result:=SearchBinUtil(BasePath,AsFile);
     if not result then
       result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
@@ -158,18 +158,18 @@ begin
     BinPrefixTry:='arm-linux-eabi-';
     AsFile:=BinPrefixTry+'as'+GetExeExt;
 
-  result:=SearchBinUtil(BasePath,AsFile);
-  if not result then
-    result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+    result:=SearchBinUtil(BasePath,AsFile);
+    if not result then
+      result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
 
     // also check in the eabi directory
     if not result then
        result:=SimpleSearchBinUtil(BasePath,DirName+'-eabi',AsFile);
-      end;
+  end;
 
   // Also allow for baremetal crossfpc naming
   if (not result) AND (NOT requirehardfloat) then
-      begin
+  begin
     BinPrefixTry:='arm-none-eabi-';
     AsFile:=BinPrefixTry+'as'+GetExeExt;
 
@@ -180,7 +180,7 @@ begin
     // also check in the eabi directory
     if not result then
        result:=SimpleSearchBinUtil(BasePath,DirName+'-eabi',AsFile);
-      end;
+  end;
 
   if (not result) AND (NOT requirehardfloat) then
   begin
@@ -192,7 +192,7 @@ begin
       result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
 
     // also check in the gnueabi directory
-  if not result then
+    if not result then
        result:=SimpleSearchBinUtil(BasePath,DirName+'-gnueabi',AsFile);
   end;
 
@@ -203,58 +203,60 @@ begin
 
     result:=SearchBinUtil(BasePath,AsFile);
     if not result then
-    result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+      result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+
     // also check in the gnueabi directory
     if not result then
        result:=SimpleSearchBinUtil(BasePath,DirName+'-gnueabi',AsFile);
   end;
 
 
-    {$ifdef Darwin}
-    if not result then
+  {$ifdef Darwin}
+  if not result then
+  begin
+    // some special binutils, also working for RPi2 !!
+    BinPrefixTry:='armv8-rpi3-linux-gnueabihf-';
+    AsFile:=BinPrefixTry+'as'+GetExeExt;
+    result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+    if result then
     begin
-      // some special binutils, also working for RPi2 !!
-      BinPrefixTry:='armv8-rpi3-linux-gnueabihf-';
-      AsFile:=BinPrefixTry+'as'+GetExeExt;
-      result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
-      if result then
-      begin
       hardfloat:=true;
-        // remove floating point option, if any, as this toolchain does not like them
-        // tricky !
-        i:=StringListStartsWith(FCrossOpts,'-CfVFPV');
-        if i>-1 then
-        begin
-          FCrossOpts.Delete(i);
-        end;
-        i:=StringListStartsWith(FCrossOpts,'-OoFASTMATH');
-        if i>-1 then
-        begin
-          FCrossOpts.Delete(i);
-        end;
-        i:=StringListStartsWith(FCrossOpts,'-CaEABIHF');
-        if i>-1 then
-        begin
-          FCrossOpts.Delete(i);
-        end;
+      // remove floating point option, if any, as this toolchain does not like them
+      // tricky !
+      i:=StringListStartsWith(FCrossOpts,'-CfVFPV');
+      if i>-1 then
+      begin
+        FCrossOpts.Delete(i);
+      end;
+      i:=StringListStartsWith(FCrossOpts,'-OoFASTMATH');
+      if i>-1 then
+      begin
+        FCrossOpts.Delete(i);
+      end;
+      i:=StringListStartsWith(FCrossOpts,'-CaEABIHF');
+      if i>-1 then
+      begin
+        FCrossOpts.Delete(i);
       end;
     end;
-    {$endif}
+  end;
+  {$endif}
 
   // Also allow for hardfloat crossbinutils
   if not result then
   begin
-      BinPrefixTry:='arm-linux-gnueabihf-';
-      AsFile:=BinPrefixTry+'as'+GetExeExt;
+    BinPrefixTry:='arm-linux-gnueabihf-';
+    AsFile:=BinPrefixTry+'as'+GetExeExt;
 
     result:=SearchBinUtil(BasePath,AsFile);
     if not result then
       result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
-      // also check in the gnueabihf directory
-      if not result then
-         result:=SimpleSearchBinUtil(BasePath,DirName+'-gnueabihf',AsFile);
+
+    // also check in the gnueabihf directory
+    if not result then
+       result:=SimpleSearchBinUtil(BasePath,DirName+'-gnueabihf',AsFile);
     if result then hardfloat:=true;
-    end;
+  end;
 
   // baremetal
   if not result then
@@ -292,12 +294,12 @@ begin
     // also check in the gnueabihf directory
     if not result then
     begin
-       result:=SimpleSearchBinUtil(BasePath,DirName+'-gnueabihf',AsFile);
+      result:=SimpleSearchBinUtil(BasePath,DirName+'-gnueabihf',AsFile);
       if result then hardfloat:=true;
     end;
   end;
 
-    if result then FBinUtilsPrefix:=BinPrefixTry;
+  if result then FBinUtilsPrefix:=BinPrefixTry;
 
   SearchBinUtilsInfo(result);
 
@@ -308,26 +310,22 @@ begin
   else
   begin
     FBinsFound:=true;
+    if hardfloat then ShowInfo('Found hardfloat binary utilities. Please make sure you did NOT specified -dFPC_ARMEL in your FPCOPT !',etWarning);
 
-    if hardfloat then ShowInfo('Found hardfloat binary utilities. Please make sure you specified -dFPC_ARMHF in your FPCOPT in order to build a hard-float cross-compiler.',etWarning);
+    // Configuration snippet for FPC
+    AddFPCCFGSnippet('-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath));
+    AddFPCCFGSnippet('-XP'+FBinUtilsPrefix);
 
-    { for raspberry pi look into
-    instruction set
-    -CpARMV6Z (not 7)
-    ABI
-    -CaEABI (versus DEFAULT) => not -caEABIHF/-dFPC_ARMHFhardfloat unless
-    FPU coprocessor
-    -CfVFPV2
-    if using android cross compiler binutils: EABI0
-    }
-    { for FPC 2.7.1, you can use -OoFASTMATH to enable faster floating point calcs for all architectures }
-
+    // Set some defaults if user hasn't specified otherwise
     // Architecture: e.g. ARMv6, ARMv7,...
-    if StringListStartsWith(FCrossOpts,'-Cp')=-1 then
+    i:=StringListStartsWith(FCrossOpts,'-Cp');
+    if i=-1 then
     begin
-      FCrossOpts.Add('-CpARMV6'); //apparently earlier instruction sets unsupported by Android and Raspberry Pi
-      ShowInfo('Did not find any -Cp architecture parameter; using -CpARMV6.',etInfo);
-    end;
+      aOption:='-CpARMV6';  // Raspberry Pi 1 and up
+      FCrossOpts.Add(aOption+' ');
+      ShowInfo('Did not find any -Cp architecture parameter; using '+aOption+' (RPi default).');
+    end else aOption:=Trim(FCrossOpts[i]);
+    AddFPCCFGSnippet(aOption);
 
     // Warn user to check things
     if (StringListStartsWith(FCrossOpts,'-CaEABIHF')>-1) AND (NOT hardfloat) then
@@ -337,53 +335,16 @@ begin
       // -dFPC_ARMHF is only used for (cross) compiler generation, not useful when compiling end user
       ShowInfo('Found -CaEABIHF cross compile option. Please make sure you specified -dFPC_ARMHF in your FPCOPT in order to build a hard-float cross-compiler.',etWarning);
     end;
-
-    // Configuration snippet for FPC
-    //http://wiki.freepascal.org/Setup_Cross_Compile_For_ARM#Make_FPC_able_to_cross_compile_for_arm-linux
-    AddFPCCFGSnippet('-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath));
-    AddFPCCFGSnippet('-XP'+FBinUtilsPrefix);
-    { don't know if this is still relevant for 2.7.x and for which linker
-    '-darm'+LineEnding+
-    }
   end;
-
-  //FSubArch
-  (*
-  if StringListStartsWith(FCrossOpts,'-Cp')=-1 then
-      begin
-        FCrossOpts.Add('-CpARMV6 '); //apparently earlier instruction sets unsupported by Android and Raspberry Pi
-        ShowInfo('Did not find any -Cp architecture parameter; using -CpARMV6.',etInfo);
-      end;
-
-      // Warn user to check things
-      if StringListStartsWith(FCrossOpts,'-CaEABIHF')>-1 then
-      begin
-        // Source: http://forum.lazarus.freepascal.org/index.php/topic,23075.msg137838.html#msg137838
-        // http://lists.freepascal.org/lists/fpc-devel/2013-May/032093.html
-        // -dFPC_ARMHF is only used for (cross) compiler generation, not useful when compiling end user
-        ShowInfo('Found -CaEABIHF cross compile option. Please make sure you specified -dFPC_ARMHF in your FPCOPT in order to build a hard-float cross-compiler.',etWarning);
-      end;
-  *)
-
 end;
 
-constructor Tany_linuxarm.Create;
+procedure Tany_linuxarm.Reset;
 begin
-  inherited Create;
+  inherited Reset;
   FBinUtilsPrefix:='arm-linux-';
-  FBinUtilsPath:='';
-  FCompilerUsed:=ctBootstrap;
-  FFPCCFGSnippet:=''; //will be filled in later
-  FLibsPath:='';
   FTargetCPU:='arm';
   FTargetOS:='linux';
-  FAlreadyWarned:=false;
   ShowInfo;
-end;
-
-destructor Tany_linuxarm.Destroy;
-begin
-  inherited Destroy;
 end;
 
 var

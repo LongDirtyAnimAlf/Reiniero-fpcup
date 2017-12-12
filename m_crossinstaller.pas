@@ -1,6 +1,9 @@
 unit m_crossinstaller;
-{ General crossinstaller/updater module
+{
+General crossinstaller/updater module
+
 Copyright (C) 2012-2013 Reinier Olislagers, Ludo Brands
+Copyright (C) 2015-2017 Alfred Glänzer
 
 This library is free software; you can redistribute it and/or modify it
 under the terms of the GNU Library General Public License as published by
@@ -40,14 +43,55 @@ const
     'todo: specify what exactly is missing';
   MAXDARWINVERSION=16;
   MINDARWINVERSION=10;
-  MAXIOSVERSION=10;
+  MAXIOSVERSION=12;
   MINIOSVERSION=1;
   MAXDELPHIVERSION=22;
   MINDELPHIVERSION=12;
+  NDKVERSIONNAMES:array[0..21] of string = ('7','7b','7c','8','8b','8c','8d','8e','9','9b','9c','9d','10','10b','10c','10d','10e','11','11b','11c','12','12b');
+  //PLATFORMVERSIONSNUMBERS:array[0..13] of byte = (9,10,11,12,13,14,15,16,17,18,19,20,21,22); //23 does not yet work due to text allocations
+  PLATFORMVERSIONSNUMBERS:array[0..17] of byte = (9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26);
+  {$ifdef unix}
+  UnixBinDirs :array[0..2] of string = ('/usr/local/bin','/usr/bin','/bin');
+  UnixLibDirs :array[0..2] of string = ('/usr/local/lib','/usr/lib','/lib');
+  {$endif}
+  DEFAULTARMCPU = 'ARMV7A';
 
+  NEWPASCALGITREPO='https://github.com/newpascal';
+  FPCUPGITREPO=NEWPASCALGITREPO+'/fpcupdeluxe';
+
+  {$ifdef MSWINDOWS}
+  FPCUPBINSURL=FPCUPGITREPO+'/releases/download/wincrossbins_v1.0';
+  {$endif}
+  {$ifdef Linux}
+  {$ifdef CPUX86}
+  FPCUPBINSURL=FPCUPGITREPO+'/releases/download/linuxi386crossbins_v1.0';
+  {$endif CPUX86}
+  {$ifdef CPUX64}
+  FPCUPBINSURL=FPCUPGITREPO+'/releases/download/linuxx64crossbins_v1.0';
+  {$endif CPUX64}
+  {$ifdef CPUARM}
+  FPCUPBINSURL='';
+  {$endif CPUARM}
+  {$ifdef CPUAARCH64}
+  FPCUPBINSURL='';
+  {$endif CPUAARCH64}
+  {$endif}
+  {$ifdef FreeBSD}
+  FPCUPBINSURL=FPCUPGITREPO+'/releases/download/freebsdx64crossbins_v1.0';
+  {$endif}
+  {$ifdef OpenBSD}
+  FPCUPBINSURL='';
+  {$endif}
+  {$ifdef Darwin}
+  FPCUPBINSURL=FPCUPGITREPO+'/releases/download/darwinx64crossbins_v1.0';
+  {$endif}
+  {$ifdef Haiku}
+  FPCUPBINSURL='';
+  {$endif}
+
+  FPCUPLIBSURL=FPCUPGITREPO+'/releases/download/crosslibs_v1.1';
 
 type
-
   CompilerType=(ctBootstrap,ctInstalled);
   SearchMode=(smFPCUPOnly,smAuto,smManual);
 
@@ -86,12 +130,16 @@ type
     // Note: the libraries should be presumably under the basepath using the Lazarus naming convention??
     function GetLibsLCL(LCL_Platform:string; Basepath:string):boolean;virtual;
     {$endif}
-    procedure AddFPCCFGSnippet(aSnippet: string);
+    procedure AddFPCCFGSnippet(aSnip: string);
     // In your descendent, implement this function: you can download cross compile binutils or check for their existence
     function GetBinUtils(Basepath:string):boolean;virtual;
     // Parses space-delimited crossopt parameters and sets the CrossOpt property
     procedure SetCrossOpt(CrossOpts: string);
+    // Pass subarch if any
+    procedure SetSubArch(SubArch: string);
     procedure ShowInfo(info: string = ''; Level: TEventType = etInfo);
+    // Reset some variables to default values
+    procedure Reset; virtual;
     // Which compiler should be used for cross compilation.
     // Normally the bootstrap compiler, but cross compilers may need the installed compiler
     // (often a trunk version, though there's no tests yet that check trunk is installed)
@@ -150,14 +198,23 @@ begin
   result:=FCrossModuleNamePrefix+'_'+TargetOS+'-'+TargetCPU;
 end;
 
-procedure TCrossInstaller.AddFPCCFGSnippet(aSnippet: string);
+procedure TCrossInstaller.AddFPCCFGSnippet(aSnip: string);
+var
+  aSnippd:string;
+  i:integer;
 begin
+  if Length(Trim(aSnip))=0 then exit;
+
+  aSnippd:=StringReplace(aSnip,' ',LineEnding,[rfReplaceAll]);
+  if (Pos(aSnippd,FFPCCFGSnippet)>0) then exit;
+
   if Length(FPCCFGSnippet)>0 then
   begin
     if RPos(LineEnding,FFPCCFGSnippet)<Length(FFPCCFGSnippet) then FFPCCFGSnippet:=FFPCCFGSnippet+LineEnding;
-    FFPCCFGSnippet:=FFPCCFGSnippet+aSnippet;
+    FFPCCFGSnippet:=FFPCCFGSnippet+aSnippd;
   end
-  else FFPCCFGSnippet:=aSnippet;
+  else FFPCCFGSnippet:=aSnippd;
+
 end;
 
 procedure TCrossInstaller.SearchLibraryInfo(found:boolean; const extrainfo:string='');
@@ -318,13 +375,7 @@ begin
 
   // Add user-selected CROSSOPT to fpc.cfg snippet
   // Descendents can add more fpc.cfg snippets but shouldn't remove what the user chose
-  for i:=0 to FCrossOpts.Count-1 do
-  begin
-    if i<FCrossOpts.Count-1 then
-      FFPCCFGSnippet:=FFPCCFGSnippet+FCrossOpts[i]+LineEnding
-    else
-      FFPCCFGSnippet:=FFPCCFGSnippet+FCrossOpts[i];
-  end;
+  for i:=0 to FCrossOpts.Count-1 do AddFPCCFGSnippet(FCrossOpts[i]);
   FCrossOptsAdded:=true;
 end;
 
@@ -346,6 +397,11 @@ begin
   end;
 end;
 
+procedure TCrossInstaller.SetSubArch(SubArch: string);
+begin
+  FSubArch:=SubArch;
+end;
+
 procedure TCrossInstaller.ShowInfo(info: string = ''; Level: TEventType = etInfo);
 begin
   if Length(info)>0 then infoln(CrossModuleName+': '+info,Level)
@@ -356,26 +412,34 @@ begin
   {$endif}
 end;
 
-constructor TCrossInstaller.Create;
+procedure TCrossInstaller.Reset;
 begin
-  // Help ensure our implementers do the right thing with the variables
-  // in their extensions
-  FCompilerUsed:=ctBootstrap; //use bootstrap compiler for cross compiling by default
-  FBinUtilsPath:='Error: cross compiler extension must set FBinUtilsPath: the cross compile binutils (as, ld etc). Could be the same as regular path if a binutils prefix is used.';
-  FBinutilsPathInPath:=false; //don't add binutils directory to path when cross compiling
-  FBinUtilsPrefix:='Error: cross compiler extension must set FBinUtilsPrefix: can be empty, if a prefix is used to separate binutils for different archs in the same directory, use it';
-  FCrossOpts:=TStringList.Create;
-  FFPCCFGSnippet:='Error: cross compiler extension must set FFPCCFGSnippet: this can be quite short but must exist';
-  FLibsPath:='Error: cross compiler extension must set FLibsPath: path for target environment libraries';
-  FTargetCPU:='Error: cross compiler extension must set FTargetCPU: cpu for the target environment. Follows FPC names.';
-  FTargetOS:='Error: cross compiler extension must set FTargetOS: operating system for the target environment. Follows FPC names';
-  FSubArch:='';
-  FCrossModuleNamePrefix:='TAny';
-
+  FFPCCFGSnippet:='';
   FLibsFound:=false;
   FBinsFound:=false;
-
   FCrossOptsAdded:=false;
+  FCrossOpts.Clear;
+  FSubArch:='';
+  FBinutilsPathInPath:=false; //don't add binutils directory to path when cross compiling
+
+  FBinUtilsPath:='Error: cross compiler extension must set FBinUtilsPath: the cross compile binutils (as, ld etc). Could be the same as regular path if a binutils prefix is used.';
+  FLibsPath:='Error: cross compiler extension must set FLibsPath: path for target environment libraries';
+end;
+
+constructor TCrossInstaller.Create;
+begin
+  FCrossOpts:=TStringList.Create;
+
+  FTargetCPU:='Error: cross compiler extension must set FTargetCPU: cpu for the target environment. Follows FPC names.';
+  FTargetOS:='Error: cross compiler extension must set FTargetOS: operating system for the target environment. Follows FPC names';
+
+  FBinUtilsPrefix:='Error: cross compiler extension must set FBinUtilsPrefix: can be empty, if a prefix is used to separate binutils for different archs in the same directory, use it';
+
+  FCompilerUsed:=ctBootstrap; //use bootstrap compiler for cross compiling by default
+
+  FCrossModuleNamePrefix:='TAny';
+
+  Reset;
 end;
 
 destructor TCrossInstaller.Destroy;

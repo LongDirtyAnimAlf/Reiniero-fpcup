@@ -1,6 +1,6 @@
-unit m_any_to_javajvm;
+unit m_any_to_haiku386;
 
-{ Cross compiles from e.g. Linux 64 bit (or any other OS with relevant binutils/libs) to Java JVM
+{ Cross compiles from e.g. Linux 64 bit (or any other OS with relevant binutils/libs) to Haiku 32 bit
 Copyright (C) 2014 Reinier Olislagers
 
 This library is free software; you can redistribute it and/or modify it
@@ -41,18 +41,14 @@ Adapt (add) for other setups
 interface
 
 uses
-  Classes, SysUtils, m_crossinstaller, fileutil, fpcuputil;
+  Classes, SysUtils, m_crossinstaller, fileutil;
 
 implementation
 
-const
-  ARCH='jvm';
-  OS='java';
-
 type
 
-{ Tany_javajvm }
-Tany_javajvm = class(TCrossInstaller)
+{ Tany_haiku386 }
+Tany_haiku386 = class(TCrossInstaller)
 private
   FAlreadyWarned: boolean; //did we warn user about errors and fixes already?
 public
@@ -65,71 +61,116 @@ public
   destructor Destroy; override;
 end;
 
-{ Tany_javajvm }
+{ Tany_haiku386 }
 
-function Tany_javajvm.GetLibs(Basepath:string): boolean;
+function Tany_haiku386.GetLibs(Basepath:string): boolean;
+const
+  DirName='i386-haiku';
+  LibName='libroot.so';
 begin
   result:=FLibsFound;
   if result then exit;
 
-  //FLibsPath:='where is jasmin.jar'
-  //for now, jasmin.jar will be downloaded into normal bin-dir !!
-  result:=True;
-  FLibsFound:=True;
+  // begin simple: check presence of library file in basedir
+  result:=SearchLibrary(Basepath,LibName);
+
+  // first search local paths based on libbraries provided for or adviced by fpc itself
+  if not result then
+    result:=SimpleSearchLibrary(BasePath,DirName,LibName);
+
+  SearchLibraryInfo(result);
+
+  if result then
+  begin
+    FLibsFound:=True;
+    //todo: check if -XR is needed for fpc root dir Prepend <x> to all linker search paths
+    AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath));
+    AddFPCCFGSnippet('-Xr/boot/system/develop/lib/x86');
+  end;
+
 end;
 
 {$ifndef FPCONLY}
-function Tany_javajvm.GetLibsLCL(LCL_Platform: string; Basepath: string): boolean;
+function Tany_haiku386.GetLibsLCL(LCL_Platform: string; Basepath: string): boolean;
 begin
   // todo: get gtk at least
   result:=inherited;
 end;
 {$endif}
 
-function Tany_javajvm.GetBinUtils(Basepath:string): boolean;
+function Tany_haiku386.GetBinUtils(Basepath:string): boolean;
+const
+  DirName='i386-haiku';
+var
+  AsFile: string;
+  BinPrefixTry: string;
 begin
   result:=inherited;
   if result then exit;
-  result:=CheckExecutable('java', '-version', '');
+
+  AsFile:=FBinUtilsPrefix+'as'+GetExeExt;
+
+  result:=SearchBinUtil(BasePath,AsFile);
+  if not result then
+    result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+
+  // Also allow for (cross)binutils without prefix
+  if not result then
+  begin
+    BinPrefixTry:='i386-unknown-haiku-';
+    AsFile:=BinPrefixTry+'as'+GetExeExt;
+    result:=SearchBinUtil(BasePath,AsFile);
+    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+    if result then FBinUtilsPrefix:=BinPrefixTry;
+  end;
+
+  // Also allow for (cross)binutils without prefix
+  if not result then
+  begin
+    BinPrefixTry:='';
+    AsFile:=BinPrefixTry+'as'+GetExeExt;
+    result:=SearchBinUtil(BasePath,AsFile);
+    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+    if result then FBinUtilsPrefix:=BinPrefixTry;
+  end;
+
+  SearchBinUtilsInfo(result);
+
   if result then
   begin
     FBinsFound:=true;
-    FBinUtilsPath:=ExtractFilePath(Which('java'+GetExeExt));
-    SearchBinUtilsInfo(result);
-  end
-  else
-  begin
-    FAlreadyWarned:=true;
-    ShowInfo('Java is needed. Please install java.');
+    // Configuration snippet for FPC
+    AddFPCCFGSnippet('-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath));
+    AddFPCCFGSnippet('-XP'+FBinUtilsPrefix);
   end;
 end;
 
-constructor Tany_javajvm.Create;
+constructor Tany_haiku386.Create;
 begin
   inherited Create;
-  FTargetCPU:=ARCH;
-  FTargetOS:=OS;
-  FBinUtilsPrefix:='';
+  FBinUtilsPrefix:='i386-haiku-';
   FBinUtilsPath:='';
   FFPCCFGSnippet:='';
   FLibsPath:='';
+  FTargetCPU:='i386';
+  FTargetOS:='haiku';
   FAlreadyWarned:=false;
   ShowInfo;
 end;
 
-destructor Tany_javajvm.Destroy;
+destructor Tany_haiku386.Destroy;
 begin
   inherited Destroy;
 end;
 
 var
-  any_javajvm:Tany_javajvm;
+  any_haiku386:Tany_haiku386;
 
 initialization
-  any_javajvm:=Tany_javajvm.Create;
-  RegisterExtension(any_javajvm.TargetCPU+'-'+any_javajvm.TargetOS,any_javajvm);
+  any_haiku386:=Tany_haiku386.Create;
+  RegisterExtension(any_haiku386.TargetCPU+'-'+any_haiku386.TargetOS,any_haiku386);
 finalization
-  any_javajvm.Destroy;
+  any_haiku386.Destroy;
 
 end.
 

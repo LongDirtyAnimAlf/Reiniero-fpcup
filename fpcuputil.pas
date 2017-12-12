@@ -33,20 +33,40 @@ unit fpcuputil;
 //{$mode DELPHI}{$H+}
 {$mode objfpc}{$H+}
 
-{Define NOCONSOLE e.g. if using Windows GUI {$APPTYPE GUI} or -WG
-this will disable writeln calls
-}
-{not $DEFINE NOCONSOLE}
-
 {$define ENABLEWGET}
+{$define ENABLENATIVE}
+
+{$ifdef Haiku}
+// synaser does not compile under Haiku
+{$undef ENABLENATIVE}
+{$endif}
+{$ifdef OpenBSD}
+// synaser does not work under OpenBSD
+{$undef ENABLENATIVE}
+{$endif}
+{$ifdef Darwin}
+// Do not use wget and family under Darwin
+{$undef ENABLEWGET}
+{$endif}
+{$ifdef Windows}
+// Do not use wget and family under Windows
+{.$undef ENABLEWGET}
+{$endif}
+
+{$if not defined(ENABLEWGET) and not defined(ENABLENATIVE)}
+{$error No downloader defined !!! }
+{$endif}
 
 interface
 
 uses
-  Classes, SysUtils,
+  Classes, SysUtils, strutils,
+  typinfo,
   zipper,
+  {$ifdef ENABLENATIVE}
   fphttpclient,
-  sslsockets, fpopenssl,
+  //sslsockets, fpopenssl,
+  {$endif}
   //fpftpclient,
   eventlog;
 
@@ -169,7 +189,7 @@ type
     function checkURL(const URL:string):boolean;virtual;abstract;
   end;
 
-
+  {$ifdef ENABLENATIVE}
   TUseNativeDownLoader = Class(TBasicDownLoader)
   private
     aFPHTTPClient:TFPHTTPClient;
@@ -190,10 +210,14 @@ type
     function getFTPFileList(const URL:string; filelist:TStringList):boolean;override;
     function checkURL(const URL:string):boolean;override;
   end;
+  {$endif}
 
   {$IFDEF ENABLEWGET}
   TUseWGetDownloader = Class(TBasicDownLoader)
   private
+    FCURLOk:boolean;
+    FWGETOk:boolean;
+    WGETBinary:string;
     function WGetDownload(Const URL : String; Dest : TStream):boolean;
     function LibCurlDownload(Const URL : String; Dest : TStream):boolean;
     function WGetFTPFileList(const URL:string; filelist:TStringList):boolean;
@@ -211,16 +235,16 @@ type
 
   {$ENDIF}
 
+  {$ifdef ENABLENATIVE}
   TNativeDownloader = TUseNativeDownLoader;
-  {$IFDEF Darwin}
-  TWGetDownloader = TUseNativeDownLoader;
   {$else}
+  TNativeDownloader = TUseWGetDownloader;
+  {$endif}
   {$IFDEF ENABLEWGET}
   TWGetDownloader = TUseWGetDownloader;
   {$ELSE}
   TWGetDownloader = TUseNativeDownLoader;
   {$ENDIF}
-  {$endif}
 
 // Create shortcut on desktop to Target file
 procedure CreateDesktopShortCut(Target, TargetArguments, ShortcutName: string) ;
@@ -230,6 +254,8 @@ procedure CreateHomeStartLink(Target, TargetArguments, ShortcutName: string);
 // Delete shortcut on desktop
 procedure DeleteDesktopShortcut(ShortcutName: string);
 {$ENDIF MSWINDOWS}
+// Copy a directory recursive
+function DirCopy(SourcePath, DestPath: String): Boolean;
 // Delete directory and children, even read-only. Equivalent to rm -rf <directory>:
 function DeleteDirectoryEx(DirectoryName: string): boolean;
 // Recursively delete files with specified name(s), only if path contains specfied directory name somewhere (or no directory name specified):
@@ -242,12 +268,13 @@ function DeleteFilesNameSubdirs(const DirectoryName: string; const OnlyIfNameHas
 function GetFileNameFromURL(URL:string):string;
 function GetVersionFromUrl(URL:string): string;
 function StripUrl(URL:string): string;
+procedure GetVersionFromString(const VersionSnippet:string;var Major,Minor,Build: Integer);
 // Download from HTTP (includes Sourceforge redirection support) or FTP
 // HTTP download can work with http proxy
 function Download(UseWget:boolean; URL, TargetFile: string; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''): boolean;
 {$IFDEF MSWINDOWS}
 // Get Windows major and minor version number (e.g. 5.0=Windows 2000)
-function GetWin32Version(var Major,Minor,Build : Integer): Boolean;
+function GetWin32Version(out Major,Minor,Build : Integer): Boolean;
 function IsWindows64: boolean;
 {$ENDIF}
 //check if there is at least one directory between Dir and root
@@ -264,6 +291,8 @@ function MoveFile(const SrcFilename, DestFilename: string): boolean;
 function SafeExpandFileName (Const FileName : String): String;
 // Like ExpandFilenameUTF8 but does not expand an empty string to current directory
 function SafeExpandFileNameUTF8 (Const FileName : String): String;
+// Get application name
+function SafeGetApplicationName: String;
 // Get application path
 function SafeGetApplicationPath: String;
 // Copies specified resource (e.g. fpcup.ini, settings.ini)
@@ -276,6 +305,13 @@ function StringListStartsWith(SearchIn:TStringList; SearchFor:string; StartIndex
 function XdgConfigHome: String;
 function GetGCCDirectory:string;
 {$ENDIF UNIX}
+{$IFDEF DARWIN}
+function GetSDKVersion(aSDK: string):string;
+function GetDarwinVersion(out Major,Minor,Build : Integer): Boolean;
+{$ENDIF DARWIN}
+function CompareVersionStrings(s1,s2: string): longint;
+function ExistWordInString(aString:pchar; aSearchString:string; aSearchOptions: TStringSearchOptions): Boolean;
+function GetEnumNameSimple(aTypeInfo:PTypeInfo;const aEnum:integer):string;
 // Emulates/runs which to find executable in path. If not found, returns empty string
 function Which(Executable: string): string;
 function CheckExecutable(Executable, Parameters, ExpectOutput: string): boolean;
@@ -289,6 +325,8 @@ function DirectoryIsEmpty(Directory: string): Boolean;
 function GetTargetCPU:string;
 function GetTargetOS:string;
 function GetTargetCPUOS:string;
+function GetFPCTargetCPUOS(const aCPU,aOS:string;const Native:boolean=true): string;
+function GetDistro:string;
 
 implementation
 
@@ -298,23 +336,27 @@ uses
   {$endif}
   IniFiles,
   DOM,DOM_HTML,SAX_HTML,
-  ftpsend {for downloading from ftp},
+  {$ifdef ENABLENATIVE}
+  ftpsend,
+  {$else}
+  ftplist,
+  {$endif}
   FileUtil, LazFileUtils, LazUTF8,
-  strutils,uriparser
+  uriparser
   {$IFDEF MSWINDOWS}
     //Mostly for shortcut code
     ,windows, shlobj {for special folders}, ActiveX, ComObj
   {$ENDIF MSWINDOWS}
-  {$IFDEF ENABLEWGET}
-  // for wget downloader
-  ,process
   {$IFDEF UNIX}
   ,baseunix
   {$ENDIF}
-  ,processutils
+  {$IFDEF ENABLEWGET}
+  // for wget downloader
+  ,process
   // for libc downloader
   ,fpcuplibcurl
   {$ENDIF ENABLEWGET}
+  ,processutils
   ;
 
 const
@@ -324,8 +366,19 @@ const
   CURLUSERAGENT='curl/7.51.0';
 
 
+function GetStringFromBuffer(const field:PChar):string;
+begin
+  if ( field <> nil ) then
+  begin
+    //strpas(field);
+    result:=field;
+    UniqueString(result);
+    SetLength(result,strlen(field));
+  end else result:='';
+end;
+
 {$ifdef mswindows}
-function GetWin32Version(var Major,Minor,Build : Integer): Boolean;
+function GetWin32Version(out Major,Minor,Build : Integer): Boolean;
 var
   Info: TOSVersionInfo;
 begin
@@ -341,8 +394,7 @@ begin
     result:=true
   end;
 end
-else
-  result:=false;
+  else result:=false;
 end;
 
 function IsWindows64: boolean;
@@ -381,8 +433,8 @@ begin
   Result := True;
 {$endif}
 end;
-
 {$endif}
+
 
 function SafeExpandFileName (Const FileName : String): String;
 begin
@@ -400,15 +452,48 @@ begin
     result:=ExpandFileNameUTF8(FileName);
 end;
 
-function SafeGetApplicationPath: String;
+function SafeGetApplicationName: String;
 var
   StartPath: String;
   {$ifdef Darwin}
   x:integer;
   {$endif}
 begin
- StartPath:=IncludeTrailingPathDelimiter(ProgramDirectory);
+ {$ifdef LCL}
+ StartPath:=Application.ExeName;
+ {$else}
+ StartPath:=Paramstr(0);
+ {$endif}
  {$ifdef Darwin}
+ // we need the .app itself !!
+ x:=pos('/Contents/MacOS',StartPath);
+ if x>0 then
+ begin
+   Delete(StartPath,x,MaxInt);
+   (*
+   x:=RPos('/',StartPath);
+   if x>0 then
+   begin
+     Delete(StartPath,x+1,MaxInt);
+   end;
+   *)
+ end;
+ {$endif}
+ if FileIsSymlink(StartPath) then
+    StartPath:=GetPhysicalFilename(StartPath,pfeException);
+ result:=StartPath;
+end;
+
+function SafeGetApplicationPath: String;
+begin
+  result:=ExtractFilePath(SafeGetApplicationName);
+
+  (*
+ //StartPath:=IncludeTrailingPathDelimiter(ProgramDirectory);
+ StartPath:=Application.Location;
+ {$ifdef Darwin}
+ // do not store settings inside app iself ...
+ // not necessary the right choice ... ;-)
  x:=pos('/Contents/MacOS',StartPath);
  if x>0 then
  begin
@@ -423,6 +508,8 @@ begin
  if FileIsSymlink(StartPath) then
     StartPath:=GetPhysicalFilename(StartPath,pfeException);
  result:=ExtractFilePath(StartPath);
+ *)
+
  if DirectoryExistsUTF8(result) then
     result:=GetPhysicalFilename(result,pfeException);
  result:=AppendPathDelim(result);
@@ -621,7 +708,7 @@ begin
     ScriptFile:=IncludeTrailingPathDelimiter(SafeExpandFileNameUTF8('~'))+ShortcutName;
     SysUtils.DeleteFile(ScriptFile); //Get rid of any existing remnants
     ScriptText.Add('#!/bin/sh');
-    ScriptText.Add('# shortcut generated by fcpup');
+    ScriptText.Add('# '+BeginSnippet+' home startlink script');
     ScriptText.Add(Target+' '+TargetArguments);
     try
       ScriptText.SaveToFile(ScriptFile);
@@ -701,6 +788,53 @@ begin
   result:=URI.Host+URI.Path;
 end;
 
+procedure GetVersionFromString(const VersionSnippet:string;var Major,Minor,Build: Integer);
+var
+  i,j:integer;
+  found:boolean;
+begin
+  i:=1;
+
+  // move towards first numerical
+  while (Length(VersionSnippet)>=i) AND (NOT (VersionSnippet[i] in ['0'..'9'])) do Inc(i);
+  // get major version
+  j:=0;
+  found:=false;
+  while (Length(VersionSnippet)>=i) AND (VersionSnippet[i] in ['0'..'9']) do
+  begin
+    found:=true;
+    j:=j*10+Ord(VersionSnippet[i])-$30;
+    Inc(i);
+  end;
+  if found then Major:=j;
+
+  // move towards first numerical
+  while (Length(VersionSnippet)>=i) AND (NOT (VersionSnippet[i] in ['0'..'9'])) do Inc(i);
+  // get minor version
+  j:=0;
+  found:=false;
+  while (Length(VersionSnippet)>=i) AND (VersionSnippet[i] in ['0'..'9']) do
+  begin
+    found:=true;
+    j:=j*10+Ord(VersionSnippet[i])-$30;
+    Inc(i);
+  end;
+  if found then Minor:=j;
+
+  // move towards first numerical
+  while (Length(VersionSnippet)>=i) AND (NOT (VersionSnippet[i] in ['0'..'9'])) do Inc(i);
+  // get build version
+  j:=0;
+  found:=false;
+  while (Length(VersionSnippet)>=i) AND (VersionSnippet[i] in ['0'..'9']) do
+  begin
+    found:=true;
+    j:=j*10+Ord(VersionSnippet[i])-$30;
+    Inc(i);
+  end;
+  if found then Build:=j;
+end;
+
 
 {$IFDEF MSWINDOWS}
 procedure DeleteDesktopShortcut(ShortcutName: string);
@@ -716,6 +850,11 @@ begin
   SysUtils.DeleteFile(LinkName);
 end;
 {$ENDIF MSWINDOWS}
+
+function DirCopy(SourcePath, DestPath: String): Boolean;
+begin
+  result:=FileUtil.CopyDirTree(SourcePath, DestPath,[cffOverwriteFile,cffCreateDestDirectory]);
+end;
 
 function DeleteDirectoryEx(DirectoryName: string): boolean;
 // Lazarus fileutil.DeleteDirectory on steroids, works like
@@ -1181,10 +1320,136 @@ begin
 end;
 {$ENDIF UNIX}
 
+{$IFDEF DARWIN}
+function GetSDKVersion(aSDK: string):string;
+const
+  SearchTarget='SDKVersion: ';
+var
+  Output,s:string;
+  i,j:integer;
+begin
+  Output:='';
+  s:='';
+  j:=0;
+  //if ExecuteCommand('xcodebuild -version -sdk '+aSDK, Output, False) <> 0 then
+  ExecuteCommand('xcodebuild -version -sdk '+aSDK, Output, False);
+  begin
+    i:=Pos(SearchTarget,Output);
+    if i>0 then
+    begin
+      i:=i+length(SearchTarget);
+      while (Length(Output)>i) AND (Output[i] in ['0'..'9','.']) do
+      begin
+        s:=s+Output[i];
+        Inc(i);
+      end;
+    end;
+  end;
+  result:=s;
+end;
+function GetDarwinVersion(out Major,Minor,Build: Integer): Boolean;
+var
+  output:string;
+begin
+  result:=(ExecuteCommand('sw_vers -productVersion', Output, False)=0);
+  if result then
+  begin
+    if Length(Output)>0 then GetVersionFromString(Output,Major,Minor,Build);
+  end;
+end;
+
+{$ENDIF DARWIN}
+
+// 1on1 copy from unit cutils from the fpc compiler;
+function CompareVersionStrings(s1,s2: string): longint;
+var
+  start1, start2,
+  i1, i2,
+  num1,num2,
+  res,
+  err: longint;
+begin
+  i1:=1;
+  i2:=1;
+  repeat
+    start1:=i1;
+    start2:=i2;
+    while (i1<=length(s1)) and
+          (s1[i1] in ['0'..'9']) do
+       inc(i1);
+    while (i2<=length(s2)) and
+          (s2[i2] in ['0'..'9']) do
+       inc(i2);
+    { one of the strings misses digits -> other is the largest version }
+    if i1=start1 then
+      if i2=start2 then
+        exit(0)
+      else
+        exit(-1)
+    else if i2=start2 then
+      exit(1);
+    { get version number part }
+    val(copy(s1,start1,i1-start1),num1,err);
+    val(copy(s2,start2,i2-start2),num2,err);
+    { different -> done }
+    res:=num1-num2;
+    if res<>0 then
+      exit(res);
+    { if one of the two is at the end while the other isn't, add a '.0' }
+    if (i1>length(s1)) and
+       (i2<=length(s2)) then
+      s1:=s1+'.0'
+    else if i2>length(s2) then
+      s2:=s2+'.0';
+    { compare non-numerical characters normally }
+    while (i1<=length(s1)) and
+          not(s1[i1] in ['0'..'9']) and
+          (i2<=length(s2)) and
+          not(s2[i2] in ['0'..'9']) do
+      begin
+        res:=ord(s1[i1])-ord(s2[i2]);
+        if res<>0 then
+          exit(res);
+        inc(i1);
+        inc(i2);
+      end;
+    { both should be digits again now, otherwise pick the one with the
+      digits as the largest (it more likely means that the input was
+      ill-formatted though) }
+    if (i1<=length(s1)) and
+       not(s1[i1] in ['0'..'9']) then
+      exit(-1);
+    if (i2<=length(s2)) and
+       not(s2[i2] in ['0'..'9']) then
+      exit(1);
+  until false;
+end;
+
+function ExistWordInString(aString:pchar; aSearchString:string; aSearchOptions: TStringSearchOptions): Boolean;
+var
+  Size : Integer;
+begin
+  Size:=StrLen(aString);
+  Result := SearchBuf(aString, Size, 0, 0, aSearchString, aSearchOptions)<>nil;
+end;
+
+function GetEnumNameSimple(aTypeInfo:PTypeInfo;const aEnum:integer):string;
+begin
+  begin
+    if (aTypeInfo=nil) or (aTypeInfo^.Kind<>tkEnumeration) then
+      result := '' else
+      result := GetEnumName(aTypeInfo,aEnum);
+  end;
+end;
+
 function Which(Executable: string): string;
 var
   Output: string;
 begin
+  result:=FindDefaultExecutablePath(Executable);
+  if (NOT FileIsExecutable(result)) then result:='';
+
+  (*
   {$IFDEF UNIX}
   // Note: we're using external which because
   // FindDefaultExecutablePath
@@ -1211,6 +1476,7 @@ begin
   begin
     result:=''; //command failed
   end;
+  *)
 end;
 
 {$IFDEF UNIX}
@@ -1228,7 +1494,7 @@ begin
 end;
 {$ENDIF UNIX}
 
-function CheckExecutable(Executable, Parameters, ExpectOutput: string): boolean;
+function CheckExecutable(Executable, Parameters, ExpectOutput: string; Level: TEventType): boolean;
 var
   ResultCode: longint;
   OperationSucceeded: boolean;
@@ -1244,8 +1510,8 @@ begin
       if (ExpectOutput <> '') and (Ansipos(ExpectOutput, Output) = 0) then
       begin
         // This is not a warning/error message as sometimes we can use multiple different versions of executables
-        infoln(Executable + ' is not a valid ' + ExeName + ' application. ' +
-          ExeName + ' exists but shows no (' + ExpectOutput + ') in its output.',etError);
+        if Level<>etCustom then infoln(Executable + ' is not a valid ' + ExeName + ' application. ' +
+          ExeName + ' exists but shows no (' + ExpectOutput + ') in its output.',Level);
         OperationSucceeded := false;
       end
       else
@@ -1257,14 +1523,14 @@ begin
     else
     begin
       // This is not a warning/error message as sometimes we can use multiple different versions of executables
-      infoln(Executable + ' is not a valid ' + ExeName + ' application (' + ExeName + ' result code was: ' + IntToStr(ResultCode) + ')',etError);
+      if Level<>etCustom then infoln(Executable + ' is not a valid ' + ExeName + ' application (' + ExeName + ' result code was: ' + IntToStr(ResultCode) + ')',Level);
       OperationSucceeded := false;
     end;
   except
     on E: Exception do
     begin
       // This is not a warning/error message as sometimes we can use multiple different versions of executables
-      infoln(Executable + ' is not a valid ' + ExeName + ' application (' + 'Exception: ' + E.ClassName + '/' + E.Message + ')', etError);
+      if Level<>etCustom then infoln(Executable + ' is not a valid ' + ExeName + ' application (' + 'Exception: ' + E.ClassName + '/' + E.Message + ')', Level);
       OperationSucceeded := false;
     end;
   end;
@@ -1273,6 +1539,10 @@ begin
   Result := OperationSucceeded;
 end;
 
+function CheckExecutable(Executable, Parameters, ExpectOutput: string): boolean;
+begin
+  result:=CheckExecutable(Executable, Parameters, ExpectOutput, etInfo);
+end;
 
 function ExtractFileNameOnly(const AFilename: string): string;
 var
@@ -1320,6 +1590,8 @@ begin
     Result:=Result+'avr'
   else if SysUtils.CompareText(TargetCPU,'sparc')=0 then
     Result:=Result+'sparc'
+  else if SysUtils.CompareText(TargetCPU,'sparc64')=0 then
+    Result:=Result+'sparc64'
   else if SysUtils.CompareText(TargetCPU,'x86_64')=0 then
     Result:=Result+'x64'
   else if SysUtils.CompareText(TargetCPU,'ia64')=0 then
@@ -1372,10 +1644,15 @@ end;
 function UppercaseFirstChar(s: String): String;
 var
   ch, rest: String;
+  //first: String;
+  i: integer;
 begin
-  ch := Copy(s, 1, 1);
-  rest := Copy(s, Length(ch)+1, MaxInt);
-  result := UpperCase(ch) + LowerCase(rest);
+  i:=1;
+  //while (Length(s)>=i) AND (NOT (s[i] in ['a'..'z'])) do inc(i);
+  ch    := Copy(s, i, 1);
+  //first := Copy(s, 1, i-1);
+  rest  := Copy(s, Length(ch)+i, MaxInt);
+  result := {LowerCase(first) + }UpperCase(ch) + LowerCase(rest);
 end;
 
 function DirectoryIsEmpty(Directory: string): Boolean;
@@ -1402,10 +1679,146 @@ begin
   result:=lowercase({$i %FPCTARGETOS%});
 end;
 
+function GetDistro:string;
+var
+  Major,Minor,Build,i,j: Integer;
+  AllOutput : TStringList;
+  s,t:ansistring;
+  success:boolean;
+begin
+  t:='unknown';
+  success:=false;
+  {$ifdef Unix}
+    {$ifndef Darwin}
+      s:='';
+      if (ExecuteCommand('cat /etc/os-release',s,false)=0) then
+      begin
+        if Pos('No such file or directory',s)=0 then
+        begin
+          AllOutput:=TStringList.Create;
+          try
+            AllOutput.Text:=s;
+            s:='';
+            s:=AllOutput.Values['NAME'];
+            if Length(s)=0 then s := AllOutput.Values['ID_LIKE'];
+            if Length(s)=0 then s := AllOutput.Values['DISTRIB_ID'];
+            if Length(s)=0 then s := AllOutput.Values['ID'];
+            success:=(Length(s)>0);
+          finally
+            AllOutput.Free;
+          end;
+        end;
+      end;
+      if (NOT success) then
+      begin
+        s:='';
+        if (ExecuteCommand('cat /etc/system-release',s,false)=0) then
+        begin
+          if Pos('No such file or directory',s)=0 then
+          begin
+            AllOutput:=TStringList.Create;
+            try
+              AllOutput.Text:=s;
+              s:='';
+              s:=AllOutput.Values['NAME'];
+              if Length(s)=0 then s := AllOutput.Values['ID_LIKE'];
+              if Length(s)=0 then s := AllOutput.Values['DISTRIB_ID'];
+              if Length(s)=0 then s := AllOutput.Values['ID'];
+              success:=(Length(s)>0);
+            finally
+              AllOutput.Free;
+            end;
+          end;
+        end;
+      end;
+      if (NOT success) then
+      begin
+        s:='';
+        if (ExecuteCommand('hostnamectl',s,false)=0) then
+        begin
+          AllOutput:=TStringList.Create;
+          try
+            AllOutput.NameValueSeparator:=':';
+            AllOutput.Delimiter:=#10;
+            AllOutput.StrictDelimiter:=true;
+            AllOutput.DelimitedText:=s;
+            s:='';
+            for i:=0 to  AllOutput.Count-1 do
+            begin
+              j:=Pos('Operating System',AllOutput.Strings[i]);
+              if j>0 then s:=s+Trim(AllOutput.Values[AllOutput.Names[i]]);
+              j:=Pos('Kernel',AllOutput.Strings[i]);
+              if j>0 then s:=s+' '+Trim(AllOutput.Values[AllOutput.Names[i]]);
+            end;
+            success:=(Length(s)>0);
+          finally
+            AllOutput.Free;
+          end;
+        end;
+      end;
+      if (NOT success) then t:='unknown' else
+      begin
+        s:=DelChars(s,'"');
+        t:=Trim(s);
+      end;
+      {$ifdef BSD}
+      if (t='unknown') then
+      begin
+        if (ExecuteCommand('uname -r',s,false)=0)
+           then t := GetTargetOS+' '+lowercase(Trim(s));
+      end;
+      {$endif}
+
+      if (t='unknown') then t := GetTargetOS;
+
+      if (NOT success) then if (ExecuteCommand('uname -r',s,false)=0)
+         then t := t+' '+lowercase(Trim(s));
+
+    {$else Darwin}
+      if (ExecuteCommand('sw_vers -productName', s, false)=0) then
+      begin
+        if Length(s)>0 then t:=Trim(s);
+      end;
+      if Length(s)=0 then t:=GetTargetOS;
+      if GetDarwinVersion(Major,Minor,Build)
+         then t:=t+' '+InttoStr(Major)+'.'+InttoStr(Minor)+'.'+InttoStr(Build);
+    {$endif Darwin}
+  {$endif Unix}
+
+  {$ifdef MSWindows}
+    t:='Win';
+    if IsWindows64
+       then t:=t+'64'
+       else t:=t+'32';
+    if GetWin32Version(Major,Minor,Build)
+       then t:=t+'-'+InttoStr(Major)+'.'+InttoStr(Minor)+'.'+InttoStr(Build);
+  {$endif MSWindows}
+  result:=t;
+end;
+
 function GetTargetCPUOS:string;
 begin
   result:=GetTargetCPU+'-'+GetTargetOS;
 end;
+
+
+function GetFPCTargetCPUOS(const aCPU,aOS:string;const Native:boolean=true): string;
+var
+  processorname, os: string;
+begin
+  os := GetTargetOS;
+  processorname := GetTargetCPU;
+
+  if not Native then
+  begin
+    if aCPU <> '' then
+      processorname := aCPU;
+    if aOS <> '' then
+      os := aOS;
+  end;
+  Result := processorname + '-' + os;
+end;
+
 
 {TThreadedUnzipper}
 
@@ -1723,7 +2136,7 @@ end;
 
 procedure TLogger.WriteLog(Message: string; ToConsole: Boolean);
 begin
-  FLog.Log(etInfo, Message);
+  FLog.Info(Message);
   if ToConsole then infoln(Message,etInfo);
 end;
 
@@ -1828,6 +2241,7 @@ begin
   end;
 end;
 
+{$ifdef ENABLENATIVE}
 constructor TUseNativeDownLoader.Create;
 begin
   Inherited;
@@ -2158,6 +2572,7 @@ begin
   else if CompareText(P,'https')=0 then
     result:=HTTPDownload(URL,filename);
 end;
+{$endif}
 
 
 {$IFDEF ENABLEWGET}
@@ -2165,25 +2580,29 @@ end;
 // proxy still to do !!
 
 constructor TUseWGetDownloader.Create;
-var
-  success:boolean;
 begin
   Inherited;
 
-  success:=LoadCurlLibrary;
-  if NOT success then
-  begin
-    infoln('Libcurl error: Could not initialize the libcurl library: expect failures !',etWarning);
-  end;
+  FCURLOk:=LoadCurlLibrary;
 
-  success:=CheckExecutable('wget', '-V', '');
-  if NOT success then
+  {$ifdef MSWINDOWS}
+  WGETBinary:='wget.exe';
+  FWGETOk:=CheckExecutable(WGETBinary, '-V', '', etCustom);
+  {$ifdef CPU64}
+  if (NOT FWGETOk) then
   begin
-    {$IFDEF OPENBSD}
-    infoln('Wget: Could not find a wget executable: expect fatal errors !',etError);
-    {$ELSE}
-    infoln('Wget error: Could not find a wget executable: expect failures if used !',etWarning);
-    {$ENDIF}
+    WGETBinary:='wget64.exe';
+    FWGETOk:=CheckExecutable(WGETBinary, '-V', '', etCustom);
+  end;
+  {$endif}
+  {$else MSWINDOWS}
+  WGETBinary:='wget';
+  FWGETOk:=CheckExecutable(WGETBinary, '-V', '', etCustom);
+  {$endif MSWINDOWS}
+
+  if (NOT FCURLOk) AND (NOT FWGETOk) then
+  begin
+    infoln('Could not initialize either libcurl or wget: expect severe failures !',etError);
   end;
 end;
 
@@ -2193,9 +2612,11 @@ var
   Count : Integer;
 begin
   result:=false;
+  if (NOT FWGETOk) then exit;
+
   With TProcess.Create(Self) do
   try
-    CommandLine:='wget -q --user-agent="'+USERAGENT+'" --tries='+InttoStr(MaxRetries)+' --output-document=- '+URL;
+    CommandLine:=WGETBinary+' -q --user-agent="'+USERAGENT+'" --tries='+InttoStr(MaxRetries)+' --output-document=- '+URL;
     Options:=[poUsePipes,poNoConsole];
     Execute;
     while Running do
@@ -2222,8 +2643,12 @@ var
   hCurl : pCurl;
   res: CURLcode;
   UserPass:string;
+  aBuffer:PChar;
+  location:string;
+  response:sizeint;
 begin
   result:=false;
+  if (NOT FCURLOk) then exit;
 
   if LoadCurlLibrary then
   begin
@@ -2250,15 +2675,46 @@ begin
 
         if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_TCP_KEEPALIVE,1);
         if res=CURLE_OK then res:=curl_easy_setopt(hCurl, CURLOPT_FOLLOWLOCATION, 1);
-        if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_MAXREDIRS,50);
+        if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_MAXREDIRS,5);
         if res=CURLE_OK then res:=curl_easy_setopt(hCurl, CURLOPT_NOPROGRESS,1);
+        {$ifdef MSWINDOWS}
+        if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_SSL_VERIFYPEER, 0);
+        {$else}
         if res=CURLE_OK then res:=curl_easy_setopt(hCurl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
+        {$endif}
         if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_URL,PChar(URL));
         if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_WRITEFUNCTION,@DoWrite);
         if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_WRITEDATA,Pointer(Dest));
         if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_USERAGENT,PChar(CURLUSERAGENT));
 
         if res=CURLE_OK then res := curl_easy_perform(hCurl);
+
+        if res=CURLE_OK then
+        begin
+          while true do
+          begin
+            res:=curl_easy_getinfo(hCurl,CURLINFO_RESPONSE_CODE, @response);
+            // not needed anymore ... we set CURLOPT_FOLLOWLOCATION !
+            (*
+            if ( (res=CURLE_OK) AND ((response DIV 100)=3) ) then // we have a redirect !!
+            begin
+              res:=curl_easy_getinfo(hCurl, CURLINFO_REDIRECT_URL, aBuffer);
+              location:=GetStringFromBuffer(aBuffer);
+              if ( (res=CURLE_OK) AND (Length(location)>0) ) then
+              begin
+                res:=curl_easy_setopt(hCurl,CURLOPT_URL,PChar(location));
+                if res=CURLE_OK then
+                begin
+                  Dest.Position:=0;
+                  res := curl_easy_perform(hCurl);
+                end;
+              end;
+            end
+            else
+            *)
+            break;
+          end;
+        end;
 
         result:=((res=CURLE_OK) AND (Dest.Size>0));
 
@@ -2305,13 +2761,15 @@ var
   P : String;
 begin
   result:=false;
+  if (NOT FWGETOk) then exit;
+
   URI:=ParseURI(URL);
   P:=URI.Protocol;
   if CompareText(P,'ftp')=0 then
   begin
     aURL:=URL;
     if aURL[Length(aURL)]<>'/' then aURL:=aURL+'/';
-    result:=(ExecuteCommand('wget -q --no-remove-listing --tries='+InttoStr(MaxRetries)+' --spider '+aURL,false)=0);
+    result:=(ExecuteCommand(WGETBinary+' -q --no-remove-listing --tries='+InttoStr(MaxRetries)+' --spider '+aURL,false)=0);
     if result then
     begin
       if FileExists(WGETFTPLISTFILE) then
@@ -2347,6 +2805,7 @@ var
   UserPass :string;
 begin
   result:=false;
+  if (NOT FCURLOk) then exit;
 
   URI:=ParseURI(URL);
   s:=URI.Protocol;
@@ -2382,6 +2841,10 @@ begin
             if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_WRITEFUNCTION,@DoWrite);
             if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_WRITEDATA,Pointer(F));
             if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_USERAGENT,CURLUSERAGENT);
+            {$ifdef MSWINDOWS}
+            if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_SSL_VERIFYPEER, 0);
+            {$endif}
+
             if res=CURLE_OK then res:=curl_easy_perform(hCurl);
 
             result:=(res=CURLE_OK);
@@ -2451,8 +2914,11 @@ function TUseWGetDownloader.checkURL(const URL:string):boolean;
 var
   Output:string;
 begin
+  result:=false;
+  if (NOT FWGETOk) then exit;
+
   Output:='';
-  result:=(ExecuteCommand('wget --user-agent="'+USERAGENT+'" --tries='+InttoStr(MaxRetries)+' --spider '+URL,Output,false)=0);
+  result:=(ExecuteCommand(WGETBinary+' --user-agent="'+USERAGENT+'" --tries='+InttoStr(MaxRetries)+' --spider '+URL,Output,false)=0);
   if result then
   begin
     result:=(Pos('Remote file exists',Output)>0);

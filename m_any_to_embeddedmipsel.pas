@@ -1,5 +1,5 @@
-unit m_any_to_embeddedarm;
-{ Cross compiles from any platform with correct binutils to Embedded ARM
+unit m_any_to_embeddedmipsel;
+{ Cross compiles from any platform with correct binutils to Embedded Mipsel
 Copyright (C) 2017 Alf
 
 This library is free software; you can redistribute it and/or modify it
@@ -28,6 +28,22 @@ along with this library; if not, write to the Free Software Foundation,
 Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 }
 
+{
+Setup: based on cross binaries from
+http://svn.freepascal.org/svn/fpcbuild/binaries/i386-win32/
+with binutils 2.22
+
+Add a cross directory under the fpcup "root" installdir directory (e.g. c:\development\cross, and e.g. regular fpc sources in c:\development\fpc)
+Then place the binaries in c:\development\cross\bin\mipsel-embedded
+Binaries include
+mipsel-embedded-ar.exe
+mipsel-embedded-as.exe
+mipsel-embedded-ld.exe
+mipsel-embedded-objcopy.exe
+mipsel-embedded-objdump.exe
+mipsel-embedded-strip.exe
+}
+
 {$mode objfpc}{$H+}
 
 interface
@@ -36,15 +52,10 @@ uses
   Classes, SysUtils, m_crossinstaller, fileutil, fpcuputil;
 
 implementation
-
-const
-  ARCH='arm';
-  OS='embedded';
-
 type
 
-{ TAny_Embeddedarm }
-TAny_Embeddedarm = class(TCrossInstaller)
+{ TAny_Embeddedmipsel }
+TAny_Embeddedmipsel = class(TCrossInstaller)
 private
   FAlreadyWarned: boolean; //did we warn user about errors and fixes already?
 public
@@ -57,48 +68,39 @@ public
   destructor Destroy; override;
 end;
 
-{ TAny_Embeddedarm }
+{ TAny_Embeddedmipsel }
 
-function TAny_Embeddedarm.GetLibs(Basepath:string): boolean;
+function TAny_Embeddedmipsel.GetLibs(Basepath:string): boolean;
 const
-  DirName=ARCH+'-'+OS;
-  LibName='libgcc.a';  // is this correct ??
+  DirName='mipsel-embedded';
+  LibName='';
 begin
-  // Arm-embedded does not need libs by default, but user can add them.
+  // mipsel-embedded does not need libs by default, but user can add them.
 
   result:=FLibsFound;
   if result then exit;
 
-  if length(FSubArch)>0
-     then ShowInfo('We have a subarch: '+FSubArch)
-     else ShowInfo('No subarch defined');
-
-  // begin simple: check presence of library file in basedir
-  result:=SearchLibrary(Basepath,LibName);
-  // search local paths based on libraries provided for or adviced by fpc itself
-  if not result then
-     if length(FSubArch)>0 then result:=SimpleSearchLibrary(BasePath,IncludeTrailingPathDelimiter(DirName)+FSubArch,LibName);
-  if not result then
-     result:=SimpleSearchLibrary(BasePath,DirName,LibName);
+  // search local paths based on libbraries provided for or adviced by fpc itself
+  result:=SimpleSearchLibrary(BasePath,DirName,LibName);
 
   if result then
   begin
-    //todo: check if -XR is needed for fpc root dir Prepend <x> to all linker search paths
     FFPCCFGSnippet:=FFPCCFGSnippet+LineEnding+
     '-Fl'+IncludeTrailingPathDelimiter(FLibsPath) {buildfaq 1.6.4/3.3.1:  the directory to look for the target  libraries};
     SearchLibraryInfo(result);
-  end;
-  if not result then
+  end
+  else
   begin
     //libs path is optional; it can be empty
     ShowInfo('Libspath ignored; it is optional for this cross compiler.');
     FLibsPath:='';
     result:=true;
   end;
+  FLibsFound:=True;
 end;
 
 {$ifndef FPCONLY}
-function TAny_Embeddedarm.GetLibsLCL(LCL_Platform: string; Basepath: string): boolean;
+function TAny_Embeddedmipsel.GetLibsLCL(LCL_Platform: string; Basepath: string): boolean;
 begin
   // todo: get gtk at least, add to FFPCCFGSnippet
   ShowInfo('Todo: implement lcl libs path from basepath '+BasePath,etdebug);
@@ -106,9 +108,9 @@ begin
 end;
 {$endif}
 
-function TAny_Embeddedarm.GetBinUtils(Basepath:string): boolean;
+function TAny_Embeddedmipsel.GetBinUtils(Basepath:string): boolean;
 const
-  DirName=ARCH+'-'+OS;
+  DirName='mipsel-embedded';
 var
   AsFile,aOption: string;
   BinPrefixTry: string;
@@ -123,30 +125,37 @@ begin
   result:=SearchBinUtil(BasePath,AsFile);
   if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
 
-  {$ifdef unix}
-  // User may also have placed them into their regular search path:
+  // Now also allow for mipsel- binutilsprefix
   if not result then
   begin
-    for i:=Low(UnixBinDirs) to High(UnixBinDirs) do
-    begin
-      result:=SearchBinUtil(IncludeTrailingPathDelimiter(UnixBinDirs[i])+DirName, AsFile);
-      if not result then result:=SearchBinUtil(UnixBinDirs[i], AsFile);
-      if result then break;
-    end;
-  end;
-  {$endif unix}
-
-  // Now also allow for arm-none-eabi- binutilsprefix (e.g. launchpadlibrarian)
-  if not result then
-  begin
-    BinPrefixTry:='arm-none-eabi-';
+    BinPrefixTry:='mipsel-';
     AsFile:=BinPrefixTry+'as'+GetExeExt;
     result:=SearchBinUtil(BasePath,AsFile);
     if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
     if result then FBinUtilsPrefix:=BinPrefixTry;
   end;
 
-  // Now also allow for empty binutilsprefix in the right directory:
+  // Now also allow for pic32- binutilsprefix
+  if not result then
+  begin
+    BinPrefixTry:='pic32-';
+    AsFile:=BinPrefixTry+'as'+GetExeExt;
+    result:=SearchBinUtil(BasePath,AsFile);
+    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+    if result then FBinUtilsPrefix:=BinPrefixTry;
+  end;
+
+  // Now also allow for xc32- binutilsprefix
+  if not result then
+  begin
+    BinPrefixTry:='xc32-';
+    AsFile:=BinPrefixTry+'as'+GetExeExt;
+    result:=SearchBinUtil(BasePath,AsFile);
+    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+    if result then FBinUtilsPrefix:=BinPrefixTry;
+  end;
+
+  // Now also allow for empty binutilsprefix:
   if not result then
   begin
     BinPrefixTry:='';
@@ -161,70 +170,58 @@ begin
   if not result then
   begin
     {$ifdef mswindows}
-    ShowInfo('Suggestion for cross binutils: the crossfpc binutils (arm-embedded) at http://svn.freepascal.org/svn/fpcbuild/binaries/i386-win32/.');
-    {$else}
-    ShowInfo('Suggestion for cross binutils: the crossfpc binutils (arm-embedded) at https://launchpad.net/gcc-arm-embedded.');
+    ShowInfo('Suggestion for pic32 cross binutils: http://chipkit.s3.amazonaws.com');
     {$endif}
     FAlreadyWarned:=true;
   end
   else
   begin
     FBinsFound:=true;
-    { for Teensy 3.0 and 3.1 and 3.2 add
-    -Cparmv7em ... -Wpmk20dx256XXX7
-
-    for NXP LPC 2124 add
-    -Cparmv4
-
-    for mbed add
-    -Cparmv7m
-    }
 
     // Configuration snippet for FPC
     AddFPCCFGSnippet('-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath));
     AddFPCCFGSnippet('-XP'+FBinUtilsPrefix); {Prepend the binutils names};
 
-    // Set some defaults if user hasn't specified otherwise
-    // Architecture: e.g. ARMv6, ARMv7,...
     i:=StringListStartsWith(FCrossOpts,'-Cp');
     if i=-1 then
     begin
-      aOption:='-CpARMV7M';  // cortex-m3/embed default
+      aOption:='-Cpmips32';
       FCrossOpts.Add(aOption+' ');
-      // When compiling for arm-embedded, a sub-architecture (e.g. SUBARCH=armv4t or SUBARCH=armv7m) must be defined)
-      FSubArch:='armv7m';
-      ShowInfo('Did not find any -Cp architecture parameter; using '+aOption+' (cortex-m3/embed default).');
+      //When compiling for mipsel-embedded, a sub-architecture (e.g. SUBARCH=pic32mx) must be defined)
+      FSubArch:='pic32mx';
+      ShowInfo('Did not find any -Cp architecture parameter; using -Cpmips32 and SUBARCH=pic32mx.');
     end else aOption:=Trim(FCrossOpts[i]);
     AddFPCCFGSnippet(aOption);
+
   end;
 end;
 
-constructor TAny_Embeddedarm.Create;
+constructor TAny_Embeddedmipsel.Create;
 begin
   inherited Create;
-  FTargetCPU:=ARCH;
-  FTargetOS:=OS;
-  FBinUtilsPrefix:=ARCH+'-'+OS+'-'; //crossfpc nomenclature; module will also search for android crossbinutils
+  FBinUtilsPrefix:='mipsel-embedded-';
   FBinUtilsPath:='';
   FFPCCFGSnippet:=''; //will be filled in later
   //FCompilerUsed:=ctInstalled;
   FLibsPath:='';
+  FTargetCPU:='mipsel';
+  FTargetOS:='embedded';
   FAlreadyWarned:=false;
   ShowInfo;
 end;
 
-destructor TAny_Embeddedarm.Destroy;
+destructor TAny_Embeddedmipsel.Destroy;
 begin
   inherited Destroy;
 end;
 
 var
-  Any_Embeddedarm:TAny_Embeddedarm;
+  Any_Embeddedmipsel:TAny_Embeddedmipsel;
 
 initialization
-  Any_Embeddedarm:=TAny_Embeddedarm.Create;
-  RegisterExtension(Any_Embeddedarm.TargetCPU+'-'+Any_Embeddedarm.TargetOS,Any_Embeddedarm);
+  Any_Embeddedmipsel:=TAny_Embeddedmipsel.Create;
+  RegisterExtension(Any_Embeddedmipsel.TargetCPU+'-'+Any_Embeddedmipsel.TargetOS,Any_Embeddedmipsel);
 finalization
-  Any_Embeddedarm.Destroy;
+  Any_Embeddedmipsel.Destroy;
 end.
 

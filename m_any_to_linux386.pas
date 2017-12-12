@@ -92,10 +92,10 @@ begin
     {$IFDEF MULTILIB}
     FLibsPath:='/usr/lib/i386-linux-gnu'; //debian (multilib) Jessie+ convention
     result:=DirectoryExists(FLibsPath);
-  if result then
-  begin
-    FLibsFound:=True;
-    //todo: check if -XR is needed for fpc root dir Prepend <x> to all linker search paths
+    if result then
+    begin
+      FLibsFound:=True;
+      //todo: check if -XR is needed for fpc root dir Prepend <x> to all linker search paths
       AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath));
       AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter('/lib/i386-linux-gnu'));
       {$ifdef CPUX64}

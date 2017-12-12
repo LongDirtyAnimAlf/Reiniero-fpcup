@@ -28,6 +28,8 @@ unit fpcuplibcurl;
 
 {$ifdef libcurlstatic}
 {$ifdef win32}
+  {$linklib .\libs\win32\libcrypto.a}
+  {$linklib .\libs\win32\libssl.a}
   {$linklib .\libs\win32\libcurl.a}
   {$linklib .\libs\win32\libadvapi32.a}
   {$linklib .\libs\win32\libws2_32.a}
@@ -44,6 +46,7 @@ interface
 
 {$IFDEF WINDOWS}
 uses
+  Windows,
   SysUtils,
   ctypes;
 
@@ -68,8 +71,6 @@ const
   External_library='libcurl'; {Setup as you need}
 
 Type
-
-  Pchar  = ^char;
   Pcurl_calloc_callback  = ^curl_calloc_callback;
   Pcurl_closepolicy  = ^curl_closepolicy;
   Pcurl_forms  = ^curl_forms;
@@ -802,8 +803,7 @@ implementation
 
 {$ifndef libcurlstatic}
 
-uses
-  DynLibs;
+uses dynlibs;
 
 var
   libcurl: TLibHandle = NilHandle;
@@ -819,7 +819,8 @@ begin
   if result then exit;
 
   try
-    libcurl:= LoadLibrary(External_library+'.'+SharedSuffix);
+
+    if libcurl = NilHandle then libcurl:= LoadLibrary(External_library+'.'+SharedSuffix);
     {$ifdef MSWINDOWS}
     if libcurl = NilHandle then libcurl:= LoadLibrary(External_library+'-4.'+SharedSuffix);
     {$endif}

@@ -68,20 +68,24 @@ uses
   synautil, // for rpos ... could also use strutil
   fpcuputil, commandline, installerUniversal, installerManager,
   m_crossinstaller,
-  m_any_to_aixpowerpc,
   m_any_to_androidarm,
   m_any_to_androidmipsel,
+  m_any_to_androidjvm,
   m_any_to_androidaarch64, //not yet available !!
   m_any_to_linuxarm,
-  m_any_to_embeddedarm,
+  m_any_to_linuxmipsel,
+  m_any_to_linuxpowerpc64,
   m_any_to_linuxaarch64,
-  m_any_to_androidjvm,
+  m_any_to_haiku386,
+  //m_any_to_haikux64,
+  m_any_to_embeddedarm,
+  m_any_to_embeddedavr,
+  m_any_to_embeddedmipsel,
   m_any_to_javajvm,
+  m_any_to_aixpowerpc,
+  m_any_to_msdosi8086,
   {$IFDEF LINUX}
   m_linux386_to_mips,
-  {$ENDIF}
-  {$IFNDEF MSWINDOWS}
-  m_any_to_linuxmipsel,
   {$ENDIF}
   {$IFDEF Darwin}
   m_crossdarwin64,
@@ -95,6 +99,7 @@ uses
   m_any_to_darwin386,
   m_any_to_darwinx64,
   m_any_to_darwinpowerpc,
+  m_any_to_darwinpowerpc64,
   m_any_to_darwinarm,
   m_any_to_darwinaarch64,
   {$endif}
@@ -117,7 +122,7 @@ uses
   {$endif}
   {$ifdef win32}
   m_crosswin64,
-  m_win32_to_linuxmips, m_win32_to_msdosi8086, m_win32_to_go32v2i386, m_win32_to_wincearm,
+  m_win32_to_linuxmips, m_win32_to_go32v2i386, m_win32_to_wincearm,
   {$endif}
   {$endif}
   m_anyinternallinker_to_win386,

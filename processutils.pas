@@ -58,7 +58,10 @@ unit processutils;
 interface
 
 uses
-  Classes, SysUtils, process, strutils;
+  Classes, SysUtils,
+  process,
+  //UTF8Process,
+  strutils;
 
 const
   // Internal error code/result codes:
@@ -98,6 +101,7 @@ type
   { TProcessEx }
 
   TProcessEx = class(TProcess)
+  //TProcessEx = class(TProcessUTF8)
     private
       FExceptionInfoStrings: TstringList;
       FExitStatus: integer; //result code/exit status that executable returned with
@@ -146,22 +150,20 @@ type
 // Runs command, returns result code. Negative codes are processutils internal error codes
 function ExecuteCommand(Commandline: string; Verbose:boolean): integer; overload;
 // Runs command, returns result code. Negative codes are processutils internal error codes
-function ExecuteCommand(Commandline: string; var Output:string; Verbose:boolean): integer; overload;
+function ExecuteCommand(Commandline: string; out Output:string; Verbose:boolean): integer; overload;
 // Runs command, returns result code. Negative codes are processutils internal error codes
 function ExecuteCommand(Commandline: string; Output : TStream; Verbose:boolean): integer; overload;
 // Runs command, returns result code. Negative codes are processutils internal error codes
 function ExecuteCommandInDir(Commandline, Directory: string; Verbose:boolean): integer; overload;
 // Runs command, returns result code. Negative codes are processutils internal error codes
-function ExecuteCommandInDir(Commandline, Directory: string; var Output:string; Verbose:boolean): integer; overload;
+function ExecuteCommandInDir(Commandline, Directory: string; out Output:string; Verbose:boolean): integer; overload;
 // Runs command, returns result code. Negative codes are processutils internal error codes
 // PrependPath is prepended to existing path. If empty, keep current path
-function ExecuteCommandInDir(Commandline, Directory: string; var Output:string; PrependPath: string; Verbose:boolean): integer; overload;
+function ExecuteCommandInDir(Commandline, Directory: string; out Output:string; PrependPath: string; Verbose:boolean): integer; overload;
 // Don't process comamndline
-function ExecutePlainCommand(Commandline: string; var Output: string; Verbose: boolean): integer;
+function ExecutePlainCommand(Commandline: string; out Output: string; Verbose: boolean): integer;
 // Writes output to console
 procedure DumpConsole(Sender:TProcessEx; output:string);
-
-
 
 implementation
 
@@ -277,9 +279,9 @@ begin
       inherited Environment:=FProcessEnvironment.EnvironmentList;
     Options := Options +[poUsePipes, poStderrToOutPut];
     if Assigned(FOnOutput) then
-      FOnOutput(Self,'Executing : '+ResultingCommand+' (working dir: '+ CurrentDirectory +')'+ LineEnding);
+      FOnOutput(Self,'Executing: '+ResultingCommand+' (working dir: '+ CurrentDirectory +')'+ LineEnding);
     if Assigned(FOnOutputM) then
-      FOnOutputM(Self,'Executing : '+ResultingCommand+' (working dir: '+ CurrentDirectory +')'+ LineEnding);
+      FOnOutputM(Self,'Executing: '+ResultingCommand+' (working dir: '+ CurrentDirectory +')'+ LineEnding);
 
     try
       if CurrentDirectory<>'' then
@@ -307,10 +309,11 @@ begin
         if not ReadOutput then
         begin
           {$ifdef LCL}
-          Application.ProcessMessages;
           Sleep(10);
-          // set cursor after 1 second of execution time
           if (i<100) then Inc(i);
+          // process message queue after 50ms
+          if (i>5) then Application.ProcessMessages;
+          // set cursor after 1 second of execution time
           if (i=99) then Application.MainForm.Cursor:=crHourGlass;
           {$else}
           Sleep(100);
@@ -319,8 +322,11 @@ begin
       end;
       ReadOutput;
       {$ifdef LCL}
-      Application.MainForm.Cursor:=crDefault;
-      Application.ProcessMessages;
+      if Application.MainForm.Cursor=crHourGlass then
+      begin
+        Application.MainForm.Cursor:=crDefault;
+        Application.ProcessMessages;
+      end;
       {$endif}
 
       FExitStatus:=inherited ExitStatus;
@@ -396,20 +402,20 @@ begin
   end
   else
   begin
-  if not FCaseSensitive then
-    VarName:=UpperCase(VarName);
-  idx:=0;
-  while idx<FEnvironmentList.Count  do
+    if not FCaseSensitive then
+      VarName:=UpperCase(VarName);
+    idx:=0;
+    while idx<FEnvironmentList.Count  do
     begin
-    if VarName = ExtractVar(FEnvironmentList[idx]) then
-      break;
-    idx:=idx+1;
+      if VarName = ExtractVar(FEnvironmentList[idx]) then
+        break;
+      idx:=idx+1;
     end;
-  if idx<FEnvironmentList.Count then
-    result:=idx
-  else
-    result:=-1;
-end;
+    if idx<FEnvironmentList.Count then
+      result:=idx
+    else
+      result:=-1;
+  end;
 end;
 
 function TProcessEnvironment.GetVar(VarName: string): string;
@@ -482,7 +488,7 @@ begin
   Result:=ExecuteCommandInDir(Commandline,'',s,Verbose);
 end;
 
-function ExecuteCommand(Commandline: string; var Output: string;
+function ExecuteCommand(Commandline: string; out Output: string;
   Verbose: boolean): integer;
 begin
   Result:=ExecuteCommandInDir(Commandline,'',Output,Verbose);
@@ -505,13 +511,13 @@ begin
 end;
 
 function ExecuteCommandInDir(Commandline, Directory: string;
-  var Output: string; Verbose: boolean): integer;
+  out Output: string; Verbose: boolean): integer;
 begin
   Result:=ExecuteCommandInDir(CommandLine,Directory,Output,'',Verbose);
 end;
 
 function ExecuteCommandInDir(Commandline, Directory: string;
-  var Output: string; PrependPath: string; Verbose: boolean): integer;
+  out Output: string; PrependPath: string; Verbose: boolean): integer;
 var
   OldPath: string;
   PE:TProcessEx;
@@ -598,7 +604,7 @@ begin
   end;
 end;
 
-function ExecutePlainCommand(Commandline: string; var Output: string; Verbose: boolean): integer;
+function ExecutePlainCommand(Commandline: string; out Output: string; Verbose: boolean): integer;
 var
   PE:TProcessEx;
   s:string;

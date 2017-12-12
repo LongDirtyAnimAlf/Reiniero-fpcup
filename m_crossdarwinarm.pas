@@ -30,20 +30,44 @@ end;
 { TDarwinarm }
 
 function TDarwinarm.GetLibs(Basepath:string): boolean;
+const
+  LibName='libc.dylib';
 var
   IOS_BASE:string;
+  s:string;
 begin
   result:=FLibsFound;
   if result then exit;
-
-  FLibsPath:='';
-  result:=true;
-  FLibsFound:=true;
 
   IOS_BASE:='/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk';
   if NOT DirectoryExists(IOS_BASE) then
      IOS_BASE:='/Volumes/Xcode/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk';
 
+  if not result then
+    result:=SearchLibrary(IncludeTrailingPathDelimiter(IOS_BASE)+'usr'+DirectorySeparator+'lib',LibName);
+  if not result then
+    result:=SearchLibrary(IncludeTrailingPathDelimiter(IOS_BASE)+'usr'+DirectorySeparator+'lib','libc.tbd');
+
+  SearchLibraryInfo(result);
+
+  if result then
+  begin
+    FLibsFound:=True;
+
+    AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath));
+
+    s:=IncludeTrailingPathDelimiter(FLibsPath)+'..'+DirectorySeparator+'..'+DirectorySeparator;
+    s:=ExpandFileName(s);
+    s:=ExcludeTrailingBackslash(s);
+
+    AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath)+'System'+DirectorySeparator);
+    AddFPCCFGSnippet('-k-framework -kFoundation');
+    AddFPCCFGSnippet('-k-framework -kCoreFoundation');
+    AddFPCCFGSnippet('-Xd');
+    AddFPCCFGSnippet('-XR'+s);
+  end;
+
+(*
   if DirectoryExists(IOS_BASE) then
   begin
     FLibsPath:=IncludeTrailingPathDelimiter(IOS_BASE)+'usr/lib/';
@@ -53,6 +77,7 @@ begin
     //'-Xr'+IncludeTrailingPathDelimiter(IOS_BASE); //set linker's rlink path
     //'-Xr'; //set linker's rlink path
   end;
+  *)
 end;
 
 function TDarwinarm.GetBinUtils(Basepath:string): boolean;
@@ -66,18 +91,22 @@ begin
   FBinUtilsPrefix:=''; // we have the "native" names, no prefix
   result:=true;
   FBinsFound:=true;
-
+  (*
   IOS_BASE:='/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk';
   if NOT DirectoryExists(IOS_BASE) then
      IOS_BASE:='/Volumes/Xcode/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk';
 
   if DirectoryExists(IOS_BASE) then
   begin
-    FBinUtilsPath:=IncludeTrailingPathDelimiter(IOS_BASE)+'usr/bin';
+    //SearchBinUtilsInfo(result);
+    //FBinUtilsPath:=IncludeTrailingPathDelimiter(IOS_BASE)+'usr/bin';
     FFPCCFGSnippet:=FFPCCFGSnippet+LineEnding+
-    '-FD'+FBinUtilsPath+LineEnding+ {search this directory for compiler utilities}
+    //'-FD'+FBinUtilsPath+LineEnding+ {search this directory for compiler utilities}
     '-XR'+ExcludeTrailingPathDelimiter(IOS_BASE);
   end;
+  *)
+
+
 
 end;
 
