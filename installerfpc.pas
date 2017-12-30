@@ -1942,14 +1942,14 @@ begin
             {$ifdef CPUARMHF}
             s:=s+'hf';
             {$endif CPUARMHF}
+            {$IF DEFINED(CPUPOWERPC64) AND DEFINED(LINUX) AND DEFINED(FPC_ABI_ELFV2)}
+            s:=s+'le';
+            {$ENDIF}
             s:=s+'-'+GetTargetOS;
             {$ifdef FREEBSD}
             j:=GetFreeBSDVersion;
             s:=s+'11'; // version 11 only for now
             {$endif FREEBSD}
-            {$IF DEFINED(CPUPOWERPC64) AND DEFINED(LINUX) AND DEFINED(FPC_ABI_ELFV2)}
-            s:=s+'le';
-            {$endif}
 
             aFPCUPBootstrapURL:=FPCUPGITREPO+
               '/releases/download/bootstrappers_v1.0/'+
@@ -1958,7 +1958,7 @@ begin
             infoln(localinfotext+'Checking existence of: '+aFPCUPBootstrapURL,etDebug);
             aFPCUPCompilerFound:=aDownLoader.checkURL(aFPCUPBootstrapURL);
 
-            if NOT aFPCUPCompilerFound then
+            if (NOT aFPCUPCompilerFound) then
             begin
               // also try the privately hosted repo of fpcupdeluxe for locations where GitHub is blocked.
               aFPCUPBootstrapURL:=FPCUPPRIVATEGITREPO+
@@ -1983,7 +1983,7 @@ begin
             end;
           end;
 
-          if NOT aFPCUPCompilerFound then
+          if (NOT aFPCUPCompilerFound) then
           begin
             aCompilerList.Sorted:=true;
             for i:=0 to Pred(aCompilerList.Count) do
@@ -1992,6 +1992,9 @@ begin
               {$ifdef CPUARMHF}
               s:=s+'hf';
               {$endif CPUARMHF}
+              {$IF DEFINED(CPUPOWERPC64) AND DEFINED(LINUX) AND DEFINED(FPC_ABI_ELFV2)}
+              s:=s+'le';
+              {$ENDIF}
               s:=s+'-'+GetTargetOS;
               {$IFDEF FREEBSD}
               j:=GetFreeBSDVersion;
@@ -2890,6 +2893,7 @@ var
 begin
   result:=inherited;
   result:=InitModule;
+
   if not result then exit;
 
   // not so elegant check to see what kind of client we need ...
