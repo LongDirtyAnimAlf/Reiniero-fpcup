@@ -94,7 +94,6 @@ type
     // For now Windows-only; could be extended to generic cross platform installer class once this works
     function CreateInstallers(Directive:string;sl:TStringList;ModuleName:string):boolean;
     {$ENDIF MSWINDOWS}
-    function FirstSpaceAfterCommand(CommandLine: string): integer;
     // Get a value for a key=value pair. Case-insensitive for keys. Expands macros in values.
     function GetValue(Key:string;sl:TStringList;recursion:integer=0):string;
     // internal initialisation, called from BuildModule,CleanModule,GetModule
@@ -169,7 +168,7 @@ Const
   MAXSYSMODULES=200;
   MAXUSERMODULES=20;
   // Allow enough instructions per module:
-  MAXINSTRUCTIONS=200;
+  MAXINSTRUCTIONS=255;
   MAXRECURSIONS=10;
 
 var
@@ -253,11 +252,11 @@ begin
         // so strip them out if they are there.
         if macro='BASEDIR' then
           macro:=ExcludeTrailingPathDelimiter(FBaseDirectory)
-        else if macro='FPCDIR' then //$(FPCDIR)
+        else if macro='FPCDIR' then
           macro:=ExcludeTrailingPathDelimiter(FFPCDir)
-        else if macro='FPCBINDIR' then //$(FPCBINDIR)
+        else if macro='FPCBINDIR' then
             macro:=ExcludeTrailingPathDelimiter(FBinPath)
-        else if macro='TOOLDIR' then //$(TOOLDIR)
+        else if macro='TOOLDIR' then
           {$IFDEF MSWINDOWS}
           // make is a binutil and should be located in the make dir
           macro:=ExcludeTrailingPathDelimiter(FMakeDir)
@@ -266,15 +265,15 @@ begin
           // Strip can be anywhere in the path
           macro:=ExcludeTrailingPathDelimiter(ExtractFilePath(Which('make')))
           {$ENDIF}
-        else if macro='GETEXEEXT' then //$(GETEXEEXT)
+        else if macro='GETEXEEXT' then
           macro:=GetExeExt
         {$ifndef FPCONLY}
-        else if macro='LAZARUSDIR' then //$(LAZARUSDIR)
+        else if macro='LAZARUSDIR' then
           macro:=ExcludeTrailingPathDelimiter(FLazarusDir)
-        else if macro='LAZARUSPRIMARYCONFIGPATH' then //$(LAZARUSPRIMARYCONFIGPATH)
+        else if macro='LAZARUSPRIMARYCONFIGPATH' then
           macro:=ExcludeTrailingPathDelimiter(FLazarusPrimaryConfigPath)
         {$endif}
-        else if macro='STRIPDIR' then //$(STRIPDIR)
+        else if macro='STRIPDIR' then
           {$IFDEF MSWINDOWS}
           // Strip is a binutil and should be located in the make dir
           macro:=ExcludeTrailingPathDelimiter(FMakeDir)
@@ -395,14 +394,13 @@ begin
   {$ELSE}
   Processor.Parameters.Add('--quiet');
   {$ENDIF}
-  Processor.Parameters.Add('--pcp=' + FLazarusPrimaryConfigPath);
+  Processor.Parameters.Add('--pcp=' + DoubleQuoteIfNeeded(FLazarusPrimaryConfigPath));
   Processor.Parameters.Add('--cpu=' + GetTargetCPU);
   Processor.Parameters.Add('--os=' + GetTargetOS);
-  Processor.Parameters.Add('--add-package');
   if FLCL_Platform <> '' then
             Processor.Parameters.Add('--ws=' + FLCL_Platform);
-
-  Processor.Parameters.Add(PackageAbsolutePath);
+  Processor.Parameters.Add('--add-package');
+  Processor.Parameters.Add(DoubleQuoteIfNeeded(PackageAbsolutePath));
   try
     Processor.Execute;
     result := Processor.ExitStatus=0;
@@ -491,31 +489,13 @@ begin
 end;
 {$endif}
 
-function TUniversalInstaller.FirstSpaceAfterCommand(CommandLine: string): integer;
-  var
-    j: integer;
-  begin
-    //split off command and parameters
-    j:=1;
-    while j<=length(CommandLine) do
-      begin
-      if CommandLine[j]='"' then
-        repeat  //skip until next quote
-          j:=j+1;
-        until (CommandLine[j]='"') or (j=length(CommandLine));
-      j:=j+1;
-      if CommandLine[j]=' ' then break;
-      end;
-    Result:=j;
-  end;
-
 function TUniversalInstaller.AddPackages(sl:TStringList): boolean;
 const
   // The command that will be processed:
   Directive='AddPackage';
   Location='Workingdir';
 var
-  i,j:integer;
+  i:integer;
   PackagePath:string;
   Workingdir:string;
   BaseWorkingdir:string;
@@ -960,6 +940,7 @@ var
     exec,key,counter,oldcounter,filename:string;
     count:integer;
   begin
+  result:=true;
   //filename:=xmlfile;
   //if rightstr(filename,4)<>'.xml' then
   filename:=xmlfile+'.xml';
@@ -1014,8 +995,7 @@ var
         end;
       LazarusConfig.SetVariable(filename,key,trim(copy(exec,j+1,length(exec))));
       end;
-    if not result then
-      break;
+    if (not result) then break;
     end;
   end;
 {$endif}
@@ -1324,7 +1304,7 @@ begin
     if (RemoteURL<>'') AND (NOT SourceOK) then
     begin
       infoln(infotext+'Going to download from archive '+RemoteURL,etInfo);
-      TempArchive := SysUtils.GetTempFileName+SysUtils.ExtractFileExt(GetFileNameFromURL(RemoteURL));
+      TempArchive := SysUtils.GetTempFileName('','FPCUPTMP')+SysUtils.ExtractFileExt(GetFileNameFromURL(RemoteURL));
       WritelnLog(infotext+'Going to download '+RemoteURL+' into '+TempArchive,false);
       try
         result:=Download(FUseWget, RemoteURL, TempArchive);
@@ -1912,8 +1892,8 @@ end;
 function CheckIncludeModule(ModuleName: string):boolean;
 var
   ini:TMemIniFile;
-  j,k:integer;
-  os,cpu,s:string;
+  j:integer;
+  os,cpu:string;
   AddModule,NegativeList:boolean;
   sl:TStringList;
   e:Exception;

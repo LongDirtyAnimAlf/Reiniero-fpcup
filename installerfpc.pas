@@ -57,15 +57,24 @@ Const
     'Uninstallmodule FPC;'+
     'End;'+
 
-    {$ifdef MSWINDOWS}
+    {$ifdef win32}
     // Crosscompile build
     'Declare FPCCrossWin32-64;'+
-    // Needs to be run after regular compile because of CPU/OS switch
-    'SetCPU x86_64;'+
-    'SetOS win64;'+
+    'SetCPU x86_64;' + 'SetOS win64;' +
+    // Getmodule has already been done
+    'Cleanmodule FPC;'+
+    'Buildmodule FPC;'+
+    'SetCPU i386;'+ 'SetOS win32;'+
+    'End;'+
+    {$endif}
+    {$ifdef win64}
+    // Crosscompile build
+    'Declare FPCCrossWin64-32;'+
+    'SetCPU i386;'+ 'SetOS win32;'+
     // Getmodule has already been done
     'Cleanmodule FPC;'+
     'Buildmodule fpc;'+
+    'SetCPU x86_64;' + 'SetOS win64;' +
     'End;'+
     {$endif}
 
@@ -127,8 +136,6 @@ type
   public
     //Directory that has compiler needed to compile compiler sources. If compiler doesn't exist, it will be downloaded
     property BootstrapCompilerDirectory: string write FBootstrapCompilerDirectory;
-    //Optional; URL from which to download bootstrap FPC compiler if it doesn't exist yet.
-    property BootstrapCompilerURL: string write FBootstrapCompilerURL;
     // Build module
     function BuildModule(ModuleName:string): boolean; override;
     // Clean up environment
@@ -319,7 +326,7 @@ procedure RemoveStaleBuildDirectories(aBaseDir,aCPU,aOS:string);
 var
   OldPath:string;
   FileInfo: TSearchRec;
-  DeleteList:TStringList;
+  //DeleteList:TStringList;
   aArch:string;
 begin
 
@@ -723,11 +730,12 @@ begin
         Options:=Options+' -ap';
         {$endif}
 
-        {$if not defined(FPC_HAS_TYPE_EXTENDED)}
+        {$if (NOT defined(FPC_HAS_TYPE_EXTENDED)) AND (defined (CPUX86_64))}
         // soft 80 bit float if available
-        if (CrossInstaller.TargetCPU='i386') OR ((CrossInstaller.TargetCPU='i8086')) then
+        if ( (CrossInstaller.TargetCPU='i386') OR (CrossInstaller.TargetCPU='i8086')  OR (CrossInstaller.TargetCPU='x86_64') ) then
         begin
-          infoln(infotext+'Adding -dFPC_SOFT_FPUX80 compiler option to enable 80bit (soft)float support.',etInfo);
+          infoln(infotext+'Adding -dFPC_SOFT_FPUX80 compiler option to enable 80bit (soft)float support (trunk only).',etInfo);
+          infoln(infotext+'This is needed due to the fact that FPC itself is also build with this option enabled.',etInfo);
           Options:=Options+' -dFPC_SOFT_FPUX80';
         end;
         {$endif}
@@ -1018,10 +1026,9 @@ begin
 
   s:=s+' -dREVINC';
 
-  {$if not defined(FPC_HAS_TYPE_EXTENDED)}
-  //{$if defined(win64)}
+  {$if (NOT defined(FPC_HAS_TYPE_EXTENDED)) AND (defined (CPUX86_64))}
   // soft 80 bit float if available
-  infoln(infotext+'Adding -dFPC_SOFT_FPUX80 compiler option to enable 80bit (soft)float support.',etInfo);
+  infoln(infotext+'Adding -dFPC_SOFT_FPUX80 compiler option to enable 80bit (soft)float support (trunk only).',etInfo);
   s:=s+' -dFPC_SOFT_FPUX80';
   {$endif}
 
@@ -1313,17 +1320,18 @@ begin
   exit;
   {$ENDIF}
 
+  {$IF DEFINED(CPUPOWERPC64) AND DEFINED(FPC_ABI_ELFV2)}
+  if (s=FPCTRUNKVERSION) then result:=FPCTRUNKVERSION
+  else result:='0.0.0';
+  exit;
+  {$ENDIF}
+
+
   result:='0.0.0';
 
-  // for trunk i.e. , also 3.0.2 is allowed
-  // but online, only official 3.0.0 bootstrapper available
-
-  if s=FPCTRUNKVERSION then result:='3.0.2'
-  else if s='3.0.5' then result:='3.0.2'
-  else if s='3.0.4' then result:='3.0.2'
-  else if s='3.0.3' then result:='3.0.0'
-  else if (s='3.0.2') or (s='3.0.1') then result:='3.0.0'
-  //else if (s='3.0.2') or (s='3.0.1') then result:='2.6.4'
+  if s=FPCTRUNKVERSION then result:=FPCTRUNKBOOTVERSION
+  else if ((s='3.0.5') OR (s='3.0.4')) then result:='3.0.2'
+  else if ((s='3.0.3') OR (s='3.0.2') OR (s='3.0.1')) then result:='3.0.0'
   else if s='3.0.0' then result:='2.6.4'
   else if s='2.6.4' then result:='2.6.2'
   else if s='2.6.2' then result:='2.6.0'
@@ -1357,6 +1365,11 @@ begin
   result:='0.0.0';
 
   {$IFDEF CPUAARCH64}
+  result:=FPCTRUNKVERSION;
+  exit;
+  {$ENDIF}
+
+  {$IF DEFINED(CPUPOWERPC64) AND DEFINED(FPC_ABI_ELFV2)}
   result:=FPCTRUNKVERSION;
   exit;
   {$ENDIF}
@@ -1447,6 +1460,7 @@ var
   FPCCompiler:String;
   {$ENDIF UNIX}
 begin
+  result:=true;
   {$IFDEF UNIX}
   localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (CreateFPCScript): ';
   FPCCompiler:=IncludeTrailingPathDelimiter(FBinPath)+'fpc'+GetExeExt;
@@ -1504,7 +1518,11 @@ begin
 
 OperationSucceeded:=true;
 
-if FBootstrapCompilerURL='' then exit;
+  if FBootstrapCompilerURL='' then
+  begin
+    infoln(localinfotext+'No URL supplied. Fatal error. Should not happen !', etError);
+    exit(false);
+  end;
 
 if OperationSucceeded then
 begin
@@ -1512,7 +1530,7 @@ begin
     if OperationSucceeded=false then infoln(localinfotext+'Could not create directory '+FBootstrapCompilerDirectory,etError);
 end;
 
-BootstrapArchive := SysUtils.GetTempFileName;
+  BootstrapArchive := SysUtils.GetTempFileName('','FPCUPTMP');
 if OperationSucceeded then
 begin
   OperationSucceeded:=Download(FUseWget, FBootstrapCompilerURL, BootstrapArchive,HTTPProxyHost,HTTPProxyPort,HTTPProxyUser,HTTPProxyPassword);
@@ -1795,7 +1813,7 @@ begin
 
           s:=FPCFTPURL+'/'+aLocalBootstrapVersion+'/bootstrap/';
 
-          infoln(localinfotext+'Looking for (online) bootstrapper '+aCompilerArchive + ' in ' + s,etInfo);
+          infoln(localinfotext+'Looking for (online) bootstrapper '+aCompilerArchive + ' in ' + s,etDebug);
 
           aCompilerList.Clear;
 
@@ -1820,7 +1838,7 @@ begin
 
           if FVerbose then
           begin
-              if aCompilerList.Count>0 then infoln(localinfotext+'Found FPC v'+aLocalBootstrapVersion+' online bootstrappers: '+aCompilerList.CommaText,etInfo);
+              if aCompilerList.Count>0 then infoln(localinfotext+'Found FPC v'+aLocalBootstrapVersion+' online bootstrappers: '+aCompilerList.CommaText,etDebug);
           end;
 
           {$IFDEF FREEBSD}
@@ -1893,8 +1911,7 @@ begin
         end;
       end;
 
-
-      // second, try the FPCUP binaries from release
+      // second, try the FPCUP binaries from release, perhaps it is a better version
       if (NOT aCompilerFound) OR (FBootstrapCompilerOverrideVersionCheck) then
       begin
 
@@ -1921,12 +1938,17 @@ begin
           begin
             infoln(localinfotext+'Looking online for a FPCUP(deluxe) bootstrapper with version '+aLocalFPCUPBootstrapVersion,etInfo);
 
-            s:=GetTargetCPUOS;
-            {$ifdef FREEBSD}
-            s:=s+'11'; // version 11 only for now
-            {$endif}
+            s:=GetTargetCPU;
             {$ifdef CPUARMHF}
             s:=s+'hf';
+            {$endif CPUARMHF}
+            s:=s+'-'+GetTargetOS;
+            {$ifdef FREEBSD}
+            j:=GetFreeBSDVersion;
+            s:=s+'11'; // version 11 only for now
+            {$endif FREEBSD}
+            {$IF DEFINED(CPUPOWERPC64) AND DEFINED(LINUX) AND DEFINED(FPC_ABI_ELFV2)}
+            s:=s+'le';
             {$endif}
 
             aFPCUPBootstrapURL:=FPCUPGITREPO+
@@ -1934,8 +1956,16 @@ begin
               'fpcup-'+StringReplace(aLocalFPCUPBootstrapVersion,'.','_',[rfReplaceAll])+'-'+s+'-'+GetCompilerName(GetTargetCPU);
 
             infoln(localinfotext+'Checking existence of: '+aFPCUPBootstrapURL,etDebug);
-
             aFPCUPCompilerFound:=aDownLoader.checkURL(aFPCUPBootstrapURL);
+
+            if NOT aFPCUPCompilerFound then
+            begin
+              // also try the privately hosted repo of fpcupdeluxe for locations where GitHub is blocked.
+              aFPCUPBootstrapURL:=FPCUPPRIVATEGITREPO+
+                '/fpcup-'+StringReplace(aLocalFPCUPBootstrapVersion,'.','_',[rfReplaceAll])+'-'+s+'-'+GetCompilerName(GetTargetCPU);
+              infoln(localinfotext+'Checking existence of: '+aFPCUPBootstrapURL,etDebug);
+            aFPCUPCompilerFound:=aDownLoader.checkURL(aFPCUPBootstrapURL);
+            end;
 
             if aFPCUPCompilerFound then
             begin
@@ -1958,11 +1988,16 @@ begin
             aCompilerList.Sorted:=true;
             for i:=0 to Pred(aCompilerList.Count) do
             begin
+              s:=GetTargetCPU;
+              {$ifdef CPUARMHF}
+              s:=s+'hf';
+              {$endif CPUARMHF}
+              s:=s+'-'+GetTargetOS;
               {$IFDEF FREEBSD}
-              if Pos(GetTargetCPUOS+'11-'+GetCompilerName(GetTargetCPU),aCompilerList[i])>0 then
-              {$ELSE}
-              if Pos(GetTargetCPUOS+'-'+GetCompilerName(GetTargetCPU),aCompilerList[i])>0 then
-              {$ENDIF}
+              j:=GetFreeBSDVersion;
+              s:=s+'11'; // version 11 only for now
+              {$endif FREEBSD}
+              if Pos(s+'-'+GetCompilerName(GetTargetCPU),aCompilerList[i])>0 then
               begin
                 aFPCUPBootstrapURL:=aCompilerList[i];
                 FBootstrapCompilerOverrideVersionCheck:=true;
@@ -1985,6 +2020,7 @@ begin
         begin
           if FBootstrapCompilerURL='' then
           begin
+            aCompilerFound:=true;
             infoln(localinfotext+'Got a bootstrap compiler from FPCUP(deluxe) bootstrap binaries.',etInfo);
             FBootstrapCompilerURL := aFPCUPBootstrapURL;
             // set standard bootstrap compilername
@@ -1994,6 +2030,7 @@ begin
           begin
             if GetNumericalVersion(aLocalFPCUPBootstrapVersion)>GetNumericalVersion(aLocalBootstrapVersion) then
             begin
+              aCompilerFound:=true;
               infoln(localinfotext+'Got a better [version] bootstrap compiler from FPCUP(deluxe) bootstrap binaries.',etInfo);
               aLocalBootstrapVersion:=aLocalFPCUPBootstrapVersion;
               FBootstrapCompilerURL:=aFPCUPBootstrapURL;
@@ -2217,9 +2254,13 @@ begin
   end else infoln(infotext+'Available bootstrapper has correct version !',etInfo);
 
   {$IFDEF CPUAARCH64}
-  // we build with >3.0 (trunk), while aarch64 is not available for FPC =< 3.0
+  // we build with >=3.1.1 (trunk), while aarch64 is not available for FPC =< 3.1.1
   FBootstrapCompilerOverrideVersionCheck:=true;
   {$ENDIF CPUAARCH64}
+  {$IF DEFINED(CPUPOWERPC64) AND DEFINED(FPC_ABI_ELFV2)}
+  // we build with >=3.1.1 (trunk), while ppc64le is not available for FPC =< 3.1.1
+  FBootstrapCompilerOverrideVersionCheck:=true;
+  {$ENDIF}
 
   if (bIntermediateNeeded) then
   begin
@@ -2701,6 +2742,7 @@ var
   FileCounter:word;
   DeleteList: TStringList;
   CPU_OSSignature:string;
+  aCleanupCompiler:string;
   S : string;
 begin
   result := inherited;
@@ -2716,6 +2758,7 @@ begin
     CPU_OSSignature:=GetFPCTarget(false);
     // Delete any existing buildstamp file
     Sysutils.DeleteFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'build-stamp.'+CPU_OSSignature);
+    Sysutils.DeleteFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'base.build-stamp.'+CPU_OSSignature);
   end else CPU_OSSignature:=GetFPCTarget(true);
 
   {$IFDEF MSWINDOWS}
@@ -2732,7 +2775,11 @@ begin
   end;
   {$ENDIF}
 
-  if FileExists(FCompiler) then
+  if FileExists(FCompiler)
+     then aCleanupCompiler:=FCompiler
+     else aCleanupCompiler:=IncludeTrailingPathDelimiter(FBootstrapCompilerDirectory)+GetCompilerName(GetTargetCPU);
+
+  if FileExists(aCleanupCompiler) then
   begin
 
     Processor.OnErrorM:=nil;  //don't want to log errors in distclean
@@ -2741,7 +2788,7 @@ begin
       Processor.CurrentDirectory:=ExcludeTrailingPathDelimiter(FSourceDirectory);
       Processor.Parameters.Clear;
       if ((FCPUCount>1) AND (NOT FNoJobs)) then Processor.Parameters.Add('--jobs='+inttostr(FCPUCount));
-      Processor.Parameters.Add('FPC='+FCompiler);
+      Processor.Parameters.Add('FPC='+aCleanupCompiler);
       Processor.Parameters.Add('--directory='+ExcludeTrailingPathDelimiter(FSourceDirectory));
       Processor.Parameters.Add('INSTALL_PREFIX='+ExcludeTrailingPathDelimiter(FInstallDirectory));
       {$IFDEF MSWINDOWS}
@@ -2790,15 +2837,15 @@ begin
   end
   else
   begin
-    infoln(infotext+'Running make distclean failed: could not find compiler ('+FCompiler+')',etWarning);
+    infoln(infotext+'Running make distclean failed: could not find cleanup compiler ('+aCleanupCompiler+')',etWarning);
   end;
 
   // Delete any existing fpc.cfg files
-  Sysutils.DeleteFile(ExtractFilePath(FCompiler)+'fpc.cfg');
+  if (NOT CrossCompiling) then Sysutils.DeleteFile(IncludeTrailingPathDelimiter(FInstallDirectory)+'bin'+DirectorySeparator+CPU_OSSignature+DirectorySeparator+'fpc.cfg');
 
   {$IFDEF UNIX}
   // Delete any fpc.sh shell scripts
-  Sysutils.DeleteFile(ExtractFilePath(FCompiler)+'fpc.sh');
+  if (NOT CrossCompiling) then Sysutils.DeleteFile(IncludeTrailingPathDelimiter(FInstallDirectory)+'bin'+DirectorySeparator+CPU_OSSignature+DirectorySeparator+'fpc.sh');
   // Delete units
   DeleteFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'units');
   DeleteFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'lib/fpc/'+GetFPCVersion+'/units');
@@ -2838,41 +2885,12 @@ end;
 function TFPCInstaller.GetModule(ModuleName: string): boolean;
 var
   BeforeRevision: string;
-  PatchFilePath:string;
-  Output: string = '';
-  LocalPatchCmd : string;
   UpdateWarnings: TStringList;
-  ReturnCode,i: integer;
-  //MakefileSL:TStringList;
-  DiffFileSL:TStringList;
   aRepoClient:TRepoClient;
 begin
   result:=inherited;
   result:=InitModule;
   if not result then exit;
-
-  {
-  if FileExists(IncludeTrailingPathDelimiter(FSourceDirectory)+'Makefile') then
-  begin
-    // try to prevent the building o the FPC IDE
-    // reset makefile
-    MakefileSL:=TStringList.Create;
-    MakefileSL.TextLineBreakStyle:=tlbsLF;
-    //DefaultTextLineBreakStyle
-    //sLineBreak
-    //MakefileSL.SkipLastLineBreak:=;
-    try
-      MakefileSL.LoadFromFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'Makefile');
-      for i:=0 to Pred(MakefileSL.Count) do
-      begin
-        if MakefileSL.Strings[i]='# FPCUPCHANGE IDE=1' then MakefileSL.Strings[i]:='IDE=1';
-      end;
-      MakefileSL.SaveToFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'Makefile');
-    finally
-      MakefileSL.free;
-    end;
-  end;
-  }
 
   // not so elegant check to see what kind of client we need ...
   if ( {(Pos('GITHUB',UpperCase(FURL))>0) OR} (Pos('.GIT',UpperCase(FURL))>0) )
@@ -2904,103 +2922,10 @@ begin
       infoln(infotext+'No updates for ' + ModuleName + ' found.',etInfo);
   end;
 
-  {
-  if result AND FileExists(IncludeTrailingPathDelimiter(FSourceDirectory)+'Makefile') then
-  begin
-    // try to prevent the building o the FPC IDE
-    MakefileSL:=TStringList.Create;
-    MakefileSL.TextLineBreakStyle:=tlbsLF;
-    try
-      MakefileSL.LoadFromFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'Makefile');
-      for i:=0 to Pred(MakefileSL.Count) do
-      begin
-        if MakefileSL.Strings[i]='IDE=1' then MakefileSL.Strings[i]:='# FPCUPCHANGE IDE=1';
-      end;
-      MakefileSL.SaveToFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'Makefile');
-    finally
-      MakefileSL.free;
-    end;
-  end;
-  }
-
   if (NOT Result) then
     infoln(infotext+'Checkout/update of ' + ModuleName + ' sources failure.',etError);
 
-  if result then
-  begin
-    if Length(FSourcePatches)>0 then
-    begin
-      UpdateWarnings:=TStringList.Create;
-      try
-        UpdateWarnings.CommaText := FSourcePatches;
-        for i:=0 to (UpdateWarnings.Count-1) do
-        begin
-          infoln(infotext+'Trying to patch ' + ModuleName + ' with '+UpdateWarnings[i],etInfo);
-          PatchFilePath:=SafeExpandFileName(UpdateWarnings[i]);
-          if NOT FileExists(PatchFilePath) then PatchFilePath:=SafeExpandFileName(SafeGetApplicationPath+UpdateWarnings[i]);
-          if NOT FileExists(PatchFilePath) then PatchFilePath:=SafeExpandFileName(SafeGetApplicationPath+'patchfpc'+DirectorySeparator+UpdateWarnings[i]);
-          if FileExists(PatchFilePath) then
-          begin
-            // check for default values
-            if ((FPatchCmd='patch') OR (FPatchCmd='gpatch'))
-              {$IF defined(BSD) and not defined(DARWIN)}
-              then LocalPatchCmd:=FPatchCmd + ' -p0 -N -i '
-              {$else}
-               then LocalPatchCmd:=FPatchCmd + ' -p0 -N --no-backup-if-mismatch -i '
-              {$endif}
-               else LocalPatchCmd:=Trim(FPatchCmd) + ' ';
-            {$IFDEF MSWINDOWS}
-            ReturnCode:=ExecuteCommandInDir(IncludeTrailingPathDelimiter(FMakeDir) + LocalPatchCmd + PatchFilePath, FSourceDirectory, Output, True);
-            {$ELSE}
-            ReturnCode:=ExecuteCommandInDir(LocalPatchCmd + PatchFilePath, FSourceDirectory, Output, True);
-            {$ENDIF}
-
-            if ReturnCode<>0 then
-            begin
-              // Patching can go wrong when line endings are not compatible
-              // Try to circumvent this problem by trick below (replacing line enddings)
-              if Pos('different line endings',Output)>0 then
-              begin
-                DiffFileSL:=TStringList.Create();
-                try
-                  {$IFDEF MSWINDOWS}
-                  DiffFileSL.TextLineBreakStyle:=tlbsLF;
-                  {$ELSE}
-                  DiffFileSL.TextLineBreakStyle:=tlbsCRLF;
-                  {$ENDIF}
-                  DiffFileSL.LoadFromFile(PatchFilePath);
-                  DiffFileSL.TextLineBreakStyle:=DefaultTextLineBreakStyle;
-                  DiffFileSL.SaveToFile(PatchFilePath);
-                finally
-                  DiffFileSL.Free();
-                end;
-                {$IFDEF MSWINDOWS}
-                ReturnCode:=ExecuteCommandInDir(IncludeTrailingPathDelimiter(FMakeDir) + LocalPatchCmd + PatchFilePath, FSourceDirectory, Output, True);
-                {$ELSE}
-                ReturnCode:=ExecuteCommandInDir(LocalPatchCmd + PatchFilePath, FSourceDirectory, Output, True);
-                {$ENDIF}
-              end;
-            end;
-
-            if ReturnCode=0
-               then infoln(infotext+ModuleName + ' has been patched successfully with '+UpdateWarnings[i],etInfo)
-               else
-               begin
-                 writelnlog(etError, infotext+ModuleName+' Patching ' + ModuleName + ' with ' + UpdateWarnings[i] + ' failed.', true);
-                 writelnlog(infotext+ModuleName+' patch output: ' + Output, true);
-               end;
-          end
-          else
-          begin
-            infoln(infotext+'Strange: could not find patchfile '+PatchFilePath, etWarning);
-            writelnlog(etError, infotext+'Patching ' + ModuleName + ' with ' + UpdateWarnings[i] + ' failed due to missing patch file.', true);
-          end;
-        end;
-      finally
-        UpdateWarnings.Free;
-      end;
-    end;
-  end;
+  if result then PatchModule(ModuleName);
 end;
 
 function TFPCInstaller.CheckModule(ModuleName: string): boolean;
@@ -3014,6 +2939,7 @@ function TFPCInstaller.UnInstallModule(ModuleName: string): boolean;
 begin
   result:=inherited;
   result:=InitModule;
+
   if not result then exit;
 
   //sanity check

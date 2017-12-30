@@ -287,6 +287,8 @@ function GetLocalAppDataPath: string;
 procedure infoln(Message: string; Level: TEventType);
 // Moves file if it exists, overwriting destination file
 function MoveFile(const SrcFilename, DestFilename: string): boolean;
+// Correct line-endings
+function FileCorrectLineEndings(const SrcFilename, DestFilename: string): boolean;
 // Like ExpandFilename but does not expand an empty string to current directory
 function SafeExpandFileName (Const FileName : String): String;
 // Like ExpandFilenameUTF8 but does not expand an empty string to current directory
@@ -295,6 +297,7 @@ function SafeExpandFileNameUTF8 (Const FileName : String): String;
 function SafeGetApplicationName: String;
 // Get application path
 function SafeGetApplicationPath: String;
+function SaveFileFromResource(filename,resourcename:string):boolean;
 // Copies specified resource (e.g. fpcup.ini, settings.ini)
 // to application directory
 function SaveInisFromResource(filename,resourcename:string):boolean;
@@ -318,7 +321,7 @@ function CheckExecutable(Executable, Parameters, ExpectOutput: string): boolean;
 function ExtractFileNameOnly(const AFilename: string): string;
 function GetCompilerName(Cpu_Target:string):string;
 function GetCrossCompilerName(Cpu_Target:string):string;
-function DoubleQuoteIfNeeded(FileName: string): string;
+function DoubleQuoteIfNeeded(s: string): string;
 function GetNumericalVersion(aVersion: string): word;
 function UppercaseFirstChar(s: String): String;
 function DirectoryIsEmpty(Directory: string): Boolean;
@@ -327,6 +330,10 @@ function GetTargetOS:string;
 function GetTargetCPUOS:string;
 function GetFPCTargetCPUOS(const aCPU,aOS:string;const Native:boolean=true): string;
 function GetDistro:string;
+function GetFreeBSDVersion:byte;
+
+var
+  resourcefiles:TStringList;
 
 implementation
 
@@ -348,7 +355,7 @@ uses
     ,windows, shlobj {for special folders}, ActiveX, ComObj
   {$ENDIF MSWINDOWS}
   {$IFDEF UNIX}
-  ,baseunix
+  ,unix,baseunix
   {$ENDIF}
   {$IFDEF ENABLEWGET}
   // for wget downloader
@@ -375,6 +382,40 @@ begin
     UniqueString(result);
     SetLength(result,strlen(field));
   end else result:='';
+end;
+
+function ResNameProc({%H-}ModuleHandle : TFPResourceHMODULE; {%H-}ResourceType, ResourceName : PChar; {%H-}lParam : PtrInt) : LongBool; stdcall;
+var
+  aName:string;
+begin
+  if Assigned(resourcefiles) then
+  begin
+    if Is_IntResource(ResourceName)
+       then aName:=InttoStr({%H-}PtrUInt(ResourceName))
+       else aName:=GetStringFromBuffer(ResourceName);
+    resourcefiles.Append(aName);
+  end;
+  Result:=true;
+end;
+
+function ResTypeProc(ModuleHandle : TFPResourceHMODULE; ResourceType : PChar; lParam : PtrInt) : LongBool; stdcall;
+var
+  aType:string;
+  RT:integer;
+begin
+  if Is_IntResource(ResourceType) then RT:={%H-}PtrUInt(ResourceType) else
+  begin
+    aType:=GetStringFromBuffer(ResourceType);
+    RT:=StrToIntDef(aType,0);
+  end;
+  // get only the plain files (resource type 10; RT_RCDATA)
+  if RT=10 then EnumResourceNames(ModuleHandle,ResourceType,@ResNameProc,lParam);
+  Result:=true;
+end;
+
+procedure DoEnumResources;
+begin
+  EnumResourceTypes(HINSTANCE,@ResTypeProc,0);
 end;
 
 {$ifdef mswindows}
@@ -515,20 +556,14 @@ begin
  result:=AppendPathDelim(result);
 end;
 
-function SaveInisFromResource(filename,resourcename:string):boolean;
+function SaveFileFromResource(filename,resourcename:string):boolean;
 var
   fs:Tfilestream;
-  ms:TMemoryStream;
-  BackupFileName:string;
-  Ini:TMemIniFile;
-  OldIniVersion,NewIniVersion:string;
 begin
   result:=false;
 
   try
-  if NOT FileExists(filename) then
-  begin
-    // create inifile
+    if FileExists(filename) then SysUtils.DeleteFile(filename);
     with TResourceStream.Create(hInstance, resourcename, RT_RCDATA) do
     try
       try
@@ -540,6 +575,28 @@ begin
     finally
       Free;
     end;
+    result:=FileExists(filename);
+  except
+    on E: Exception do
+      infoln('File from resource creation error: '+E.Message,etError);
+  end;
+end;
+
+
+function SaveInisFromResource(filename,resourcename:string):boolean;
+var
+  fs:Tfilestream;
+  ms:TMemoryStream;
+  BackupFileName:string;
+  Ini:TMemIniFile;
+  OldIniVersion,NewIniVersion:string;
+begin
+  result:=false;
+
+  try
+    if NOT FileExists(filename) then
+    begin
+      result:=SaveFileFromResource(filename,resourcename);
   end
   else
   begin
@@ -638,6 +695,7 @@ end;
 {$ENDIF MSWINDOWS}
 
 {$IFDEF UNIX}
+{$IFNDEF DARWIN}
 procedure CreateDesktopShortCut(Target, TargetArguments, ShortcutName: string);
 var
   OperationSucceeded: boolean;
@@ -688,6 +746,31 @@ begin
     XdgDesktopContent.Free;
   end;
 end;
+{$ELSE DARWIN}
+procedure CreateDesktopShortCut(Target, TargetArguments, ShortcutName: string);
+begin
+  // Create shortcut on Desktop and in Applications
+  fpSystem(
+    '/usr/bin/osascript << EOF'+#10+
+    'tell application "Finder"'+#10+
+      'set myLazApp to POSIX file "'+IncludeLeadingPathDelimiter(Target)+'.app" as alias'+#10+
+      'try'+#10+
+          'set myLazDeskShort to (path to desktop folder as string) & "'+ShortcutName+'" as alias'+#10+
+          'on error'+#10+
+             'make new alias to myLazApp at (path to desktop folder as text)'+#10+
+             'set name of result to "'+ShortcutName+'"'+#10+
+      'end try'+#10+
+      'try'+#10+
+          'set myLazAppShort to (path to applications folder as string) & "'+ShortcutName+'" as alias'+#10+
+          'on error'+#10+
+             'make new alias to myLazApp at (path to applications folder as text)'+#10+
+             'set name of result to "'+ShortcutName+'"'+#10+
+      'end try'+#10+
+
+    'end tell'+#10+
+    'EOF');
+end;
+{$ENDIF DARWIN}
 {$ENDIF UNIX}
 
 procedure CreateHomeStartLink(Target, TargetArguments,
@@ -697,7 +780,7 @@ var
   ScriptFile: string;
 begin
   {$IFDEF MSWINDOWS}
-  infoln('Todo: write me (CreateHomeStartLink)!', etInfo);
+  infoln('Todo: write me (CreateHomeStartLink)!', etDebug);
   {$ENDIF MSWINDOWS}
   {$IFDEF UNIX}
   //create dir if it doesn't exist
@@ -808,7 +891,7 @@ begin
   end;
   if found then Major:=j;
 
-  // move towards first numerical
+  // move towards second numerical
   while (Length(VersionSnippet)>=i) AND (NOT (VersionSnippet[i] in ['0'..'9'])) do Inc(i);
   // get minor version
   j:=0;
@@ -821,7 +904,7 @@ begin
   end;
   if found then Minor:=j;
 
-  // move towards first numerical
+  // move towards third numerical
   while (Length(VersionSnippet)>=i) AND (NOT (VersionSnippet[i] in ['0'..'9'])) do Inc(i);
   // get build version
   j:=0;
@@ -1200,7 +1283,7 @@ function MoveFile(const SrcFilename, DestFilename: string): boolean;
 // We might (in theory) be moving files across partitions so we cannot use renamefile
 begin
   try
-    if FileExistsUTF8(SrcFileName) then
+    if FileExists(SrcFileName) then
     begin
       if FileUtil.CopyFile(SrcFilename, DestFileName) then Sysutils.DeleteFile(SrcFileName);
       result:=true;
@@ -1212,6 +1295,28 @@ begin
     end;
   except
     result:=false;
+  end;
+end;
+
+function FileCorrectLineEndings(const SrcFilename, DestFilename: string): boolean;
+var
+  FileSL:TStringList;
+begin
+  result:=false;
+  try
+    if FileExists(SrcFileName) then
+    begin
+      FileSL:=TStringList.Create;
+      try
+        FileSL.LoadFromFile(SrcFileName);
+        SysUtils.DeleteFile(DestFilename);
+        FileSL.SaveToFile(DestFilename);
+        result:=true;
+      finally
+        FileSL.Free;
+      end;
+    end;
+  except
   end;
 end;
 
@@ -1617,17 +1722,10 @@ begin
      else result:=GetDefaultCompilerFilename(Cpu_Target,false);
 end;
 
-function DoubleQuoteIfNeeded(FileName: string): string;
+function DoubleQuoteIfNeeded(s: string): string;
 begin
-  {$IFDEF MSWINDOWS}
-  // Unfortunately, we need to double quote in case there's spaces in the path and it's e.g. a .cmd file
-  result:=Trim(FileName);
-  if Pos(' ',result)>0 then
-  //if Copy(FileName, 1, 1) <> '"' then
-     Result := '"' + Result + '"';
-  {$ELSE}
-  Result := filename;
-  {$ENDIF}
+  result:=Trim(s);
+  if (Pos(' ',result)<>0) AND (Pos('"',result)=0) then result:='"'+result+'"';
 end;
 
 function GetNumericalVersion(aVersion: string): word;
@@ -1794,6 +1892,27 @@ begin
        then t:=t+'-'+InttoStr(Major)+'.'+InttoStr(Minor)+'.'+InttoStr(Build);
   {$endif MSWindows}
   result:=t;
+end;
+
+function GetFreeBSDVersion:byte;
+var
+  s:string;
+  i,j:integer;
+begin
+  result:=0;
+  s:=GetDistro;
+  if Length(s)>0 then
+  begin
+    i:=1;
+    while (Length(s)>=i) AND (NOT (s[i] in ['0'..'9'])) do Inc(i);
+    j:=0;
+    while (Length(s)>=i) AND (s[i] in ['0'..'9']) do
+    begin
+      j:=j*10+Ord(s[i])-$30;
+      Inc(i);
+    end;
+    result:=j;
+  end;
 end;
 
 function GetTargetCPUOS:string;
@@ -2312,18 +2431,21 @@ begin
       H:=Copy(H,1,Pos('"',H)-1);
     end;
 
-    writeln('Authorization required. Remote site says: ',H);
-    write('Enter username (empty quits): ');
+    writeln('Authorization required !');
+    if Length(H)>1 then
+    begin
+      writeln('Remote site says: ',H);
+      writeln('Enter username (empty quits): ');
     readLn(UN);
     RepeatRequest:=(UN<>'');
     if RepeatRequest then
     begin
-      write('Enter password: ');
+        writeln('Enter password: ');
       readln(PW);
       TFPHTTPClient(Sender).UserName:=UN;
       TFPHTTPClient(Sender).Password:=PW;
     end;
-
+    end;
   end;
 end;
 
@@ -2616,7 +2738,7 @@ begin
 
   With TProcess.Create(Self) do
   try
-    CommandLine:=WGETBinary+' -q --user-agent="'+USERAGENT+'" --tries='+InttoStr(MaxRetries)+' --output-document=- '+URL;
+    CommandLine:=WGETBinary+' -q --no-check-certificate --user-agent="'+USERAGENT+'" --tries='+InttoStr(MaxRetries)+' --output-document=- '+URL;
     Options:=[poUsePipes,poNoConsole];
     Execute;
     while Running do
@@ -2915,10 +3037,15 @@ var
   Output:string;
 begin
   result:=false;
-  if (NOT FWGETOk) then exit;
+
+  if (NOT FWGETOk) then
+  begin
+    infoln('No wget binary found: donwload will fail !!', etDebug);
+    exit;
+  end;
 
   Output:='';
-  result:=(ExecuteCommand(WGETBinary+' --user-agent="'+USERAGENT+'" --tries='+InttoStr(MaxRetries)+' --spider '+URL,Output,false)=0);
+  result:=(ExecuteCommand(WGETBinary+' --no-check-certificate --user-agent="'+USERAGENT+'" --tries='+InttoStr(MaxRetries)+' --spider '+URL,Output,false)=0);
   if result then
   begin
     result:=(Pos('Remote file exists',Output)>0);
@@ -2927,6 +3054,7 @@ begin
   begin
     // on github, we get a 403 forbidden for an existing file !!
     result:=(Pos('github',Output)>0) AND (Pos('403 Forbidden',Output)>0);
+    if (NOT result) then result:=(Pos('https://',Output)>0) AND (Pos('401 Unauthorized',Output)>0)
   end;
 end;
 
@@ -2966,6 +3094,13 @@ end;
 
 
 {$ENDIF ENABLEWGET}
+
+initialization
+  resourcefiles:=TStringList.Create;
+  DoEnumResources;
+
+finalization
+  resourcefiles.Free;
 
 end.
 

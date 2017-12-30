@@ -98,7 +98,7 @@ const
     'Cleanmodule lazarus;' +
     'Buildmodule lazbuild;' +
     'ConfigModule lazarus;' +
-    'Do UniversalDefault;'+
+    //'Do UniversalDefault;'+
     'Do USERIDE;'+
     'End;' +
 
@@ -113,12 +113,14 @@ const
     'Declare LazarusCrossWin32-64;' +
     'SetCPU x86_64;' + 'SetOS win64;' +
     'Do LCL;'+
+    'SetCPU i386;'+ 'SetOS win32;'+
     'End;' +
     {$endif}
     {$ifdef win64}
     'Declare LazarusCrossWin64-32;' +
     'SetCPU i386;'+ 'SetOS win32;'+
     'Do LCL;'+
+    'SetCPU x86_64;' + 'SetOS win64;' +
     'End;' +
     {$endif}
 
@@ -317,7 +319,7 @@ begin
         // Quiet:=ConsoleVerbosity<=-3;
         Processor.Parameters.Add('--quiet');
         {$ENDIF}
-        Processor.Parameters.Add('--pcp=' + FPrimaryConfigPath);
+        Processor.Parameters.Add('--pcp=' + DoubleQuoteIfNeeded(FPrimaryConfigPath));
 
         // Apparently, the .compiled file, that are used to check for a rebuild, do not contain a cpu setting if cpu and cross-cpu do not differ !!
         // So, use this test to prevent a rebuild !!!
@@ -407,7 +409,6 @@ var
   i,j,ExitCode: integer;
   LazBuildApp: string;
   OperationSucceeded: boolean;
-  sCmpOpt: string;
   NothingToBeDone:boolean;
   LazarusConfig: TUpdateLazConfig;
 begin
@@ -433,12 +434,7 @@ begin
     Processor.Parameters.Add('FPCDIR=' + FFPCSourceDir); //Make sure our FPC units can be found by Lazarus
     Processor.Parameters.Add('UPXPROG=echo');      //Don't use UPX
     Processor.Parameters.Add('COPYTREE=echo');     //fix for examples in Win svn, see build FAQ
-    // replace -g by -gw if encountered: http://lists.lazarus.freepascal.org/pipermail/lazarus/2015-September/094238.html
-    sCmpOpt:=StringReplace(FCompilerOptions,'-g ','-gw ',[]);
-
-    sCmpOpt:=StringReplace(sCmpOpt,'  ',' ',[rfReplaceAll]);
-    sCmpOpt:=Trim(sCmpOpt);
-    Processor.Parameters.Add('OPT=' + STANDARDCOMPILEROPTIONS + ' ' + sCmpOpt);
+    Processor.Parameters.Add('OPT=' + STANDARDCOMPILEROPTIONS + ' ' + FCompilerOptions);
 
     case UpperCase(ModuleName) of
       'IDE':
@@ -587,7 +583,7 @@ begin
       // Quiet:=ConsoleVerbosity<=-3;
       Processor.Parameters.Add('--quiet');
       {$ENDIF}
-      Processor.Parameters.Add('--pcp=' + FPrimaryConfigPath);
+      Processor.Parameters.Add('--pcp=' + DoubleQuoteIfNeeded(FPrimaryConfigPath));
       Processor.Parameters.Add('--cpu=' + GetTargetCPU);
       Processor.Parameters.Add('--os=' + GetTargetOS);
 
@@ -606,7 +602,7 @@ begin
         // Fallback - depends on hardcoded "Normal IDE" build mode being present
         // We can specify a build mode; otherwise probably the latest build mode will be used
         // which could well be a stripped IDE
-        // Let's see how/if FCompilerOptions clashes with the settings in normal build mode
+        // Let's see how/if CompilerOptions clashes with the settings in normal build mode
         writelnlog(infotext+'LazBuild: building UserIDE but falling back to --build-mode="Normal IDE"', true);
         Processor.Parameters.Add('--build-ide= ' + FCompilerOptions);
         Processor.Parameters.Add('--build-mode="Normal IDE"');
@@ -695,7 +691,7 @@ begin
           if j=0 then
           begin
             LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/Count', 2);
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/Width/Value', 250);
+            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/Width/Value', 260);
 
             LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Version', 1);
             LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Count', 12);
@@ -752,15 +748,15 @@ begin
           {$ELSE}
           Processor.Parameters.Add('--quiet');
           {$ENDIF}
-          Processor.Parameters.Add('--pcp=' + FPrimaryConfigPath);
+          Processor.Parameters.Add('--pcp=' + DoubleQuoteIfNeeded(FPrimaryConfigPath));
           Processor.Parameters.Add('--cpu=' + GetTargetCPU);
           Processor.Parameters.Add('--os=' + GetTargetOS);
 
           if FCrossLCL_Platform <> '' then
             Processor.Parameters.Add('--ws=' + FCrossLCL_Platform);
 
-          Processor.Parameters.Add(IncludeTrailingPathDelimiter(FSourceDirectory)+
-            'ide'+DirectorySeparator+'startlazarus.lpi');
+          Processor.Parameters.Add(DoubleQuoteIfNeeded(IncludeTrailingPathDelimiter(FSourceDirectory)+
+            'ide'+DirectorySeparator+'startlazarus.lpi'));
 
           infoln(infotext+'Compiling startlazarus to make sure it is present:', etInfo);
           try
@@ -1355,19 +1351,13 @@ const
 var
   AfterRevision: string;
   BeforeRevision: string;
-  Counter: integer;
-  Errors: integer;
   UpdateWarnings: TStringList;
-  FilePath:string;
-  LocalPatchCmd:string;
-  Output: string = '';
-  ReturnCode,i: integer;
   RevisionIncText: Text;
   ConstStart: string;
   aRepoClient:TRepoClient;
   {$ifdef Darwin}
   {$ifdef LCLQT5}
-  fs:TMemoryStream;
+  FilePath:string;
   {$endif}
   {$endif}
 begin
@@ -1477,43 +1467,6 @@ begin
   if DirCopy(FilePath+'/Contents/Plugins',ExcludeTrailingPathDelimiter(FSourceDirectory)+'/startlazarus.app/Contents/Plugins')
     then infoln(infotext+'Adding QT5 libqcocoa.dylib success.',etInfo)
     else infoln(infotext+'Adding QT5 libqcocoa.dylib failure.',etError);
-
-  // Replace applicationbundle.pas with a version that adds the necessary files into the app-bundle
-  // This is dirty
-  fs:=TMemoryStream.Create;
-  try
-    with TResourceStream.Create(hInstance, 'APPLICATIONBUNDLE', RT_RCDATA) do
-    try
-      Savetostream(fs);
-    finally
-      Free;
-    end;
-    fs.Position:=0;
-    SysUtils.DeleteFile(ExcludeTrailingPathDelimiter(FSourceDirectory)+'/ide/applicationbundle.pas');
-    if (NOT FileExists(ExcludeTrailingPathDelimiter(FSourceDirectory)+'/ide/applicationbundle.pas')) then
-       fs.SaveToFile(ExcludeTrailingPathDelimiter(FSourceDirectory)+'/ide/applicationbundle.pas');
-  finally
-    fs.Free;
-  end;
-
-  // Replace debugmanager.pas with a version that always creates the app-bundle
-  // This is very dirty
-  fs:=TMemoryStream.Create;
-  try
-    with TResourceStream.Create(hInstance, 'DEBUGMANAGER', RT_RCDATA) do
-    try
-      Savetostream(fs);
-    finally
-      Free;
-    end;
-    fs.Position:=0;
-    SysUtils.DeleteFile(ExcludeTrailingPathDelimiter(FSourceDirectory)+'/ide/debugmanager.pas');
-    if (NOT FileExists(ExcludeTrailingPathDelimiter(FSourceDirectory)+'/ide/debugmanager.pas')) then
-       fs.SaveToFile(ExcludeTrailingPathDelimiter(FSourceDirectory)+'/ide/debugmanager.pas');
-  finally
-    fs.Free;
-  end;
-
   {$endif}
   {$endif}
 
@@ -1555,55 +1508,7 @@ begin
   end;
   *)
 
-  if result then
-  begin
-    if Length(FSourcePatches)>0 then
-    begin
-      infoln(infotext+'Found Lazarus patch file(s).',etInfo);
-      UpdateWarnings:=TStringList.Create;
-      try
-        UpdateWarnings.CommaText := FSourcePatches;
-        for i:=0 to (UpdateWarnings.Count-1) do
-        begin
-          infoln(infotext+'Trying to patch Lazarus with '+UpdateWarnings[i],etInfo);
-          FilePath:=SafeExpandFileName(UpdateWarnings[i]);
-          if NOT FileExists(FilePath) then FilePath:=SafeExpandFileName(SafeGetApplicationPath+UpdateWarnings[i]);
-          if NOT FileExists(FilePath) then FilePath:=SafeExpandFileName(SafeGetApplicationPath+'patchlazarus'+DirectorySeparator+UpdateWarnings[i]);
-          if FileExists(FilePath) then
-          begin
-            // check for default values
-            if ((FPatchCmd='patch') OR (FPatchCmd='gpatch'))
-              {$IF defined(BSD) and not defined(DARWIN)}
-              then LocalPatchCmd:=FPatchCmd + ' -p0 -N -i '
-              {$else}
-               then LocalPatchCmd:=FPatchCmd + ' -p0 -N --no-backup-if-mismatch -i '
-              {$endif}
-               else LocalPatchCmd:=Trim(FPatchCmd) + ' ';
-            {$IFDEF MSWINDOWS}
-            ReturnCode:=ExecuteCommandInDir(IncludeTrailingPathDelimiter(FMakeDir) + LocalPatchCmd + FilePath, FSourceDirectory, Output, True);
-            {$ELSE}
-            ReturnCode:=ExecuteCommandInDir(LocalPatchCmd + FilePath, FSourceDirectory, Output, True);
-            {$ENDIF}
-            if ReturnCode=0
-               then infoln(infotext+'Lazarus has been patched successfully with '+UpdateWarnings[i],etInfo)
-               else
-               begin
-                 writelnlog(infotext+'ERROR: Patching Lazarus with ' + UpdateWarnings[i] + ' failed.', true);
-                 writelnlog(infotext+'Patch output: ' + Output, true);
-               end;
-          end
-          else
-          begin
-            infoln(infotext+'Strange: could not find patchfile '+FilePath, etWarning);
-            writelnlog(etError, infotext+'Patching Lazarus with ' + UpdateWarnings[i] + ' failed due to missing patch file.', true);
-          end;
-        end;
-      finally
-        UpdateWarnings.Free;
-      end;
-    end else infoln(infotext+'No Lazarus patches defined.',etInfo);
-  end;
-
+  if result then PatchModule(ModuleName);
 end;
 
 function TLazarusInstaller.CheckModule(ModuleName: string): boolean;

@@ -32,6 +32,7 @@ uses
 
 const
   FPCTRUNKVERSION  = '3.1.1';
+  FPCTRUNKBOOTVERSION  = '3.0.2';
   LAZARUSTRUNKVERSION  = '1.9';
 
   FPCSVNURL = 'https://svn.freepascal.org/svn';
@@ -96,7 +97,7 @@ type
     // Get fpcup registred cross-compiler, if any, if not, return nil
     function GetCrossInstaller: TCrossInstaller;
   protected
-    FBaseDirectory: string; //Base directory for fpc(laz)up(deluxe) itself
+    FBaseDirectory: string; //Base directory for fpc(laz)up(deluxe) install itself
     FSourceDirectory: string; //Top source directory for a product (FPC, Lazarus)
     FInstallDirectory: string; //Top install directory for a product (FPC, Lazarus)
     FCompiler: string; // Compiler executable
@@ -191,7 +192,7 @@ type
     // Get processor for termination of running processes
     property Processor: TProcessEx read FProcessEx;
     // Get processerrors and put them into FErrorLog
-    procedure ProcessError(Sender:TProcessEx;IsException:boolean);
+    procedure ProcessError(Sender:TProcessEx; {%H-}IsException:boolean);
     // Source directory for installation (fpcdir, lazdir,... option)
     property SourceDirectory: string write FSourceDirectory;
     //Base directory for fpc(laz)up(deluxe) itself
@@ -199,7 +200,7 @@ type
     // Source directory for installation (fpcdir, lazdir,... option)
     property InstallDirectory: string write FInstallDirectory;
     // Compiler to use for building. Specify empty string when using bootstrap compiler.
-    property Compiler: string read GetCompiler write FCompiler;
+    property Compiler: string {read GetCompiler} write FCompiler;
     // Compiler options passed on to make as OPT=
     property CompilerOptions: string write FCompilerOptions;
     // CPU for the target (together with CrossOS_Target the cross compile equivalent to GetFPCTarget)
@@ -238,7 +239,7 @@ type
     // URL for download. HTTP, ftp or svn
     property URL: string write SetURL;
     // patches
-    property SourcePatches: string read FSourcePatches write FSourcePatches;
+    property SourcePatches: string write FSourcePatches;
     // do not download the repo itself, but only get the files (of master)
     property ExportOnly: boolean write FExportOnly;
     property NoJobs: boolean write FNoJobs;
@@ -267,6 +268,8 @@ type
     function GetModule(ModuleName: string): boolean; virtual;
     // Perform some checks on the sources
     function CheckModule(ModuleName: string): boolean; virtual;
+    // Patch sources
+    function PatchModule(ModuleName: string): boolean; virtual;
     // Uninstall module
     function UnInstallModule(ModuleName: string): boolean; virtual;
     constructor Create;
@@ -294,10 +297,9 @@ uses
 
 function TInstaller.GetCompiler: string;
 begin
-  if (Self is TFPCNativeInstaller) or (Self is TFPCInstaller) then
-    Result := GetCompilerInDir(FInstallDirectory)
-  else
-    Result := FCompiler;
+  if (Self is TFPCNativeInstaller) or (Self is TFPCInstaller)
+    then Result := GetCompilerInDir(FInstallDirectory)
+    else Result := FCompiler;
 end;
 
 function TInstaller.GetCrossInstaller: TCrossInstaller;
@@ -441,6 +443,8 @@ begin
 
     if OperationSucceeded then
     begin
+      if NOT IsSSLloaded then
+      begin
       if FileExists(SafeGetApplicationPath+'libeay32.dll') AND FileExists(SafeGetApplicationPath+'ssleay32.dll')
          then infoln(localinfotext+'Found OpenSLL library files.',etDebug)
          else
@@ -465,6 +469,7 @@ begin
              end;
            end;
       end;
+    end;
     end;
 
     // Get patch binary from default binutils URL
@@ -1034,7 +1039,7 @@ function TInstaller.DownloadFromBase(aClient:TRepoClient; ModuleName: string; va
 var
   BeforeRevisionShort: string; //Basically the branch revision number
   ReturnCode: integer;
-  DiffFile: String;
+  DiffFile,DiffFileCorrectedPath: String;
   LocalPatchCmd : string;
   DiffFileSL:TStringList;
   Output: string = '';
@@ -1115,40 +1120,28 @@ begin
 
          ReturnCode:=ExecuteCommandInDir(LocalPatchCmd + DiffFile, FSourceDirectory, Output, FVerbose);
 
-         {$IFNDEF MSWINDOWS}
          if ReturnCode<>0 then
          begin
            // Patching can go wrong when line endings are not compatible
            // This happens e.g. with bgracontrols that have CRLF in the source files
-           // Try to circumvent this problem by trick below (replacing line enddings)
+           // Try to circumvent this problem by replacing line enddings
            if Pos('different line endings',Output)>0 then
            begin
-             ReturnCode:=ExecuteCommandInDir('unix2dos '+DiffFile, FSourceDirectory, FVerbose);
-             if ReturnCode<>0 then
-             begin
-               DiffFileSL:=TStringList.Create();
-               try
-                 DiffFileSL.LoadFromFile(DiffFile);
-                 DiffFileSL.TextLineBreakStyle:=tlbsCRLF;
-                 DiffFileSL.SaveToFile(DiffFile);
-                 ReturnCode:=0;
-               finally
-                 DiffFileSL.Free();
-               end;
                //CheckoutOrUpdateReturnCode:=ExecuteCommandInDir('sed '+''''+'s/$'+''''+'"/`echo \\\r`/" '+DiffFile+' > '+DiffFile, FSourceDirectory, FVerbose);
                //CheckoutOrUpdateReturnCode:=ExecuteCommandInDir('sed -i '+''''+'s/$/\r/'+''''+' '+DiffFile, FSourceDirectory, FVerbose);
-             end;
-             if ReturnCode=0 then
+
+             DiffFileCorrectedPath:=SysUtils.GetTempDir+ExtractFileName(DiffFile);
+             if FileCorrectLineEndings(DiffFile,DiffFileCorrectedPath) then
              begin
-               // check for default values
-               if ((FPatchCmd='patch') OR (FPatchCmd='gpatch'))
-                  then LocalPatchCmd:=FPatchCmd + ' -p0 --binary -i '
-                  else LocalPatchCmd:=Trim(FPatchCmd) + ' ';
-               ReturnCode:=ExecuteCommandInDir(LocalPatchCmd + DiffFile, FSourceDirectory, Output, FVerbose);
+               if FileExists(DiffFileCorrectedPath) then
+               begin
+                 ReturnCode:=ExecuteCommandInDir(LocalPatchCmd + DiffFileCorrectedPath, FSourceDirectory, Output, FVerbose);
+                 DeleteFile(DiffFileCorrectedPath);
+             end;
              end;
            end;
          end;
-         {$ENDIF}
+
          // Report error, but continue !
          if ReturnCode<>0 then
          begin
@@ -1181,7 +1174,9 @@ var
   RepoExists: boolean;
   LocalPatchCmd : string;
   Output: string = '';
+  {$IFNDEF MSWINDOWS}
   DiffFileSL:TStringList;
+  {$ENDIF}
 begin
   result:=true;
 
@@ -1389,7 +1384,7 @@ begin
 
   ForceDirectoriesUTF8(FSVNDirectory);
 
-  SVNZip := SysUtils.GetTempFileName + '.zip';
+  SVNZip := SysUtils.GetTempFileName('','FPCUPTMP') + '.zip';
   try
     if OperationSucceeded then
     begin
@@ -1460,7 +1455,8 @@ begin
 
   OperationSucceeded := false;
 
-  OpenSSLZip := SysUtils.GetTempFileName + '.zip';
+  OpenSSLZip := SysUtils.GetTempFileName('','FPCUPTMP') + '.zip';
+
   try
     //always get this file with the native downloader !!
     OperationSucceeded:=GetFile(SourceURL,OpenSSLZip,true,true);
@@ -1541,7 +1537,7 @@ begin
   if NOT FileExists(JasminDir+'jasmin.jar') then
   begin
     OperationSucceeded := false;
-    JasminZip := SysUtils.GetTempFileName + '.zip';
+    JasminZip := SysUtils.GetTempFileName('','FPCUPTMP') + '.zip';
     try
       OperationSucceeded:=GetFile(SourceURL,JasminZip);
       if (NOT OperationSucceeded) then
@@ -1615,10 +1611,10 @@ begin
   if FVerbose then
   begin
     // Set up initial output
-    if Assigned(FLogVerbose)=false then
+    if (NOT Assigned(FLogVerbose)) then
     begin
       FLogVerbose:=TLogger.Create;
-      FLogVerbose.LogFile:=SysUtils.GetTempFileName;
+      FLogVerbose.LogFile:=SysUtils.GetTempFileName('','FPCUPLOG');
       WritelnLog(localinfotext+'Verbose output saved to ' + FLogVerbose.LogFile, false);
     end;
     FLogVerbose.WriteLog(Output,false);
@@ -1708,7 +1704,7 @@ var
   TempFileName: string;
 begin
   localinfotext:=Copy(Self.ClassName,2,MaxInt)+': ';
-  TempFileName := SysUtils.GetTempFileName;
+  TempFileName := SysUtils.GetTempFileName('','FPCUPDUMP');
   if IsException then
   begin
     WritelnLog(etError, localinfotext+'Exception raised running ' + Sender.ResultingCommand, true);
@@ -1783,11 +1779,8 @@ end;
 
 
 function TInstaller.GetCompilerInDir(Dir: string): string;
-var
-  ExeName: string;
 begin
-  ExeName := 'fpc' + GetExeExt;
-  Result := IncludeTrailingBackslash(Dir) + 'bin' + DirectorySeparator + GetFPCTarget(true) + DirectorySeparator + ExeName;
+  Result := IncludeTrailingBackslash(Dir) + 'bin' + DirectorySeparator + GetFPCTarget(true) + DirectorySeparator + 'fpc' + GetExeExt;
   {$IFDEF UNIX}
   if FileExistsUTF8(Result + '.sh') then
   begin
@@ -1891,13 +1884,159 @@ begin
     end;
   end;
 end;
+
+function TInstaller.PatchModule(ModuleName: string): boolean;
+var
+  PatchList:TStringList;
+  PatchFilePath,PatchFileCorrectedPath,PatchDirectory:string;
+  LocalPatchCmd:string;
+  Output: string = '';
+  ReturnCode,i,j: integer;
+  LocalSourcePatches:string;
+  PatchFPC:boolean;
+  {$ifndef FPCONLY}
+  PatchLaz:boolean;
+  {$endif}
+begin
+  result:=false;
+
+  PatchFPC:=(UpperCase(ModuleName)='FPC');
+  {$ifndef FPCONLY}
+  PatchLaz:=(UpperCase(ModuleName)='LAZARUS');
+  {$endif}
+
+  if PatchFPC then PatchDirectory:=IncludeTrailingPathDelimiter(FBaseDirectory)+'patchfpc' else
+     {$ifndef FPCONLY}
+     if PatchLaz then PatchDirectory:=IncludeTrailingPathDelimiter(FBaseDirectory)+'patchlazarus' else
+     {$endif}
+        PatchDirectory:=IncludeTrailingPathDelimiter(FBaseDirectory)+'patchfpcup';
+
+  // always remove the previous patches when updating the source !!!
+  // to be decided if this is (always) correct: for now, we delete the whole directory
+  if (DirectoryExists(PatchDirectory)) then DeleteDirectoryEx(PatchDirectory);
+
+  LocalSourcePatches:=FSourcePatches;
+
+  if resourcefiles.Count>0 then
+  begin
+    for i:=0 to resourcefiles.Count-1 do
+    begin
+      PatchFilePath:=resourcefiles[i];
+      if PatchFPC then j:=Pos('_FPCPATCH',PatchFilePath) else
+         {$ifndef FPCONLY}
+         if PatchLaz then j:=Pos('_LAZPATCH',PatchFilePath) else
+         {$endif}
+            j:=Pos('_FPCUPPATCH',PatchFilePath);
+
+      {$if defined(Darwin) and defined(LCLQT5)}
+      {$else}
+      if PatchFilePath='DARWINQT5HACK_LAZPATCH' then j:=0;
+      {$endif}
+
+      {$if NOT defined(MSWINDOWS)}
+      if PatchFilePath='OPENSSL_FPCPATCH' then j:=0;
+      {$endif}
+
+      if j>0 then
+      begin
+        if (NOT DirectoryExists(PatchDirectory)) then ForceDirectories(PatchDirectory);
+        SaveFileFromResource(PatchDirectory+DirectorySeparator+PatchFilePath+'.patch',resourcefiles[i]);
+      end;
+    end;
+  end;
+
+  if (DirectoryExists(PatchDirectory)) then
+  begin
+    PatchList := FindAllFiles(PatchDirectory, '*.patch;*.diff', false);
+    try
+      if (PatchList.Count>0) then
+      begin
+        //add standard patches by fpcup(deluxe)
+        LocalSourcePatches:=LocalSourcePatches+','+PatchList.CommaText;
+      end;
+    finally
+      PatchList.Free;
+    end;
+  end;
+
+  if Length(LocalSourcePatches)>0 then
+  begin
+    PatchList:=TStringList.Create;
+    try
+      PatchList.CommaText := LocalSourcePatches;
+      for i:=0 to (PatchList.Count-1) do
+      begin
+        infoln(infotext+'Trying to patch ' + ModuleName + ' with '+PatchList[i],etInfo);
+        PatchFilePath:=SafeExpandFileName(PatchList[i]);
+        if NOT FileExists(PatchFilePath) then PatchFilePath:=SafeExpandFileName(SafeGetApplicationPath+PatchList[i]);
+        if NOT FileExists(PatchFilePath) then
+        begin
+          if PatchFPC then PatchFilePath:=SafeExpandFileName(SafeGetApplicationPath+'patchfpc'+DirectorySeparator+PatchList[i])
+             {$ifndef FPCONLY}
+             else if PatchLaz then PatchFilePath:=SafeExpandFileName(SafeGetApplicationPath+'patchlazarus'+DirectorySeparator+PatchList[i])
+             {$endif}
+                else PatchFilePath:=SafeExpandFileName(SafeGetApplicationPath+'patchfpcup'+DirectorySeparator+PatchList[i]);
+        end;
+        if FileExists(PatchFilePath) then
+        begin
+          // check for default values
+          if ((FPatchCmd='patch') OR (FPatchCmd='gpatch'))
+            {$IF defined(BSD) and not defined(DARWIN)}
+            then LocalPatchCmd:=FPatchCmd + ' -p0 -N -i '
+            {$else}
+            then LocalPatchCmd:=FPatchCmd + ' -p0 -N --no-backup-if-mismatch -i '
+            {$endif}
+             else LocalPatchCmd:=Trim(FPatchCmd) + ' ';
+
+          // always correct for line-endings while patch is very sensitive for that
+          PatchFileCorrectedPath:=SysUtils.GetTempDir+ExtractFileName(PatchFilePath);
+          if FileCorrectLineEndings(PatchFilePath,PatchFileCorrectedPath) then
+          begin
+            // revert to original file in case of file not found
+            if (NOT FileExists(PatchFileCorrectedPath)) then PatchFileCorrectedPath:=PatchFilePath;
+            {$IFDEF MSWINDOWS}
+            ReturnCode:=ExecuteCommandInDir(IncludeTrailingPathDelimiter(FMakeDir) + LocalPatchCmd + PatchFileCorrectedPath, FSourceDirectory, Output, True);
+            {$ELSE}
+            ReturnCode:=ExecuteCommandInDir(LocalPatchCmd + PatchFileCorrectedPath, FSourceDirectory, Output, True);
+            {$ENDIF}
+            // remove the temporary file
+            if (PatchFileCorrectedPath<>PatchFilePath) then DeleteFile(PatchFileCorrectedPath);
+            if ReturnCode=0  then
+            begin
+              result:=true;
+              writelnlog(etInfo, infotext+ModuleName+ ' has been patched successfully with '+PatchList[i] + '.', true);
+            end
+            else
+            begin
+              writelnlog(etError, infotext+ModuleName+' patching with ' + PatchList[i] + ' failed.', true);
+              writelnlog(etError, infotext+ModuleName+' patch output: ' + Output, true);
+            end;
+          end;
+        end
+        else
+        begin
+          result:=true;
+          writelnlog(etWarning, infotext+ModuleName+ ' patching with ' + PatchList[i] + ' failed due to missing patch file ('+PatchFilePath+').', true);
+        end;
+      end;
+    finally
+      PatchList.Free;
+    end;
+  end
+  else
+  begin
+    result:=true;
+    infoln(infotext+'No ' + ModuleName + ' patches defined.',etInfo);
+  end;
+end;
+
+
 function TInstaller.UnInstallModule(ModuleName: string): boolean;
 begin
   result:=false;
   infotext:=Copy(Self.ClassName,2,MaxInt)+' (UnInstallModule: '+ModuleName+'): ';
   infoln(infotext+'Entering ...',etDebug);
 end;
-
 
 constructor TInstaller.Create;
 begin

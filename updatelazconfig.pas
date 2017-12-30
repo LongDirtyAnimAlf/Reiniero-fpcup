@@ -68,7 +68,8 @@ I now get InPath="C:\development\fpcbootstrap\ppc386.exe" instead of the fpc\bin
 interface
 
 uses
-  Classes, SysUtils, Laz2_DOM, Laz2_XMLRead, Laz2_XMLWrite;
+  Classes, SysUtils, Laz_XMLCfg, Laz2_DOM, Laz2_XMLRead, Laz2_XMLWrite;
+
 const
   // Some fixed configuration files.
   // General options:
@@ -175,7 +176,7 @@ procedure LazDocPathAdd(const PathToAdd: string; LazarusConfig: TUpdateLazConfig
 implementation
 
 uses
-  FileUtil, LazFileUtils, LazUTF8, math, installercore, fpcuputil;
+  FileUtil, LazFileUtils, LazUTF8, fpcuputil;
 
 procedure LazDocPathAdd(const PathToAdd: string; LazarusConfig: TUpdateLazConfig);
 var

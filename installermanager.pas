@@ -87,6 +87,7 @@ Const
     'Exec CheckDevLibs;'+ //keyword Exec executes a function/procedure; must be defined in TSequencer.DoExec
     {$endif}
     'Do fpc;'+
+    'Do FPCCrossWin32-64;'+
     {$ifndef FPCONLY}
     // Lazbuild: make sure we can at least compile LCL programs
     'Do lazbuild;'+
@@ -98,15 +99,6 @@ Const
     // universal installer are compiled into the IDE:
     'Do USERIDE;'+
     'Do LCLCross;'+
-    {$endif}
-    'Do crosswin32-64;'+  //this has to be the last. All TExecState reset!
-    'End;'+
-
-//cross sequence for win32. Note: if changing this name,
-    //also change checks for this in skipmodules etc.
-    'Declare crosswin32-64;'+
-    'Do FPCCrossWin32-64;'+
-    {$ifndef FPCONLY}
     'Do LazarusCrossWin32-64;'+
     {$endif}
     'End;'+
@@ -120,6 +112,7 @@ Const
     'Exec CheckDevLibs;'+
     {$endif}
     'Do fpc;'+
+    'Do FPCCrossWin64-32;'+
     {$ifndef FPCONLY}
     // Lazbuild: make sure we can at least compile LCL programs
     'Do lazbuild;'+
@@ -131,28 +124,13 @@ Const
     //universal installer are compiled into the IDE:
     'Do USERIDE;'+
     'Do LCLCross;'+
-    {$endif}
-    'Do crosswin64-32;'+  //this has to be the last. All TExecState reset!
-    {$ifndef FPCONLY}
-    {$endif}
-    'End;'+
-
-//cross sequence for win32. Note: if changing this name,
-    //also change checks for this in skipmodules etc.
-    'Declare crosswin64-32;'+
-    'SetCPU i386;'+
-    'SetOS win32;'+
-    //Getmodule has already been done
-    'Cleanmodule fpc;'+
-    'Buildmodule fpc;'+
-    {$ifndef FPCONLY}
-    'Do LCL;'+
+    'Do LazarusCrossWin64-32;'+
     {$endif}
     'End;'+
     {$endif win64}
 
-    //default sequence for ARM: some packages give errors and memory is limited, so keep it simple
-    'Declare defaultARM;'+
+    //default simple sequence: some packages give errors and memory is limited, so keep it simple
+    'Declare DefaultSimple;'+
     {$ifndef FPCONLY}
     'Exec CheckDevLibs;'+ //keyword Exec executes a function/procedure; must be defined in TSequencer.DoExec
     {$endif}
@@ -417,11 +395,10 @@ type
     FHTTPProxyUser: string;
     FPersistentOptions: string;
     FBaseDirectory: string;
+    FCompilerOverride: string;
     FBootstrapCompiler: string;
     FBootstrapCompilerDirectory: string;
-    FBootstrapCompilerURL: string;
     FClean: boolean;
-    FCompilerName: string;
     FConfigFile: string;
     FCrossCPU_Target: string;
     {$ifndef FPCONLY}
@@ -501,7 +478,6 @@ type
     property ShortCutNameFpcup:string read FShortCutNameFpcup write FShortCutNameFpcup; //Name of the shortcut that points to fpcup
     // Full path+filename of SVN executable. Use empty to search for default locations.
     property SVNExecutable: string read FSVNExecutable write FSVNExecutable;
-    property CompilerName: string read FCompilerName write FCompilerName;
     // Options that are to be saved in shortcuts/batch file/shell scripts.
     // Excludes temporary options like --verbose
     property PersistentOptions: string read FPersistentOptions write FPersistentOptions;
@@ -510,8 +486,8 @@ type
     property BaseDirectory: string read FBaseDirectory write SetBaseDirectory;
     // Directory where bootstrap compiler is installed/downloaded
     property BootstrapCompilerDirectory: string read FBootstrapCompilerDirectory write SetBootstrapCompilerDirectory;
-    // URL to download the bootstrap compiler from
-    property BootstrapCompilerURL: string read FBootstrapCompilerURL write FBootstrapCompilerURL;
+    // Compiler override
+    property CompilerOverride: string read FCompilerOverride write FCompilerOverride;
     property Clean: boolean read FClean write FClean;
     property ConfigFile: string read FConfigFile write FConfigFile;
     property CrossCPU_Target:string read FCrossCPU_Target write FCrossCPU_Target;
@@ -899,8 +875,9 @@ end;
 
 
 function TFPCupManager.Run: boolean;
-{$IFDEF MSWINDOWS}
 var
+  aSequence:string;
+{$IFDEF MSWINDOWS}
   Major:integer=0;
   Minor:integer=0;
   Build:integer=0;
@@ -965,47 +942,34 @@ begin
     end
   else
   begin
-    {$if defined(win32)}
+    aSequence:='Default';
+    {$ifdef win32}
     // Run Windows specific cross compiler or regular version
-    if pos('CROSSWIN32-64',UpperCase(SkipModules))>0 then begin
-      infoln('InstallerManager: going to run sequencer for sequence: Default.',etDebug);
-      result:=FSequencer.Run('Default');
-    end
-    else
-    begin
-      infoln('InstallerManager: going to run sequencer for sequence: DefaultWin32.',etDebug);
-      result:=FSequencer.Run('DefaultWin32');
-    end;
-    // We would like to have a win64=>win32 crosscompiler, but at least with current
-    // FPC trunk that won't work due to errors like
-    // fpcdefs.inc(216,2) Error: User defined: Cross-compiling from systems
-    // without support for an 80 bit extended floating point type to i386 is
-    // not yet supported at this time. If it is, uncomment until the else conditional:
-    //{$elseif defined(win64)}
-    {
-    if pos('CROSSWIN64-32',UpperCase(SkipModules))>0 then
-      result:=FSequencer.Run('Default')
-    else
-      result:=FSequencer.Run('DefaultWin64');
-    }
-    {$else}
-
-    // Linux, OSX
+    if pos('CROSSWIN32-64',UpperCase(SkipModules))=0 then aSequence:='DefaultWin32';
+    {$endif}
+    {$ifdef win64}
+    //not yet
+    //if pos('CROSSWIN64-32',UpperCase(SkipModules))=0 then aSequence:='DefaultWin64';
+    {$endif}
     {$ifdef CPUAARCH64}
-    // some default packages do not work yet on aarch64 (03-2016)
-    infoln('InstallerManager: going to run fpc+lazarus sequencer for sequence ARM64 (just plain Lazarus)',etDebug);
-    result:=FSequencer.Run('defaultARM');
-    {$else}
+    aSequence:='DefaultSimple';
+    {$endif}
       {$ifdef cpuarm}
-      infoln('InstallerManager: going to run sequencer for sequence ARM (without help files)',etDebug);
-      result:=FSequencer.Run('defaultARM');
-      {$else}
-      infoln('InstallerManager: going to run sequencer for sequence Default.',etDebug);
-      result:=FSequencer.Run('Default');
+    aSequence:='DefaultSimple';
+    {$endif}
+    {$ifdef cpuarmhf}
+    aSequence:='DefaultSimple';
+    {$endif}
+    {$ifdef HAIKU}
+    aSequence:='DefaultSimple';
       {$endif}
+    {$ifdef CPUPOWERPC64}
+    aSequence:='DefaultSimple';
     {$endif}
 
-    {$endif}
+    infoln('InstallerManager: going to run sequencer for sequence: '+aSequence,etDebug);
+    result:=FSequencer.Run(aSequence);
+
     if (FIncludeModules<>'') and (result) then
     begin
       // run specified additional modules using the only mechanism
@@ -1130,34 +1094,11 @@ function TSequencer.DoExec(FunctionName: string): boolean;
       {$IFDEF UNIX}
       {$IFDEF DARWIN}
       CreateHomeStartLink(IncludeLeadingPathDelimiter(InstalledLazarus)+'.app/Contents/MacOS/lazarus','--pcp="'+FParent.LazarusPrimaryConfigPath+'"',FParent.ShortcutNameLazarus);
-      // Create shortcut on Desktop and in Applications
-      fpSystem('/usr/bin/osascript << EOF'+#10+
-               'tell application "Finder"'+#10+
-               'set myLazApp to POSIX file "'+IncludeLeadingPathDelimiter(InstalledLazarus)+'.app" as alias'+#10+
-               'try'+#10+
-                 'set myLazDeskShort to (path to desktop folder as string) & "'+FParent.ShortCutNameLazarus+'" as alias'+#10+
-               'on error'+#10+
-                 'make new alias to myLazApp at (path to desktop folder as text)'+#10+
-	       'set name of result to "'+FParent.ShortCutNameLazarus+'"'+#10+
-               'end try'+#10+
-
-               'try'+#10+
-                 'set myLazAppShort to (path to applications folder as string) & "'+FParent.ShortCutNameLazarus+'" as alias'+#10+
-               'on error'+#10+
-                 'make new alias to myLazApp at (path to applications folder as text)'+#10+
-	       'set name of result to "'+FParent.ShortCutNameLazarus+'"'+#10+
-               'end try'+#10+
-
-               'end tell'+#10+
-               'EOF');
       {$ELSE}
-      CreateHomeStartLink(InstalledLazarus,'--pcp="'+FParent.LazarusPrimaryConfigPath+'"',FParent.ShortcutNameLazarus);
+        CreateHomeStartLink('"'+InstalledLazarus+'"','--pcp="'+FParent.LazarusPrimaryConfigPath+'"',FParent.ShortcutNameLazarus);
       {$ENDIF DARWIN}
-      {$IF (defined(LINUX)) or (defined(BSD))}
       // Desktop shortcut creation will not always work. As a fallback, create the link in the home directory:
       CreateDesktopShortCut(InstalledLazarus,'--pcp="'+FParent.LazarusPrimaryConfigPath+'"',FParent.ShortCutNameLazarus);
-      CreateHomeStartLink('"'+InstalledLazarus+'"','--pcp="'+FParent.LazarusPrimaryConfigPath+'"',FParent.ShortcutNameLazarus);
-      {$ENDIF (defined(LINUX)) or (defined(BSD))}
       {$ENDIF UNIX}
     except
       // Ignore problems creating shortcut
@@ -1354,7 +1295,9 @@ end;
 function TSequencer.DoSetCPU(CPU: string): boolean;
 begin
   infoln('TSequencer: DoSetCPU for CPU '+CPU+' called.',etDebug);
-  FParent.CrossCPU_Target:=CPU;
+  if LowerCase(CPU)=GetTargetCPU
+     then FParent.CrossCPU_Target:=''
+     else FParent.CrossCPU_Target:=CPU;
   ResetAllExecuted;
   result:=true;
 end;
@@ -1362,7 +1305,9 @@ end;
 function TSequencer.DoSetOS(OS: string): boolean;
 begin
   infoln('TSequencer: DoSetOS for OS '+OS+' called.',etDebug);
-  FParent.CrossOS_Target:=OS;
+  if LowerCase(OS)=GetTargetOS
+     then FParent.CrossOS_Target:=''
+     else FParent.CrossOS_Target:=OS;
   ResetAllExecuted;
   result:=true;
 end;
@@ -1424,9 +1369,7 @@ begin
     FInstaller.SourceDirectory:=FParent.FPCSourceDirectory;
     FInstaller.InstallDirectory:=FParent.FPCInstallDirectory;
     (FInstaller as TFPCInstaller).BootstrapCompilerDirectory:=FParent.BootstrapCompilerDirectory;
-    (FInstaller as TFPCInstaller).BootstrapCompilerURL:=FParent.BootstrapCompilerURL;
     (FInstaller as TFPCInstaller).SourcePatches:=FParent.FFPCPatches;
-    FInstaller.Compiler:=FParent.CompilerName;
     FInstaller.CompilerOptions:=FParent.FPCOPT;
     FInstaller.DesiredRevision:=FParent.FPCDesiredRevision;
     FInstaller.DesiredBranch:=FParent.FPCDesiredBranch;
@@ -1466,10 +1409,19 @@ begin
     // source- and install-dir are the same for Lazarus ... could be changed
     FInstaller.SourceDirectory:=FParent.LazarusDirectory ;
     FInstaller.InstallDirectory:=FParent.LazarusDirectory ;
-    if FParent.CompilerName='' then
-      FInstaller.Compiler:=FInstaller.GetCompilerInDir(FParent.FPCInstallDirectory)
+
+    if Length(Trim(FParent.LazarusOPT))=0 then
+    begin
+      //defaults !!
+      {$IFDEF Darwin}
+      FParent.LazarusOPT:='-gw -gl -godwarfsets -O1 -Co -Ci -Sa';
+      {$ELSE}
+      FParent.LazarusOPT:='-gw -gl -godwarfsets -O1 -Co -Cr -Ci -Sa';
+      {$ENDIF}
+    end
     else
-      FInstaller.Compiler:=FParent.CompilerName;
+      // replace -g by -gw if encountered: http://lists.lazarus.freepascal.org/pipermail/lazarus/2015-September/094238.html
+      FParent.LazarusOPT:=StringReplace(FParent.LazarusOPT,'-g ','-gw ',[]);
     FInstaller.CompilerOptions:=FParent.LazarusOPT;
     FInstaller.DesiredRevision:=FParent.LazarusDesiredRevision;
     FInstaller.DesiredBranch:=FParent.LazarusDesiredBranch;
@@ -1500,10 +1452,6 @@ begin
         end;
       FInstaller:=THelpFPCInstaller.Create;
       FInstaller.SourceDirectory:=FParent.FPCSourceDirectory;
-      if FParent.CompilerName='' then
-        FInstaller.Compiler:=FInstaller.GetCompilerInDir(FParent.FPCInstallDirectory)
-      else
-        FInstaller.Compiler:=FParent.CompilerName;
       end
   {$ifndef FPCONLY}
   else if uppercase(ModuleName)='HELPLAZARUS'
@@ -1522,10 +1470,6 @@ begin
       FInstaller.SourceDirectory:=FParent.LazarusDirectory;
       // the same ... may change in the future
       FInstaller.InstallDirectory:=FParent.LazarusDirectory;
-      if FParent.CompilerName='' then
-        FInstaller.Compiler:=FInstaller.GetCompilerInDir(FParent.FPCInstallDirectory)
-      else
-        FInstaller.Compiler:=FParent.CompilerName;
       (FInstaller as THelpLazarusInstaller).FPCBinDirectory:=IncludeTrailingBackslash(FParent.FPCInstallDirectory);// + 'bin' + DirectorySeparator + FInstaller.SourceCPU + '-' + FInstaller.SourceOS;
       (FInstaller as THelpLazarusInstaller).FPCSourceDirectory:=FParent.FPCSourceDirectory;
       (FInstaller as THelpLazarusInstaller).LazarusPrimaryConfigPath:=FParent.LazarusPrimaryConfigPath;
@@ -1556,10 +1500,6 @@ begin
       (FInstaller as TUniversalInstaller).LazarusPrimaryConfigPath:=FParent.LazarusPrimaryConfigPath;
       (FInstaller as TUniversalInstaller).LCL_Platform:=FParent.CrossLCL_Platform;
       {$endif}
-      if FParent.CompilerName='' then
-        FInstaller.Compiler:=FInstaller.GetCompilerInDir(FParent.FPCInstallDirectory)
-      else
-        FInstaller.Compiler:=FParent.CompilerName;
     end;
 
 
@@ -1576,6 +1516,15 @@ begin
   FInstaller.ReApplyLocalChanges:=FParent.ReApplyLocalChanges;
   FInstaller.PatchCmd:=FParent.PatchCmd;
   FInstaller.Verbose:=FParent.Verbose;
+
+    if FInstaller.InheritsFrom(TFPCInstaller) then
+    begin
+      // override bootstrapper only for FPC if needed
+      if FParent.CompilerOverride<>''
+         then FInstaller.Compiler:=FParent.CompilerOverride
+         else FInstaller.Compiler:=''; // always use bootstrapper
+    end else FInstaller.Compiler:=FInstaller.GetCompilerInDir(FParent.FPCInstallDirectory); // use FPC compiler itself
+
     // only curl / wget works on OpenBSD (yet)
     {$IFDEF OPENBSD}
     FInstaller.UseWget:=True;
@@ -1770,7 +1719,10 @@ end;
 
 function TSequencer.Run(SequenceName: string): boolean;
 var
-  EntryPoint,InstructionPointer:integer;
+  {$IFDEF DEBUG}
+  EntryPoint:integer;
+  {$ENDIF DEBUG}
+  InstructionPointer:integer;
   idx:integer;
   SeqAttr:^TSequenceAttributes;
   localinfotext:string;
@@ -1823,7 +1775,9 @@ begin
       end;
     // Get entry point in FStateMachine
     InstructionPointer:=SeqAttr^.EntryPoint;
+    {$IFDEF DEBUG}
     EntryPoint:=InstructionPointer;
+    {$ENDIF DEBUG}
     // run sequence until end or failure
     while true do
       begin

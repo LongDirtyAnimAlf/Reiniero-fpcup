@@ -368,7 +368,7 @@ begin
     }
 
     ForceDirectoriesUTF8(FTargetDirectory);
-    DocsZip := SysUtils.GetTempFileName + '.zip';
+    DocsZip := SysUtils.GetTempFileName('','FPCUPTMP') + '.zip';
 
     OperationSucceeded:=true;
 
@@ -431,7 +431,7 @@ begin
     begin
       // try one last time with anoher URL !!
 
-      DocsZip := SysUtils.GetTempFileName + '.zip';
+      DocsZip := SysUtils.GetTempFileName('','FPCUPTMP') + '.zip';
 
       try
         OperationSucceeded:=Download(FUseWget, CHM_URL_LATEST, DocsZip);
@@ -910,8 +910,6 @@ begin
 end;
 
 function THelpLazarusInstaller.UnInstallModule(ModuleName: string): boolean;
-var
-  LazarusConfig: TUpdateLazConfig;
 begin
   Result:=inherited UnInstallModule(ModuleName);
   // Removing config not needed anymore since we use the default
