@@ -362,7 +362,7 @@ end;"/>
           <Version Value="11"/>
           <PathDelim Value="\"/>
           <Target>
-            <Filename Value="bin\$NameOnly($(ProjFile))-$(TargetCPU)-$(TargetOS)"/>
+            <Filename Value="bin\$NameOnly($(ProjFile))-$(TargetCPU)le-$(TargetOS)"/>
           </Target>
           <SearchPaths>
             <IncludeFiles Value="$(ProjOutDir)"/>

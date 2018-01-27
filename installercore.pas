@@ -885,6 +885,7 @@ begin
   AddNewUtil('windres' + GetExeExt,aSourceURL,'',ucBinutil);
   AddNewUtil('windres.h',aSourceURL,'',ucBinutil);
   AddNewUtil('zip' + GetExeExt,aSourceURL,'',ucBinutil);
+  AddNewUtil('nm' + GetExeExt,aSourceURL,'',ucBinutil);
 
   // add win32/64 gdb from lazarus
   AddNewUtil('gdb' + GetExeExt,SourceURL_gdb,'',ucDebugger32);
@@ -1259,7 +1260,12 @@ begin
       // We used to do a check for the revision, but that does not check the integrity
       // or existence of all files in the svn repo.
 
-      if FExportOnly then AfterRevision := FDesiredRevision else
+      if FExportOnly then
+      begin
+        AfterRevision := FDesiredRevision;
+        if Trim(AfterRevision)='' then AfterRevision := FSVNClient.LocalRevisionWholeRepo;
+      end
+      else
       begin
       if FSVNClient.LocalRevision=FSVNClient.LocalRevisionWholeRepo then
           AfterRevision := FSVNClient.LocalRevisionWholeRepo
@@ -1815,6 +1821,7 @@ begin
   infotext:=Copy(Self.ClassName,2,MaxInt)+' (ConfigModule: '+ModuleName+'): ';
   infoln(infotext+'Entering ...',etDebug);
 end;
+
 function TInstaller.GetModule(ModuleName: string): boolean;
 begin
   result:=false;
