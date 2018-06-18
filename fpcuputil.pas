@@ -63,10 +63,11 @@ uses
   Classes, SysUtils, strutils,
   typinfo,
   zipper,
-  {$ifdef ENABLENATIVE}
-  fphttpclient,
-  //sslsockets, fpopenssl,
+  fphttpclient, // for github api file list and others
+  {$ifdef darwin}
+  ns_url_request,
   {$endif}
+  fpopenssl,openssl,
   //fpftpclient,
   eventlog;
 
@@ -192,16 +193,20 @@ type
   {$ifdef ENABLENATIVE}
   TUseNativeDownLoader = Class(TBasicDownLoader)
   private
+    {$ifdef Darwin}
+    aFPHTTPClient:TNSHTTPSendAndReceive;
+    {$else}
     aFPHTTPClient:TFPHTTPClient;
+    {$endif}
     procedure DoProgress(Sender: TObject; Const ContentLength, CurrentPos : Int64);
     procedure DoHeaders(Sender : TObject);
-    procedure DoPassword(Sender: TObject; var RepeatRequest: Boolean);
-    procedure ShowRedirect(ASender : TObject; Const ASrc : String; Var ADest : String);
+    procedure DoPassword(Sender: TObject; var {%H-}RepeatRequest: Boolean);
+    procedure ShowRedirect({%H-}ASender : TObject; Const ASrc : String; Var ADest : String);
     function Download(const URL: String; filename:string):boolean;
-  protected
-    procedure SetVerbose(aValue:boolean);override;
     function FTPDownload(Const URL : String; filename:string):boolean;
     function HTTPDownload(Const URL : String; filename:string):boolean;
+  protected
+    procedure SetVerbose(aValue:boolean);override;
   public
     constructor Create;override;
     destructor Destroy; override;
@@ -223,7 +228,6 @@ type
     function WGetFTPFileList(const URL:string; filelist:TStringList):boolean;
     function LibCurlFTPFileList(const URL:string; filelist:TStringList):boolean;
     function Download(const URL: String; Dest: TStream):boolean;
-  protected
     function FTPDownload(Const URL : String; Dest : TStream):boolean;
     function HTTPDownload(Const URL : String; Dest : TStream):boolean;
   public
@@ -272,6 +276,7 @@ procedure GetVersionFromString(const VersionSnippet:string;var Major,Minor,Build
 // Download from HTTP (includes Sourceforge redirection support) or FTP
 // HTTP download can work with http proxy
 function Download(UseWget:boolean; URL, TargetFile: string; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''): boolean;
+procedure GetGitHubFileList(aURL:string;fileurllist:TStringList);
 {$IFDEF MSWINDOWS}
 // Get Windows major and minor version number (e.g. 5.0=Windows 2000)
 function GetWin32Version(out Major,Minor,Build : Integer): Boolean;
@@ -322,7 +327,7 @@ function ExtractFileNameOnly(const AFilename: string): string;
 function GetCompilerName(Cpu_Target:string):string;
 function GetCrossCompilerName(Cpu_Target:string):string;
 function DoubleQuoteIfNeeded(s: string): string;
-function GetNumericalVersion(aVersion: string): word;
+function GetNumericalVersionSafe(VersionSnippet: string): word;
 function UppercaseFirstChar(s: String): String;
 function DirectoryIsEmpty(Directory: string): Boolean;
 function GetTargetCPU:string;
@@ -349,6 +354,7 @@ uses
   ftplist,
   {$endif}
   FileUtil, LazFileUtils, LazUTF8,
+  fpjson, jsonparser,
   uriparser
   {$IFDEF MSWINDOWS}
     //Mostly for shortcut code
@@ -1208,6 +1214,69 @@ begin
   end;
 end;
 
+procedure GetGitHubFileList(aURL:string;fileurllist:TStringList);
+var
+  {$ifdef Darwin}
+  Http:TNSHTTPSendAndReceive;
+  Ms: TMemoryStream;
+  {$else}
+  Http: TFPHTTPClient;
+  {$endif}
+  Content : string;
+  Json : TJSONData;
+  JsonObject : TJSONObject;
+  JsonArray: TJSONArray;
+  i:integer;
+begin
+  {$ifdef Darwin}
+  // GitHub needs TLS 1.2 .... native FPC client does not support this (through OpenSSL)
+  // So, use client by Phil, a Lazarus forum member
+  // See: https://macpgmr.github.io/
+  Http:=TNSHTTPSendAndReceive.Create;
+  try
+    Http.Address := aURL;
+    Http.AddHeader('Content-Type', 'application/json');
+    Ms := TMemoryStream.Create;
+    try
+      if Http.SendAndReceive(nil, Ms) then
+      begin
+        SetLength(Content, Ms.Size);
+        if Ms.Size > 0 then
+            Ms.Read(Content[1], Ms.Size);
+      end;
+    finally
+      Ms.Free;
+    end;
+  finally
+    Http.Free;
+  end;
+  {$else}
+  Http:=TFPHTTPClient.Create(Nil);
+  try
+     Http.AddHeader('User-Agent',USERAGENT);
+     Http.AddHeader('Content-Type', 'application/json');
+     Http.IOTimeout:=5000;
+     Http.AllowRedirect:=true;
+     Content:=Http.Get(aURL);
+  finally
+    Http.Free;
+  end;
+  {$endif}
+  Json:=GetJSON(Content);
+  try
+    JsonArray:=Json.FindPath('assets') as TJSONArray;
+    i:=JsonArray.Count;
+    while (i>0) do
+    begin
+      Dec(i);
+      JsonObject := JsonArray.Objects[i];
+      fileurllist.Add(JsonObject.Get('browser_download_url'));
+    end;
+  finally
+    Json.Free;
+  end;
+end;
+
 // returns file size in bytes or 0 if not found.
 function FileSize(FileName: string) : Int64;
 //function FileSizeUTF8(FileName: string) : Int64;
@@ -1728,15 +1797,52 @@ begin
   if (Pos(' ',result)<>0) AND (Pos('"',result)=0) then result:='"'+result+'"';
 end;
 
-function GetNumericalVersion(aVersion: string): word;
+function GetNumericalVersionSafe(VersionSnippet: string): word;
+var
+  i,j:integer;
+  found:boolean;
 begin
   result := 0;
-  if length(aVersion)=5 then
+  i:=1;
+
+  // move towards first numerical
+  while (Length(VersionSnippet)>=i) AND (NOT (VersionSnippet[i] in ['0'..'9'])) do Inc(i);
+  // get major version
+  j:=0;
+  found:=false;
+  while (Length(VersionSnippet)>=i) AND (VersionSnippet[i] in ['0'..'9']) do
   begin
-    result := ((ord(aVersion[1])-ord('0')) * 10000)+
-                ((ord(aVersion[3])-ord('0')) * 100)+
-                (ord(aVersion[5])-ord('0'));
+    found:=true;
+    j:=j*10+Ord(VersionSnippet[i])-$30;
+    Inc(i);
   end;
+  if found then result:=result+(j*10000) else exit;
+
+  // move towards second numerical
+  while (Length(VersionSnippet)>=i) AND (NOT (VersionSnippet[i] in ['0'..'9'])) do Inc(i);
+  // get minor version
+  j:=0;
+  found:=false;
+  while (Length(VersionSnippet)>=i) AND (VersionSnippet[i] in ['0'..'9']) do
+  begin
+    found:=true;
+    j:=j*10+Ord(VersionSnippet[i])-$30;
+    Inc(i);
+  end;
+  if found then result:=result+(j*100) else exit;
+
+  // move towards third numerical
+  while (Length(VersionSnippet)>=i) AND (NOT (VersionSnippet[i] in ['0'..'9'])) do Inc(i);
+  // get build version
+  j:=0;
+  found:=false;
+  while (Length(VersionSnippet)>=i) AND (VersionSnippet[i] in ['0'..'9']) do
+  begin
+    found:=true;
+    j:=j*10+Ord(VersionSnippet[i])-$30;
+    Inc(i);
+  end;
+  if found then result:=result+(j*1);
 end;
 
 function UppercaseFirstChar(s: String): String;
@@ -2364,11 +2470,21 @@ end;
 constructor TUseNativeDownLoader.Create;
 begin
   Inherited;
+  {$ifdef Darwin}
+  // GitHub needs TLS 1.2 .... native FPC client does not support this (through OpenSSL)
+  // So, use client by Phil, a Lazarus forum member
+  // See: https://macpgmr.github.io/
+  aFPHTTPClient:=TNSHTTPSendAndReceive.Create;
+  {$else}
   aFPHTTPClient:=TFPHTTPClient.Create(Nil);
   with aFPHTTPClient do
   begin
     AllowRedirect:=True;
+    //ConnectTimeout:=10000;
     FMaxRetries:=DefMaxRetries;
+    //RequestHeaders.Add('Connection: Close');
+    // User-Agent needed for sourceforge and GitHub
+    AddHeader('User-Agent',USERAGENT);
     OnPassword:=@DoPassword;
     if FVerbose then
     begin
@@ -2377,6 +2493,7 @@ begin
       OnHeaders:=@DoHeaders;
     end;
   end;
+  {$endif}
 end;
 
 destructor TUseNativeDownLoader.Destroy;
@@ -2458,6 +2575,7 @@ end;
 procedure TUseNativeDownLoader.SetVerbose(aValue:boolean);
 begin
   inherited;
+  {$ifndef Darwin}
   with aFPHTTPClient do
   begin
     if FVerbose then
@@ -2473,6 +2591,7 @@ begin
       OnHeaders:=nil;
     end;
   end;
+  {$endif}
 end;
 
 procedure TUseNativeDownLoader.setProxy(host:string;port:integer;user,pass:string);
@@ -2603,12 +2722,10 @@ var
 begin
   result:=false;
   tries:=0;
+  SysUtils.DeleteFile(filename); // overwrite targetfile
   with aFPHTTPClient do
   begin
     repeat
-      //RequestHeaders.Add('Connection: Close');
-      // User-Agent needed for sourceforge and GitHub
-      AddHeader('User-Agent',USERAGENT);
       try
         Get(URL,filename);
         response:=ResponseStatusCode;
@@ -2622,11 +2739,6 @@ begin
         end;
       except
         tries:=(MaxRetries+1);
-      end;
-      if result then
-      begin
-        //AddHeader('Connection','Close');
-        //HTTPMethod('HEAD', URL, Nil, [200]);
       end;
     until (result or (tries>MaxRetries));
   end;
@@ -2642,6 +2754,9 @@ begin
 end;
 
 function TUseNativeDownLoader.checkURL(const URL:string):boolean;
+const
+  HTTPHEADER='Connection';
+  HTTPHEADERVALUE='Close';
 var
   tries:byte;
   response: Integer;
@@ -2650,9 +2765,7 @@ begin
   tries:=0;
   with aFPHTTPClient do
   begin
-    // User-Agent needed for sourceforge and GitHub
-    AddHeader('User-Agent',USERAGENT);
-    AddHeader('Connection','Close');
+    AddHeader(HTTPHEADER,HTTPHEADERVALUE);
     repeat
       try
         HTTPMethod('HEAD', URL, Nil, []);
@@ -2670,10 +2783,12 @@ begin
         tries:=(MaxRetries+1);
       end;
     until (result or (tries>MaxRetries));
-    if result then
+
+    // remove additional header
+    if GetHeader(HTTPHEADER)=HTTPHEADERVALUE then
     begin
-      //AddHeader('Connection','Close');
-      //HTTPMethod('HEAD', URL, Nil, [200]);
+      response:=IndexOfHeader(HTTPHEADER);
+      if (response<>-1) then RequestHeaders.Delete(response);
     end;
   end;
 end;

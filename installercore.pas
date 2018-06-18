@@ -31,6 +31,9 @@ uses
   processutils, m_crossinstaller, fpcuputil, cpucount;
 
 const
+  DEFAULTFPCVERSION     = '3.0.4';
+  DEFAULTLAZARUSVERSION = '1.8.4';
+
   FPCTRUNKVERSION  = '3.1.1';
   FPCTRUNKBOOTVERSION  = '3.0.2';
   LAZARUSTRUNKVERSION  = '1.9';
@@ -46,8 +49,6 @@ const
 
   CHM_URL_LATEST_SVN = FPCSVNURL + '/lazarus/binaries/docs/chm';
 
-  DEFAULTFPCVERSION = '3.0.4';
-  DEFAULTLAZARUSVERSION = '1.8.0';
 
   {$IFDEF DEBUG}
   STANDARDCOMPILEROPTIONS='-vewh';
@@ -276,18 +277,16 @@ type
     destructor Destroy; override;
   end;
 
-  TFPCNativeInstaller = class(TInstaller);
-  TFPCInstaller = class(TInstaller);
-
 implementation
 
 uses
   FileUtil, LazFileUtils, LazUTF8
   {$ifndef Haiku}
-  ,ssl_openssl
+  //,ssl_openssl
   // for runtime init of openssl
   {$IFDEF MSWINDOWS}
-  ,blcksock, ssl_openssl_lib
+  //,blcksock, ssl_openssl_lib
+  ,fpopenssl,openssl
   {$ENDIF}
   {$ENDIF}
   ;
@@ -297,7 +296,7 @@ uses
 
 function TInstaller.GetCompiler: string;
 begin
-  if (Self is TFPCNativeInstaller) or (Self is TFPCInstaller)
+  if (Self.ClassNameIs('TFPCNativeInstaller')) or (Self.ClassNameIs('TFPCInstaller'))
     then Result := GetCompilerInDir(FInstallDirectory)
     else Result := FCompiler;
 end;
@@ -385,7 +384,7 @@ function TInstaller.CheckAndGetTools: boolean;
 var
   AllThere: boolean;
   OperationSucceeded: boolean;
-  Output: string;
+  aURL,Output: string;
 begin
   localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (CheckAndGetTools): ';
 
@@ -443,33 +442,18 @@ begin
 
     if OperationSucceeded then
     begin
-      if NOT IsSSLloaded then
+      // always get ssl libs if they are not there: sometimes system wide libs do not work
+      if (NOT FileExists(SafeGetApplicationPath+'libeay32.dll')) OR (NOT FileExists(SafeGetApplicationPath+'ssleay32.dll')) then
       begin
-      if FileExists(SafeGetApplicationPath+'libeay32.dll') AND FileExists(SafeGetApplicationPath+'ssleay32.dll')
-         then infoln(localinfotext+'Found OpenSLL library files.',etDebug)
-         else
-         begin
-           if FUseWget then
-      begin
+        infoln(localinfotext+'Getting OpenSLL library files.',etInfo);
+        DownloadOpenSSL;
              DestroySSLInterface; // disable ssl and release libs
-             OperationSucceeded:=DownloadOpenSSL; // libcurl+wget need these libs for https
       end
       else
       begin
-             OperationSucceeded:=InitSSLInterface;
-             if OperationSucceeded then SSLImplementation:=TSSLOpenSSL else
-             begin
-               // no system wide opensssl libs found: try to get them
-               OperationSucceeded:=DownloadOpenSSL;
-               if OperationSucceeded then
-               begin
-                 OperationSucceeded:=InitSSLInterface;
-                 if OperationSucceeded then SSLImplementation:=TSSLOpenSSL;
-               end;
-             end;
-           end;
-      end;
+        infoln(localinfotext+'Found OpenSLL library files.',etDebug);
     end;
+      if (NOT IsSSLloaded) then InitSSLInterface;
     end;
 
     // Get patch binary from default binutils URL
@@ -584,24 +568,29 @@ begin
     if Assigned(FGitClient)
        then FGit:=FGitClient.RepoExecutableName
        else FGit:=Which('git');
-    if Not FileExists(FGit) then FGit := IncludeTrailingPathDelimiter(FMakeDir) + 'git\bin\git.exe';
+    if Not FileExists(FGit) then FGit:=IncludeTrailingPathDelimiter(FMakeDir)+'git\cmd\git.exe';
     if Not FileExists(FGit) then
     begin
       //Source:
       //https://github.com/git-for-windows/git/releases/download/v2.13.2.windows.1/Git-2.13.2-32-bit.exe
       ForceDirectoriesUTF8(IncludeTrailingPathDelimiter(FMakeDir)+'git');
       {$ifdef win32}
-      Output:='git32.7z';
+      //Output:='git32.7z';
+      Output:='git32.zip';
+      aURL:='https://github.com/git-for-windows/git/releases/download/v2.17.1.windows.2/MinGit-2.17.1.2-32-bit.zip';
       {$else}
-      Output:='git64.7z';
+      //Output:='git64.7z';
+      Output:='git64.zip';
+      aURL:='https://github.com/git-for-windows/git/releases/download/v2.17.1.windows.2/MinGit-2.17.1.2-64-bit.zip';
       {$endif}
-      infoln(localinfotext+'GIT not found. Download it (may take time) from '+FPCUPGITREPO+'/releases/download/Git-2.13.2',etInfo);
-      OperationSucceeded:=GetFile(FPCUPGITREPO+'/releases/download/Git-2.13.2/'+Output,IncludeTrailingPathDelimiter(FMakeDir)+'git\'+Output);
+      //aURL:=FPCUPGITREPO+'/releases/download/Git-2.13.2/'+Output;
+      infoln(localinfotext+'GIT not found. Downloading it (may take time) from '+aURL,etInfo);
+      OperationSucceeded:=GetFile(aURL,IncludeTrailingPathDelimiter(FMakeDir)+'git\'+Output);
       if NOT OperationSucceeded then
       begin
         // try one more time
         SysUtils.DeleteFile(IncludeTrailingPathDelimiter(FMakeDir)+'git\'+Output);
-        OperationSucceeded:=GetFile(FPCUPGITREPO+'/releases/download/Git-2.13.2/'+Output,IncludeTrailingPathDelimiter(FMakeDir)+'git\'+Output);
+        OperationSucceeded:=GetFile(aURL,IncludeTrailingPathDelimiter(FMakeDir)+'git\'+Output);
       end;
       if OperationSucceeded then
       begin
@@ -859,7 +848,7 @@ begin
   // if Win7 or higher: use modern (2.4.0 and higher) binutils
   if aMajor>5 then
   begin
-    if (GetNumericalVersion(aVersion)<(2*10000+4*100+0)) then
+    if (GetNumericalVersionSafe(aVersion)<(2*10000+4*100+0)) then
        aVersion:='2.4.0';
   end;
 
@@ -1344,6 +1333,9 @@ end;
 {$IFDEF MSWINDOWS}
 function TInstaller.DownloadSVN: boolean;
 const
+  // See: http://subversion.apache.org/download/
+  // for latest version !!
+
   //SourceURL = 'http://www.visualsvn.com/files/Apache-Subversion-1.8.4.zip';
   // Changed to https
   //SourceURL = 'https://www.visualsvn.com/files/Apache-Subversion-1.8.4.zip';
@@ -1354,8 +1346,9 @@ const
   //SourceURL = 'https://www.visualsvn.com/files/Apache-Subversion-1.9.1.zip';
   //SourceURL = 'https://www.visualsvn.com/files/Apache-Subversion-1.9.4.zip';
   //SourceURL = 'https://www.visualsvn.com/files/Apache-Subversion-1.9.5.zip';
-  SourceURL = 'https://www.visualsvn.com/files/Apache-Subversion-1.9.7.zip';
-  //SourceURL = 'https://sourceforge.net/projects/win32svn/files/1.8.15/apache24/svn-win32-1.8.15-ap24.zip/download';
+  // SourceURL = 'https://www.visualsvn.com/files/Apache-Subversion-1.9.7.zip';
+  SourceURL = 'https://www.visualsvn.com/files/Apache-Subversion-1.10.0.zip';
+  SourceURL_LastResort = 'https://sourceforge.net/projects/win32svn/files/1.8.15/apache24/svn-win32-1.8.17-ap24.zip/download';
   // confirmed by winetricks bug report that this is the only one left...
   // this link seems down 'http://download.microsoft.com/download/vc60pro/update/1/w9xnt4/en-us/vc6redistsetup_enu.exe';
 var
@@ -1379,21 +1372,19 @@ begin
   with subdirs bin and licenses. No further subdirs
   However, doesn't work on Windows 2K.
   Decided to use this anyway.}
-  OperationSucceeded := true;
+  OperationSucceeded := false;
 
   // This svn version won't work on windows 2K
   if GetWin32Version(MajorVersion,MinorVersion,BuildNumber) and (MajorVersion=5) and (Minorversion=0) then
   begin
     writelnlog(etError, localinfotext + 'It seems this PC is running Windows 2000. Cannot install svn.exe. Please manually install e.g. TortoiseSVN first.', true);
-    exit(false);
+    exit(OperationSucceeded);
   end;
 
   ForceDirectoriesUTF8(FSVNDirectory);
 
   SVNZip := SysUtils.GetTempFileName('','FPCUPTMP') + '.zip';
   try
-    if OperationSucceeded then
-    begin
       OperationSucceeded := Download(
         FUseWget,
         SourceURL,
@@ -1402,7 +1393,6 @@ begin
         FHTTPProxyPort,
         FHTTPProxyUser,
         FHTTPProxyPassword);
-    end;
   except
     // Deal with timeouts, wrong URLs etc
     on E: Exception do
@@ -1410,6 +1400,33 @@ begin
       OperationSucceeded := false;
       writelnlog(etError, localinfotext + 'Exception ' + E.ClassName + '/' + E.Message + ' downloading SVN client from ' + SourceURL, true);
     end;
+    end;
+
+  if (NOT OperationSucceeded) then
+  begin
+    writelnlog(etError, localinfotext + 'Downloading SVN client from ' + SourceURL, true);
+
+    SysUtils.Deletefile(SVNZip); //Get rid of temp zip if any.
+
+    try
+      OperationSucceeded := Download(
+        FUseWget,
+        SourceURL_LastResort,
+        SVNZip,
+        FHTTPProxyUser,
+        FHTTPProxyPort,
+        FHTTPProxyUser,
+        FHTTPProxyPassword);
+  except
+    // Deal with timeouts, wrong URLs etc
+    on E: Exception do
+    begin
+      OperationSucceeded := false;
+        writelnlog(etError, localinfotext + 'Exception ' + E.ClassName + '/' + E.Message + ' downloading SVN client from ' + SourceURL_LastResort, true);
+      end;
+    end;
+    if (NOT OperationSucceeded) then
+      writelnlog(etError, localinfotext + 'Downloading SVN client from ' + SourceURL_LastResort, true);
   end;
 
   if OperationSucceeded then
@@ -1424,10 +1441,6 @@ begin
         Free;
       end;
     end;
-  end
-  else
-  begin
-    writelnlog(etError, localinfotext + 'Downloading SVN client from ' + SourceURL, true);
   end;
 
   if OperationSucceeded then
@@ -1443,12 +1456,12 @@ end;
 function TInstaller.DownloadOpenSSL: boolean;
 const
   {$ifdef win64}
-  SourceURL = 'http://indy.fulgan.com/SSL/openssl-1.0.2j-x64_86-win64.zip';
-  SourceURLfailsafe = 'http://packages.lazarus-ide.org/openssl-1.0.2j-x64_86-win64.zip';
+  SourceURL = 'http://indy.fulgan.com/SSL/openssl-1.0.2o-x64_86-win64.zip';
+  SourceURLfailsafe = 'http://packages.lazarus-ide.org/openssl-1.0.2o-x64_86-win64.zip';
   {$endif}
   {$ifdef win32}
-  SourceURL = 'http://indy.fulgan.com/SSL/openssl-1.0.2j-i386-win32.zip';
-  SourceURLfailsafe = 'http://packages.lazarus-ide.org/openssl-1.0.2j-i386-win32.zip';
+  SourceURL = 'http://indy.fulgan.com/SSL/openssl-1.0.2o-i386-win32.zip';
+  SourceURLfailsafe = 'http://packages.lazarus-ide.org/openssl-1.0.2o-i386-win32.zip';
   {$endif}
 var
   OperationSucceeded: boolean;
@@ -1517,7 +1530,7 @@ begin
   end;
 
   if OperationSucceeded
-     then WritelnLog(localinfotext + 'OpenSLL download and unpacking ok.', true)
+     then infoln(localinfotext+'OpenSLL library files download and unpacking ok',etWarning)
      else infoln(localinfotext+'Could not download/install openssl library', etError);
     SysUtils.Deletefile(OpenSSLZip); //Get rid of temp zip if success.
   Result := OperationSucceeded;
@@ -1959,7 +1972,9 @@ begin
       if (PatchList.Count>0) then
       begin
         //add standard patches by fpcup(deluxe)
-        LocalSourcePatches:=LocalSourcePatches+','+PatchList.CommaText;
+        if Length(LocalSourcePatches)>0
+           then LocalSourcePatches:=LocalSourcePatches+','+PatchList.CommaText
+           else LocalSourcePatches:=PatchList.CommaText;
       end;
     finally
       PatchList.Free;

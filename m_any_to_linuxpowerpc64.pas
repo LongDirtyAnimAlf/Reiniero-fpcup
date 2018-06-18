@@ -73,12 +73,28 @@ begin
 
   if not result then
   begin
+    if (StringListStartsWith(FCrossOpts,'-Cb-')<>-1) then
+    begin
+      // we have little endian !!
+      result:=SimpleSearchLibrary(BasePath,'powerpc64le-linux',LibName);
+    end;
+  end;
+
+  if not result then
+  begin
     {$IFDEF UNIX}
     {$IFDEF MULTILIB}
-    FLibsPath:='/usr/lib/x86_64-linux-gnu'; //debian Jessie+ convention
+    FLibsPath:='/usr/lib/powerpc64-linux-gnu'; //debian Jessie+ convention
     result:=DirectoryExists(FLibsPath);
     if not result then
-    ShowInfo('Searched but not found libspath '+FLibsPath);
+    begin
+      if (StringListStartsWith(FCrossOpts,'-Cb-')<>-1) then
+      begin
+        // we have little endian !!
+        FLibsPath:='/usr/lib/powerpc64le-linux-gnu'; //debian Jessie+ convention
+        result:=DirectoryExists(FLibsPath);
+      end;
+    end;
     {$ENDIF}
     {$ENDIF}
   end;
@@ -96,6 +112,7 @@ begin
     if (StringListStartsWith(FCrossOpts,'-Cb-')<>-1) then
     begin
       // we have little endian libs: get them !!
+      ShowInfo('Option "-Cb-" detected: trying to get the PowerPC64 little endian libs.',etInfo);
     end
     else
     begin
@@ -121,8 +138,8 @@ const
 var
   AsFile: string;
   BinPrefixTry: string;
-  aOption:string;
-  i:integer;
+  //aOption:string;
+  //i:integer;
 begin
   result:=inherited;
   if result then exit;
@@ -182,6 +199,7 @@ begin
     So, we only get little endian from the linker if we use ABI elfv2 AND set little_endian
     *)
 
+    {
     // see above : new abi - use it !!
     i:=StringListStartsWith(FCrossOpts,'-Ca');
     if i=-1 then
@@ -202,6 +220,7 @@ begin
     end
     else aOption:=Trim(FCrossOpts[i]);
     AddFPCCFGSnippet(aOption);
+    }
 
   end;
 end;

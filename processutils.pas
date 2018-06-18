@@ -185,6 +185,7 @@ begin
     begin
     FOutStream.Position := 0;
     FOutputStrings.LoadFromStream(FOutStream);
+    FOutStream.Clear;
     end;
   result:=FOutputStrings;
 end;

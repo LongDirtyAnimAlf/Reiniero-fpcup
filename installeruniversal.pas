@@ -101,7 +101,7 @@ type
     function InitModule:boolean;
     {$ifndef FPCONLY}
     // Installs a single package:
-    function InstallPackage(PackagePath, WorkingDir: string): boolean;
+    function InstallPackage(PackagePath, WorkingDir: string; RegisterOnly:boolean=false): boolean;
     // Scans for and removes all packages specfied in a (module's) stringlist with commands:
     function RemovePackages(sl:TStringList): boolean;
     // Uninstall a single package:
@@ -162,7 +162,7 @@ Const
 implementation
 
 uses
-  StrUtils,inifiles, FileUtil, LazFileUtils, LazUTF8, fpcuputil;
+  StrUtils,inifiles, FileUtil, LazFileUtils, LazUTF8, fpcuputil, process;
 
 Const
   MAXSYSMODULES=200;
@@ -208,6 +208,7 @@ function TUniversalInstaller.GetValue(Key: string; sl: TStringList;
 var
   i,len:integer;
   s,macro:string;
+  doublequote:boolean;
 begin
   Key:=UpperCase(Key);
   s:='';
@@ -238,6 +239,7 @@ begin
       s:='';
       end;
 //expand macros
+  doublequote:=true;
   if s<>'' then
     while pos('$(',s)>0 do
       begin
@@ -256,6 +258,8 @@ begin
           macro:=ExcludeTrailingPathDelimiter(FFPCDir)
         else if macro='FPCBINDIR' then
             macro:=ExcludeTrailingPathDelimiter(FBinPath)
+        else if macro='FPCBIN' then
+            macro:=ExcludeTrailingPathDelimiter(FCompiler)
         else if macro='TOOLDIR' then
           {$IFDEF MSWINDOWS}
           // make is a binutil and should be located in the make dir
@@ -282,10 +286,32 @@ begin
           // Strip can be anywhere in the path
           macro:=ExcludeTrailingPathDelimiter(ExtractFilePath(Which('strip')))
           {$ENDIF}
+        else if macro='REMOVEDIRECTORY' then
+        begin
+          doublequote:=false;
+          {$IFDEF MSWINDOWS}
+          macro:='cmd /c rmdir /s /q';
+          {$ENDIF}
+          {$IFDEF UNIX}
+          macro:='rm -Rf';
+          {$ENDIF}
+        end
+        else if macro='REMOVEINSTALLDIRECTORY' then
+        begin
+          doublequote:=false;
+          {$IFDEF MSWINDOWS}
+          macro:='cmd /c rmdir '+'$(Installdir)'+' /s /q';
+          {$ENDIF}
+          {$IFDEF UNIX}
+          macro:='rm -Rf '+'$(Installdir)';
+          {$ENDIF}
+        end
         else macro:=GetValue(macro,sl,recursion+1); //user defined value
         // quote if containing spaces
-        if pos(' ',macro)>0 then
-          macro:='"'+macro+'"';
+        if doublequote then
+        begin
+          if pos(' ',macro)>0 then macro:='"'+macro+'"';
+        end;
         delete(s,i,len);
         insert(macro,s,i);
         end;
@@ -293,8 +319,13 @@ begin
   // correct path delimiter
   if (pos('URL',Key)<=0) and (pos('ADDTO',Key)<>1)then
     begin
-    for i:=1 to length(s) do
-      if (s[i]='/') or (s[i]='\') then
+    {$IFDEF MSWINDOWS}
+    len:=2;
+    {$ELSE}
+    len:=1;
+    {$ENDIF}
+    for i:=len to length(s) do
+      if ((s[i]='/') or (s[i]='\')){$IFDEF MSWINDOWS} AND (s[i-1]<>' '){$ENDIF} then
         s[i]:=DirectorySeparator;
     end;
   result:=s;
@@ -343,13 +374,14 @@ begin
 end;
 
 {$ifndef FPCONLY}
-function TUniversalInstaller.InstallPackage(PackagePath, WorkingDir: string): boolean;
+function TUniversalInstaller.InstallPackage(PackagePath, WorkingDir: string; RegisterOnly:boolean=false): boolean;
 var
   PackageName,PackageAbsolutePath: string;
   Path: String;
   lpkdoc:TConfig;
   lpkversion:TAPkgVersion;
   TxtFile:TextFile;
+  RegisterPackageFeature:boolean;
 begin
   result:=false;
   localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (InstallPackage): ';
@@ -385,6 +417,33 @@ begin
      else WritelnLog(localinfotext+'Installing '+PackageName+' version '+lpkversion.AsString,True);
 
   Processor.Executable := IncludeTrailingPathDelimiter(LazarusDir)+'lazbuild'+GetExeExt;
+
+  RegisterPackageFeature:=false;
+
+  // get lazbuild version to see if we can register packages (available from version 1.7 and up)
+  Processor.Parameters.Clear;
+  Processor.Parameters.Add('--version');
+  try
+    Processor.Execute;
+    result := (Processor.ExitStatus=0);
+    if result then RegisterPackageFeature:=(GetNumericalVersionSafe(Processor.OutputString)>=(1*10000+7*100+0));
+  except
+    on E: Exception do
+    begin
+      result:=false;
+      WritelnLog(localinfotext+'Exception trying to getting lazbuild version. Details: '+E.Message,true);
+    end;
+  end;
+
+  if (NOT result) then
+  begin
+    WritelnLog(localinfotext+'Error trying to add package '+PackageName,true);
+    exit;
+  end;
+
+  if RegisterPackageFeature then RegisterPackageFeature:=RegisterOnly;
+
+  Processor.Parameters.Clear;
   FErrorLog.Clear;
   if WorkingDir<>'' then
     Processor.CurrentDirectory:=ExcludeTrailingPathDelimiter(WorkingDir);
@@ -399,6 +458,9 @@ begin
   Processor.Parameters.Add('--os=' + GetTargetOS);
   if FLCL_Platform <> '' then
             Processor.Parameters.Add('--ws=' + FLCL_Platform);
+  if RegisterPackageFeature then
+    Processor.Parameters.Add('--add-package-link')
+  else
   Processor.Parameters.Add('--add-package');
   Processor.Parameters.Add(DoubleQuoteIfNeeded(PackageAbsolutePath));
   try
@@ -407,21 +469,23 @@ begin
     // runtime packages will return false, but output will have info about package being "only for runtime"
     if result then
     begin
+      if (NOT RegisterPackageFeature) then
+      begin
       infoln('Marking Lazarus for rebuild based on package install for '+PackageAbsolutePath,etDebug);
       FLazarusNeedsRebuild:=true; //Mark IDE for rebuild
+      end;
     end
     else
     begin
       // if the package is only for runtime, just add an lpl file to inform Lazarus of its existence and location ->> set result to true
-      if Pos('only for runtime',Processor.OutputString)>0
+      if (Pos('only for runtime',Processor.OutputString)>0) OR (RegisterPackageFeature)
          then result:=True
-         else WritelnLog(localinfotext+'Error trying to add package '+PackageName+LineEnding+'Details: '+FErrorLog.Text,true);
+         else WritelnLog(localinfotext+'Error trying to add package '+PackageName+'. Details: '+FErrorLog.Text,true);
     end;
   except
     on E: Exception do
       begin
-      WritelnLog(localinfotext+'Exception trying to add package '+PackageName+LineEnding+
-        'Details: '+E.Message,true);
+      WritelnLog(localinfotext+'Exception trying to add package '+PackageName+'. Details: '+E.Message,true);
       end;
   end;
 
@@ -454,22 +518,44 @@ function TUniversalInstaller.RemovePackages(sl: TStringList): boolean;
 const
   // The command that will be processed:
   Directive='AddPackage';
+  Location='Workingdir';
 var
   Failure: boolean;
   i:integer;
+  RealDirective:string;
   PackagePath:string;
   Workingdir:string;
   BaseWorkingdir:string;
+  RegisterOnly:boolean;
 begin
   Failure:=false;
   localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (RemovePackages): ';
-  BaseWorkingdir:=GetValue('Workingdir',sl);
-  // Go backward; reverse order to deal with any dependencies
-  for i:=MAXINSTRUCTIONS downto 0 do
+
+  BaseWorkingdir:=GetValue(Location,sl);
+  Workingdir:=BaseWorkingdir;
+
+  for RegisterOnly:=false to true do
   begin
-    if i=0
-       then PackagePath:=GetValue(Directive,sl)
-       else PackagePath:=GetValue(Directive+IntToStr(i),sl);
+
+  // Go backward; reverse order to deal with any dependencies
+    for i:=MAXINSTRUCTIONS downto -1 do
+    begin
+      if RegisterOnly then
+        RealDirective:=Directive+'Link'
+      else
+        RealDirective:=Directive;
+
+      if i>=0 then
+      begin
+        RealDirective:=RealDirective+IntToStr(i);
+        Workingdir:=GetValue(Location+IntToStr(i),sl);
+      end else
+  begin
+        Workingdir:=BaseWorkingdir;
+      end;
+
+      PackagePath:=GetValue(RealDirective,sl);
+
     // Skip over missing numbers:
     if PackagePath='' then continue;
     if NOT FileExists(PackagePath) then
@@ -478,7 +564,6 @@ begin
       UnInstallPackage(PackagePath);
       continue;
     end;
-    Workingdir:=GetValue('Workingdir'+IntToStr(i),sl);
     if Workingdir='' then Workingdir:=BaseWorkingdir;
     // Try to uninstall everything, even if some of these fail.
     // Note: UninstallPackage used to have a WorkingDir parameter but
@@ -486,6 +571,7 @@ begin
     if UnInstallPackage(PackagePath)=false then Failure:=true;
   end;
   result:=Failure;
+end;
 end;
 {$endif}
 
@@ -500,22 +586,36 @@ var
   Workingdir:string;
   BaseWorkingdir:string;
   RealDirective:string;
+  RegisterOnly:boolean;
 begin
   localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (AddPackages): ';
 
-  RealDirective:=Directive;
-  PackagePath:=GetValue(RealDirective,sl);
   BaseWorkingdir:=GetValue(Location,sl);
+  Workingdir:=BaseWorkingdir;
+
+  for RegisterOnly:=false to true do
+  begin
 
   // trick: run from -1 to allow the above basic statements to be processed first
   for i:=-1 to MAXINSTRUCTIONS do
   begin
-    if i>=0 then
+      if RegisterOnly then
+        RealDirective:=Directive+'Link'
+      else
+        RealDirective:=Directive;
+
+      if (i>=0) then
     begin
-      RealDirective:=Directive+IntToStr(i);
-      PackagePath:=GetValue(RealDirective,sl);
+        RealDirective:=RealDirective+IntToStr(i);
       Workingdir:=GetValue(Location+IntToStr(i),sl);
+      end
+      else
+      begin
+        Workingdir:=BaseWorkingdir;
     end;
+
+      PackagePath:=GetValue(RealDirective,sl);
+
     // Skip over missing data:
     if (PackagePath='') then continue;
     if NOT FileExists(PackagePath) then
@@ -592,7 +692,7 @@ begin
     if Workingdir='' then Workingdir:=BaseWorkingdir;
 
     {$ifndef FPCONLY}
-    result:=InstallPackage(PackagePath,WorkingDir);
+      result:=InstallPackage(PackagePath,WorkingDir,RegisterOnly);
     if not result then
     begin
       infoln(localinfotext+'Error while installing package '+PackagePath+'.',etWarning);
@@ -601,6 +701,8 @@ begin
     end;
     {$endif}
   end;
+end;
+
 end;
 
 {$IFDEF MSWINDOWS}
@@ -713,11 +815,16 @@ begin
     end;
     Workingdir:=GetValue('Workingdir'+IntToStr(i),sl);
     if Workingdir='' then Workingdir:=BaseWorkingdir;
-    if FVerbose then WritelnLog(localinfotext+'Running ExecuteCommandInDir for '+exec,true);
+    if FVerbose then WritelnLog(localinfotext+'Running ExecuteCommand[InDir] for '+exec,true);
     try
-      result:=ExecuteCommandInDir(exec,Workingdir,output,FPath,FVerbose)=0;
-      if result then
+      result:=false;
+      if Length(WorkingDir)>0 then
+        j:=ExecuteCommandInDir(exec,Workingdir,output,FPath,FVerbose)
+      else
+        j:=ExecuteCommand(exec,output,FVerbose);
+      if j=0 then
       begin
+        result:=true;
         {$ifndef FPCONLY}
         // If it is likely user used lazbuid to compile a package, assume
         // it is design-time (except when returning an runtime message) and mark IDE for rebuild
@@ -733,7 +840,9 @@ begin
       end
       else
       begin
-        WritelnLog(etWarning, localinfotext+'Running '+exec+' returned an error.',true);
+        WritelnLog(etError, localinfotext+'Running '+exec+' returned with an error.',true);
+        WritelnLog(etError, localinfotext+'Error-code: '+InttoStr(j),true);
+        WritelnLog(etError, localinfotext+'Error message (if any): '+output,true);
         break;
       end;
     except
@@ -918,10 +1027,37 @@ begin
 end;
 
 function TUniversalInstaller.CleanModule(ModuleName: string): boolean;
+//var
+//  DeleteList:TStringList;
+//  FileCounter:integer;
 begin
   result:=inherited;
   result:=InitModule;
   if not result then exit;
+
+  (*
+  if (Length(FSourceDirectory)>0) AND (DirectoryExists(FSourceDirectory)) then
+  begin
+    DeleteList := TStringList.Create;
+    try
+      FindAllFiles(DeleteList,FSourceDirectory, '*.ppu; *.compiled; *.o', True);
+      if DeleteList.Count > 0 then
+      begin
+        for FileCounter := 0 to (DeleteList.Count-1) do
+        begin
+          if Pos(GetTargetCPUOS,DeleteList.Strings[FileCounter])>0 then
+          begin
+            DeleteFile(DeleteList.Strings[FileCounter]);
+            infoln(infotext+'Deleting '+DeleteList.Strings[FileCounter],etDebug);
+          end;
+        end;
+      end;
+    finally
+      DeleteList.Free;
+    end;
+  end;
+  *)
+
   result:=true;
 end;
 
@@ -1323,7 +1459,7 @@ begin
         WritelnLog(infotext+'Download ok',True);
         // Extract, overwrite
         case UpperCase(sysutils.ExtractFileExt(TempArchive)) of
-           '.ZIP':
+           '.ZIP','.TMP':
               begin
                 //ResultCode:=ExecuteCommand(FUnzip+' -o -d '+IncludeTrailingPathDelimiter(InstallDir)+' '+TempArchive,FVerbose);
                 with TNormalUnzipper.Create do
@@ -1692,6 +1828,7 @@ begin
   result:='';
 
   sl:=TStringList.Create;
+
   ini:=TMemIniFile.Create(CurrentConfigFile);
   {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
   ini.Options:=ini.Options-[ifoCaseSensitive];

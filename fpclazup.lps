@@ -3,7 +3,7 @@
   <ProjectSession>
     <PathDelim Value="\"/>
     <Version Value="11"/>
-    <BuildModes Count="3" Active="Default">
+    <BuildModes Count="3" Active="linuxppc64">
       <Item1 Name="linuxarmhf">
         <MacroValues Count="1">
           <Macro1 Name="LCLWidgetType" Value="nogui"/>
@@ -141,6 +141,8 @@ end;"/>
         <Filename Value="fpclazup.lpr"/>
         <IsPartOfProject Value="True"/>
         <IsVisibleTab Value="True"/>
+        <TopLine Value="62"/>
+        <CursorPos Y="131"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
       </Unit0>
@@ -148,8 +150,8 @@ end;"/>
         <Filename Value="svnclient.pas"/>
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="-1"/>
-        <TopLine Value="276"/>
-        <CursorPos X="33" Y="294"/>
+        <TopLine Value="874"/>
+        <CursorPos X="32" Y="900"/>
         <UsageCount Value="200"/>
       </Unit1>
       <Unit2>
@@ -171,8 +173,8 @@ end;"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerCore"/>
         <EditorIndex Value="-1"/>
-        <TopLine Value="1033"/>
-        <CursorPos X="19" Y="1039"/>
+        <TopLine Value="1246"/>
+        <CursorPos X="91" Y="1265"/>
         <UsageCount Value="200"/>
       </Unit4>
       <Unit5>
@@ -180,8 +182,8 @@ end;"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerFpc"/>
         <EditorIndex Value="-1"/>
-        <TopLine Value="2214"/>
-        <CursorPos X="21" Y="2234"/>
+        <TopLine Value="2903"/>
+        <CursorPos X="28" Y="2913"/>
         <UsageCount Value="200"/>
       </Unit5>
       <Unit6>

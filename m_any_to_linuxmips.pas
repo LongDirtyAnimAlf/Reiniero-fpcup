@@ -1,7 +1,6 @@
-unit m_any_to_linuxaarch64;
-
-{ Cross compiles from e.g. Linux 64 bit (or any other OS with relevant binutils/libs) to Linux 64 bit aarch
-Copyright (C) 2014 Reinier Olislagers
+unit m_any_to_linuxmips;
+{ Cross compiles from any to mips 32 bit
+Copyright (C) 2013 Reinier Olislagers
 
 This library is free software; you can redistribute it and/or modify it
 under the terms of the GNU Library General Public License as published by
@@ -34,14 +33,13 @@ Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 interface
 
 uses
-  Classes, SysUtils, m_crossinstaller, fileutil;
+  Classes, SysUtils, m_crossinstaller, fileutil, fpcuputil;
 
 implementation
-
 type
 
-{ Tany_linuxaarch64 }
-Tany_linuxaarch64 = class(TCrossInstaller)
+{ Tany_linuxmips }
+Tany_linuxmips = class(TCrossInstaller)
 private
   FAlreadyWarned: boolean; //did we warn user about errors and fixes already?
 public
@@ -54,11 +52,11 @@ public
   destructor Destroy; override;
 end;
 
-{ Tany_linuxaarch64 }
+{ Twin32_linuxmipsel }
 
-function Tany_linuxaarch64.GetLibs(Basepath:string): boolean;
+function Tany_linuxmips.GetLibs(Basepath:string): boolean;
 const
-  DirName='aarch64-linux';
+  DirName='mips-linux';
   LibName='libc.so';
 begin
   result:=FLibsFound;
@@ -71,41 +69,33 @@ begin
   if not result then
     result:=SimpleSearchLibrary(BasePath,DirName,LibName);
 
-  if not result then
-  begin
-    {$IFDEF UNIX}
-    FLibsPath:='/usr/lib/aarch64-linux-gnu'; //debian Jessie+ convention
-    result:=DirectoryExists(FLibsPath);
-    if not result then
-    ShowInfo('Searched but not found libspath '+FLibsPath);
-    {$ENDIF}
-  end;
-
   SearchLibraryInfo(result);
+
   if result then
   begin
     FLibsFound:=True;
     //todo: check if -XR is needed for fpc root dir Prepend <x> to all linker search paths
-    AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath));
-    AddFPCCFGSnippet('-Xr/usr/lib');
-    //AddFPCCFGSnippet('-FL/usr/lib/ld-linux.so.2'); {buildfaq 3.3.1: the name of the dynamic linker on the target};
+    FFPCCFGSnippet:=FFPCCFGSnippet+LineEnding+
+    '-Xd'+LineEnding+ {buildfaq 3.4.1 do not pass parent /lib etc dir to linker}
+    '-Fl'+IncludeTrailingPathDelimiter(FLibsPath)+LineEnding+ {buildfaq 1.6.4/3.3.1: the directory to look for the target  libraries}
+    '-Xr/usr/lib';//+LineEnding+ {buildfaq 3.3.1: makes the linker create the binary so that it searches in the specified directory on the target system for libraries}
   end;
 end;
 
 {$ifndef FPCONLY}
-function Tany_linuxaarch64.GetLibsLCL(LCL_Platform: string; Basepath: string): boolean;
+function Tany_linuxmips.GetLibsLCL(LCL_Platform: string; Basepath: string): boolean;
 begin
   // todo: get gtk at least
   result:=inherited;
 end;
 {$endif}
 
-function Tany_linuxaarch64.GetBinUtils(Basepath:string): boolean;
+function Tany_linuxmips.GetBinUtils(Basepath:string): boolean;
 const
-  DirName='aarch64-linux';
+  DirName='mips-linux';
 var
   AsFile: string;
-  BinPrefixTry: string;
+  BinPrefixTry:string;
 begin
   result:=inherited;
   if result then exit;
@@ -113,10 +103,39 @@ begin
   AsFile:=FBinUtilsPrefix+'as'+GetExeExt;
 
   result:=SearchBinUtil(BasePath,AsFile);
-  if not result then
-    result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+  if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
 
-  // Also allow for (cross)binutils without prefix
+  // Now also allow for mips-linux-gnu- binutilsprefix (e.g. codesourcery)
+  if not result then
+  begin
+    BinPrefixTry:='mips-linux-gnu-';
+    AsFile:=BinPrefixTry+'as'+GetExeExt;
+    result:=SearchBinUtil(BasePath,AsFile);
+    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+    if result then FBinUtilsPrefix:=BinPrefixTry;
+  end;
+
+  // Now also allow for mips-linux-uclibc binutilsprefix (e.g. using standard GCC crossbinutils)
+  if not result then
+  begin
+    BinPrefixTry:='mips-linux-uclibc-';
+    AsFile:=BinPrefixTry+'as'+GetExeExt;
+    result:=SearchBinUtil(BasePath,AsFile);
+    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+    if result then FBinUtilsPrefix:=BinPrefixTry;
+  end;
+
+  // Now also allow for mips-openwrt-linux-uclibc binutilsprefix
+  if not result then
+  begin
+    BinPrefixTry:='mips-openwrt-linux-uclibc-';
+    AsFile:=BinPrefixTry+'as'+GetExeExt;
+    result:=SearchBinUtil(BasePath,AsFile);
+    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+    if result then FBinUtilsPrefix:=BinPrefixTry;
+  end;
+
+  // Now also allow for empty binutilsprefix:
   if not result then
   begin
     BinPrefixTry:='';
@@ -131,38 +150,51 @@ begin
   if result then
   begin
     FBinsFound:=true;
+    //option: check as version with something like as --version, and check the targte against what is needed !!
+    // Architecture etc:
+    if StringListStartsWith(FCrossOpts,'-Cp')=-1 then
+      FCrossOpts.Add('-CpMIPS32R2'); //Probably supported by most devices today
+    // Softfloat unless otherwise specified (probably equivalent to -msoft-float for gcc):
+    if StringListStartsWith(FCrossOpts,'-Cf')=-1 then
+      FCrossOpts.Add('-CfSOFT');
     // Configuration snippet for FPC
-    AddFPCCFGSnippet('-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath)); //search this directory for compiler utilities
-    AddFPCCFGSnippet('-XP'+FBinUtilsPrefix); //Prepend the binutils names
+    FFPCCFGSnippet:=FFPCCFGSnippet+LineEnding+
+    '-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath)+LineEnding+ {search this directory for compiler utilities}
+    '-XP'+FBinUtilsPrefix; {Prepend the binutils names}
+  end
+  else
+  begin
+    FAlreadyWarned:=true;
   end;
 end;
 
-constructor Tany_linuxaarch64.Create;
+constructor Tany_linuxmips.Create;
 begin
   inherited Create;
-  FBinUtilsPrefix:='aarch64-linux-';
+  // binutilsprefix can be modified later in GetBinUtils
+  FBinUtilsPrefix:='mips-linux-';
   FBinUtilsPath:='';
+  FCompilerUsed:=ctInstalled;
   FFPCCFGSnippet:='';
   FLibsPath:='';
-  FTargetCPU:='aarch64';
+  FTargetCPU:='mips';
   FTargetOS:='linux';
   FAlreadyWarned:=false;
   ShowInfo;
 end;
 
-destructor Tany_linuxaarch64.Destroy;
+destructor Tany_linuxmips.Destroy;
 begin
   inherited Destroy;
 end;
 
 var
-  any_linuxaarch64:Tany_linuxaarch64;
+  Any_linuxmips:Tany_linuxmips;
 
 initialization
-  any_linuxaarch64:=Tany_linuxaarch64.Create;
-  RegisterExtension(any_linuxaarch64.TargetCPU+'-'+any_linuxaarch64.TargetOS,any_linuxaarch64);
+  Any_linuxmips:=Tany_linuxmips.Create;
+  RegisterExtension(Any_linuxmips.TargetCPU+'-'+Any_linuxmips.TargetOS,Any_linuxmips);
 finalization
-  any_linuxaarch64.Destroy;
-
+  Any_linuxmips.Destroy;
 end.
 
