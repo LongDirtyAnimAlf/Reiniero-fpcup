@@ -2187,21 +2187,30 @@ begin
   RequiredBootstrapVersionLow:=GetBootstrapCompilerVersionFromSource(FSourceDirectory,True);
   RequiredBootstrapVersionHigh:=GetBootstrapCompilerVersionFromSource(FSourceDirectory,False);
 
+    // There is no Makefile or no info inside the Makefile to determine bootstrap version
+    // So, try something else !
+    if RequiredBootstrapVersionLow='0.0.0' then RequiredBootstrapVersionHigh:='0.0.0';
   if RequiredBootstrapVersionLow='0.0.0' then
-  begin
     RequiredBootstrapVersionLow:=GetBootstrapCompilerVersionFromVersion(GetCompilerVersionFromSource(FSourceDirectory));
+    if RequiredBootstrapVersionLow='0.0.0' then
+       RequiredBootstrapVersionLow:=GetBootstrapCompilerVersionFromVersion(GetCompilerVersionFromUrl(FURL));
+
     if RequiredBootstrapVersionLow='0.0.0' then
     begin
       infoln(infotext+'Could not determine required bootstrap compiler version. Should not happen. Aborting.',etError);
       exit(false);
+    end;
+    if RequiredBootstrapVersionHigh='0.0.0' then
+    begin
+      // Only a single bootstrap version found
+      infoln(infotext+'To compile this FPC, we use a compiler with version : '+RequiredBootstrapVersionLow,etInfo);
+      // we always build with the highest bootstrapper, so, in this case (trick), make high = low !!
+      RequiredBootstrapVersionHigh:=RequiredBootstrapVersionLow;
       end
       else
       begin
-        infoln(infotext+'To compile this FPC, we use a compiler with version : '+RequiredBootstrapVersionLow,etInfo);
-        // we always build with the highest bootstrapper, so, in this case, make high = low !!
-        RequiredBootstrapVersionHigh:=RequiredBootstrapVersionLow;
+      infoln(infotext+'To compile this FPC, we need (required) a compiler with version '+RequiredBootstrapVersionLow+' or '+RequiredBootstrapVersionHigh,etInfo);
       end;
-  end else infoln(infotext+'To compile this FPC, we need (required) a compiler with version '+RequiredBootstrapVersionLow+' or '+RequiredBootstrapVersionHigh,etInfo);
 
   OperationSucceeded:=false;
 
@@ -2796,7 +2805,6 @@ begin
         // add empty line
       ConfigText.Insert(x,'');
       ConfigText.SaveToFile(FPCCfg);
-
     finally
       ConfigText.Free;
     end;
