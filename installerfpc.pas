@@ -2924,9 +2924,9 @@ begin
 
   if (NOT CrossCompiling) then
   begin
-  // Delete any existing fpc.cfg file
-  // We could keep it, but this is the original behavior
-    Sysutils.DeleteFile(IncludeTrailingPathDelimiter(FInstallDirectory)+'bin'+DirectorySeparator+CPUOS_Signature+DirectorySeparator+'fpc.cfg');
+    // The original behavior: delete fpc.cfg
+    // New: keep it, while we will loose all crosscompilers [settings] when updating FPC !!
+    // Sysutils.DeleteFile(IncludeTrailingPathDelimiter(FInstallDirectory)+'bin'+DirectorySeparator+CPUOS_Signature+DirectorySeparator+'fpc.cfg');
     {$IFDEF UNIX}
     // Delete any fpc.sh shell scripts
     Sysutils.DeleteFile(IncludeTrailingPathDelimiter(FInstallDirectory)+'bin'+DirectorySeparator+CPUOS_Signature+DirectorySeparator+'fpc.sh');
@@ -2935,6 +2935,7 @@ begin
 
   {$IFDEF UNIX}
   // Delete units
+  // Alf: does this work and is it still needed: todo check
   DeleteFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'units');
   DeleteFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'lib/fpc/'+GetFPCVersion+'/units');
   {$ENDIF UNIX}
@@ -2945,6 +2946,7 @@ begin
   // make distclean will only remove the results of a make, not a make install
   DeleteDirectoryEx(IncludeTrailingPathDelimiter(FSourceDirectory)+'units'+DirectorySeparator+CPUOS_Signature);
   {$ENDIF}
+
 
   // finally ... if something is still still still floating around ... delete it !!
   DeleteList := TStringList.Create;
