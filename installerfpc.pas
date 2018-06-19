@@ -1015,6 +1015,8 @@ begin
   {$ELSE}
   Processor.Parameters.Add('UPXPROG=echo'); //Don't use UPX
   Processor.Parameters.Add('COPYTREE=echo'); //fix for examples in Win svn, see build FAQ
+  Processor.Parameters.Add('CPU_SOURCE='+GetTargetCPU);
+  Processor.Parameters.Add('OS_SOURCE='+GetTargetOS);
   {$ENDIF}
   Processor.Parameters.Add('OS_SOURCE=' + GetTargetOS);
   Processor.Parameters.Add('CPU_SOURCE=' + GetTargetCPU);
