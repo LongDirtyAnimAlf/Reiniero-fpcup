@@ -2565,10 +2565,15 @@ begin
   end;
   {$ENDIF UNIX}
 
+
+  // only touch fpc.cfg when NOT crosscompiling !
+  if (OperationSucceeded) AND (NOT (Self is TFPCCrossInstaller)) then
+  begin
+
   FPCCfg := IncludeTrailingPathDelimiter(FBinPath) + 'fpc.cfg';
 
   // Find out where fpcmkcfg lives - only if necessary.
-  if OperationSucceeded AND (FileExists(FPCCfg)=false) then
+    if (OperationSucceeded) AND (FileExists(FPCCfg)=false) then
   begin
     fpcmkcfg:=IncludeTrailingPathDelimiter(FBinPath) + 'fpcmkcfg'+GetExeExt;
     if not(CheckExecutable(fpcmkcfg,'-h','fpcmkcfg')) then
@@ -2593,11 +2598,8 @@ begin
     end;
   end;
 
-  // only touch fpc.cfg when NOT crosscompiling !
-  if (OperationSucceeded) AND (NOT (Self is TFPCCrossInstaller)) then
-  begin
     // Create fpc.cfg if needed
-    if FileExists(FPCCfg) = False then
+    if (OperationSucceeded) AND (FileExists(FPCCfg)=False) then
     begin
       Processor.Executable := fpcmkcfg;
       Processor.CurrentDirectory:=ExcludeTrailingPathDelimiter(FInstallDirectory);
@@ -2680,8 +2682,10 @@ begin
       end;
     end;
 
-    // at this point, a default fpc.cfg does exist
+    // at this point, a default fpc.cfg should exist
     // modify it to suit fpcup[deluxe]
+    if (FileExists(FPCCfg)=true) then
+    begin
     ConfigText:=TStringList.Create;
     try
       ConfigText.LoadFromFile(FPCCfg);
@@ -2708,12 +2712,10 @@ begin
 
         if x<>-1 then
         begin
+            // save position
+            ReturnCode:=x;
+
           // delete previous settings by fpcup[deluxe] by looking for some magic ... ;-)
-          x:=0;
-          while (x<ConfigText.Count) do
-          begin
-            if ConfigText.Strings[x]=s then
-            begin
               ConfigText.Delete(x);
               while (x<ConfigText.Count) do
               begin
@@ -2722,12 +2724,10 @@ begin
                 else
                   break;
               end;
-              while (x<ConfigText.Count) AND ((ConfigText.Strings[x]=SnipMagicEnd) OR (Length(ConfigText.Strings[x])=0)) do ConfigText.Delete(x);
-              ReturnCode:=x;
-              break;
-            end;
-            Inc(x);
-          end;
+            // remove endmagic if any
+            if (ConfigText.Strings[x]=SnipMagicEnd) then ConfigText.Delete(x);
+            // remove empty lines if any
+            while (x<ConfigText.Count) AND (Length(ConfigText.Strings[x])=0) do ConfigText.Delete(x);
         end;
 
       until x=-1;
@@ -2735,12 +2735,16 @@ begin
       // insert new config on right spot
       x:=ReturnCode;
 
-      // insert empty line
-      if Length(ConfigText.Strings[x-1])>0 then ConfigText.Insert(x,''); Inc(x);
+        // insert empty line before
+        if Length(ConfigText.Strings[x-1])>0 then
+        begin
+          ConfigText.Insert(x,''); Inc(x);
+        end;
 
       // add magic
       ConfigText.Insert(x,SnipMagicBegin+FPCUPMAGIC); Inc(x);
 
+        // add settings
       ConfigText.Insert(x,'# Adding binary tools paths to'); Inc(x);
       ConfigText.Insert(x,'# plain bin dir and architecture bin dir so'); Inc(x);
       ConfigText.Insert(x,'# fpc 3.1+ fpcres etc can be found.'); Inc(x);
@@ -2789,12 +2793,14 @@ begin
 
       // add magic
       ConfigText.Insert(x,SnipMagicEnd); Inc(x);
-      // insert empty line
+        // add empty line
       ConfigText.Insert(x,'');
       ConfigText.SaveToFile(FPCCfg);
 
     finally
       ConfigText.Free;
+    end;
+
     end;
 
   // do not build pas2js [yet]: separate install ... use the module with rtl
