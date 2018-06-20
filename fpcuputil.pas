@@ -1821,7 +1821,7 @@ begin
   // skip random symbols to move towards next digit
   //while (Length(VersionSnippet)>=i) AND (NOT (VersionSnippet[i] in ['0'..'9'])) do Inc(i);
   // skip a single random symbol to move towards next digit
-  if (Length(VersionSnippet)>=i) do Inc(i);
+  if (Length(VersionSnippet)>=i) then Inc(i);
   // get minor version
   j:=0;
   found:=false;
@@ -1836,7 +1836,7 @@ begin
   // skip random symbols to move towards next digit
   //while (Length(VersionSnippet)>=i) AND (NOT (VersionSnippet[i] in ['0'..'9'])) do Inc(i);
   // skip a single random symbol to move towards next digit
-  if (Length(VersionSnippet)>=i) do Inc(i);
+  if (Length(VersionSnippet)>=i) then Inc(i);
   // get build version
   j:=0;
   found:=false;
@@ -2285,7 +2285,6 @@ begin
       {$IF FPC_FULLVERSION < 30100}
       if Flat then
       begin
-
         if FFileList.Count=0 then
         begin
           for x:=0 to FUnZipper.Entries.Count-1 do

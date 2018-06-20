@@ -208,6 +208,7 @@ begin
   writeln(' getfilesonly          Just get files. No repos. Uses "svn export"');
   writeln(' disablejobs           Do not use (parallel) jobs when building FPC.');
   writeln(' usewget               Use wget on Linux as downloader.');
+  writeln(' includehelp           Include help. Will be time and space consuming.');
   writeln(' fpcsplit              Use different directory for source and binaries.');
   writeln(' noconfirm             No confirmation asked. For batch operation.');
   writeln(' verbose               Show output from svn and make.');
