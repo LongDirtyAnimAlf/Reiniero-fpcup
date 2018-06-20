@@ -560,7 +560,7 @@ begin
     if PackagePath='' then continue;
     if NOT FileExists(PackagePath) then
     begin
-      infoln(localinfotext+'Package '+ExtractFileName(PackagePath)+' not found ... skipping.',etWarning);
+        infoln(localinfotext+'Package '+ExtractFileName(PackagePath)+' not found ... skipping.',etInfo);
       UnInstallPackage(PackagePath);
       continue;
     end;
@@ -620,7 +620,7 @@ begin
     if (PackagePath='') then continue;
     if NOT FileExists(PackagePath) then
     begin
-      infoln(localinfotext+'Package '+ExtractFileName(PackagePath)+' not found ... skipping.',etWarning);
+        infoln(localinfotext+'Package '+ExtractFileName(PackagePath)+' not found ... skipping.',etInfo);
       {$ifndef FPCONLY}
       UnInstallPackage(PackagePath);
       {$endif}
@@ -1379,6 +1379,7 @@ begin
          then infoln(infotext+'Download/update from GIT repository ok.',etInfo)
          else infoln(infotext+'Getting GIT repo failed. Trying another source, if available.',etInfo)
     end;
+
 
     // Handle SVN urls
     RemoteURL:=GetValue('SVNURL',PackageSettings);
