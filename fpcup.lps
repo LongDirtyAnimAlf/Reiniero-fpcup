@@ -143,7 +143,6 @@ end;"/>
       <Unit0>
         <Filename Value="fpcup.lpr"/>
         <IsPartOfProject Value="True"/>
-        <IsVisibleTab Value="True"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
       </Unit0>
@@ -172,6 +171,8 @@ end;"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerCore"/>
         <EditorIndex Value="-1"/>
+        <TopLine Value="2162"/>
+        <CursorPos X="22" Y="2166"/>
         <UsageCount Value="200"/>
       </Unit4>
       <Unit5>
@@ -208,6 +209,7 @@ end;"/>
       <Unit9>
         <Filename Value="fpcup.ini"/>
         <IsPartOfProject Value="True"/>
+        <IsVisibleTab Value="True"/>
         <EditorIndex Value="1"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
@@ -435,7 +437,7 @@ end;"/>
         <WindowIndex Value="-1"/>
         <TopLine Value="-1"/>
         <CursorPos X="-1" Y="-1"/>
-        <UsageCount Value="136"/>
+        <UsageCount Value="137"/>
       </Unit39>
       <Unit40>
         <Filename Value="jedi.inc"/>
@@ -443,7 +445,7 @@ end;"/>
         <EditorIndex Value="-1"/>
         <TopLine Value="68"/>
         <CursorPos X="8" Y="88"/>
-        <UsageCount Value="136"/>
+        <UsageCount Value="137"/>
       </Unit40>
       <Unit41>
         <Filename Value="m_linux386_to_mipsel.pas"/>
@@ -451,7 +453,7 @@ end;"/>
         <EditorIndex Value="-1"/>
         <TopLine Value="107"/>
         <CursorPos Y="132"/>
-        <UsageCount Value="136"/>
+        <UsageCount Value="137"/>
       </Unit41>
       <Unit42>
         <Filename Value="revision.inc"/>
@@ -460,7 +462,7 @@ end;"/>
         <WindowIndex Value="-1"/>
         <TopLine Value="-1"/>
         <CursorPos X="-1" Y="-1"/>
-        <UsageCount Value="136"/>
+        <UsageCount Value="137"/>
       </Unit42>
       <Unit43>
         <Filename Value="m_any_to_linuxarm.pas"/>
@@ -468,19 +470,19 @@ end;"/>
         <EditorIndex Value="-1"/>
         <TopLine Value="65"/>
         <CursorPos X="19" Y="81"/>
-        <UsageCount Value="129"/>
+        <UsageCount Value="130"/>
       </Unit43>
       <Unit44>
         <Filename Value="m_any_to_androidjvm.pas"/>
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="-1"/>
-        <UsageCount Value="93"/>
+        <UsageCount Value="94"/>
       </Unit44>
       <Unit45>
         <Filename Value="m_any_to_javajvm.pas"/>
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="-1"/>
-        <UsageCount Value="93"/>
+        <UsageCount Value="94"/>
       </Unit45>
     </Units>
     <RunParams>

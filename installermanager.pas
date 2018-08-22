@@ -385,7 +385,7 @@ type
 
   { TFPCupManager }
 
-  TFPCupManager=class(Tobject)
+  TFPCupManager=class(TObject)
   private
     FResultSet:TResultSet;
     FSVNExecutable: string;
@@ -446,6 +446,7 @@ type
     FUseGitClient:boolean;
     FSwitchURL:boolean;
     FNativeFPCBootstrapCompiler:boolean;
+    FForceLocalRepoClient:boolean;
     FSequencer: TSequencer;
     {$ifndef FPCONLY}
     function GetLazarusPrimaryConfigPath: string;
@@ -553,6 +554,7 @@ type
     property UseGitClient:boolean read FUseGitClient write FUseGitClient;
     property SwitchURL:boolean read FSwitchURL write FSwitchURL;
     property NativeFPCBootstrapCompiler:boolean read FNativeFPCBootstrapCompiler write FNativeFPCBootstrapCompiler;
+    property ForceLocalRepoClient:boolean read FForceLocalRepoClient write FForceLocalRepoClient;
 
     // Fill in ModulePublishedList and ModuleEnabledList and load other config elements
     function LoadFPCUPConfig:boolean;
@@ -612,7 +614,7 @@ type
     public
       // set Executed to ESNever for all sequences
       procedure ResetAllExecuted(SkipFPC:boolean=false);
-      property Parent:TFPCupManager write Fparent;
+      property Parent:TFPCupManager write FParent;
       property Installer:TInstaller read FInstaller;
       // Text representation of sequence; for diagnostic purposes
       property Text:String read GetText;
@@ -922,9 +924,9 @@ begin
   if Verbose then
     if GetWin32Version(Major,Minor,Build) then
     begin
-      infoln('Windows major version: '+inttostr(Major),etInfo);
-      infoln('Windows minor version: '+inttostr(Minor),etInfo);
-      infoln('Windows build number:  '+inttostr(Build),etInfo);
+      infoln('Windows major version: '+IntToStr(Major),etInfo);
+      infoln('Windows minor version: '+IntToStr(Minor),etInfo);
+      infoln('Windows build number:  '+IntToStr(Build),etInfo);
     end
     else
       infoln('Could not retrieve Windows version using GetWin32Version.',etWarning);
@@ -997,6 +999,7 @@ begin
   NoJobs:=false;
   UseGitClient:=false;
   FNativeFPCBootstrapCompiler:=true;
+  ForceLocalRepoClient:=false;
 
   FModuleList:=TStringList.Create;
   FModuleEnabledList:=TStringList.Create;
@@ -1145,7 +1148,7 @@ function TSequencer.DoExec(FunctionName: string): boolean;
 
   const
     LCLLIBS:TLibList = ('libX11.so','libgdk_pixbuf-2.0.so','libpango-1.0.so','libgdk-x11-2.0.so');
-    QTLIBS:TLibList = ('libQt4Pas.so','','','');
+    QTLIBS:TLibList = ('libQt5Pas.so','','','');
   var
     i:integer;
     pll:^TLibList;
@@ -1172,7 +1175,7 @@ function TSequencer.DoExec(FunctionName: string): boolean;
     result:=true;
 
     // these libs are always needed !!
-    AdvicedLibs:='make gdb binutils unrar patch wget ';
+    AdvicedLibs:='make gdb binutils unrar unzip patch wget subversion';
 
     Output:=GetDistro;
     if (AnsiContainsText(Output,'arch') OR AnsiContainsText(Output,'manjaro')) then
@@ -1218,7 +1221,7 @@ function TSequencer.DoExec(FunctionName: string): boolean;
         }
         //apt-get install subversion make binutils gdb gcc libgtk2.0-dev
 
-        Output:='libX11-dev libgtk2.0-dev libcairo2-dev libpango1.0-dev libxtst-dev libgdk-pixbuf2.0-dev libatk1.0-dev libghc-x11-dev';
+      Output:='libx11-dev libgtk2.0-dev libcairo2-dev libpango1.0-dev libxtst-dev libgdk-pixbuf2.0-dev libatk1.0-dev libghc-x11-dev';
         AdvicedLibs:=AdvicedLibs+
                      'make binutils build-essential gdb gcc subversion unrar devscripts libc6-dev freeglut3-dev libgl1-mesa libgl1-mesa-dev '+
                      'libglu1-mesa libglu1-mesa-dev libgpmg1-dev libsdl-dev libXxf86vm-dev libxtst-dev '+
@@ -1227,7 +1230,7 @@ function TSequencer.DoExec(FunctionName: string): boolean;
       else
     if (AnsiContainsText(Output,'rhel') OR AnsiContainsText(Output,'centos') OR AnsiContainsText(Output,'scientific') OR AnsiContainsText(Output,'fedora') OR AnsiContainsText(Output,'redhat'))  then
       begin
-        Output:='libX11-devel gtk2-devel gtk+extra gtk+-devel cairo-devel cairo-gobject-devel pango-devel';
+      Output:='libx11-devel gtk2-devel gtk+extra gtk+-devel cairo-devel cairo-gobject-devel pango-devel';
       end
       else
     if AnsiContainsText(Output,'openbsd') then
@@ -1349,8 +1352,8 @@ begin
     if assigned(FInstaller) then
       begin
       // Check for existing normal compiler, or exact same cross compiler
-      if (not crosscompiling and (FInstaller is TFPCNativeInstaller)) or
-        ( crosscompiling and
+      if (not CrossCompiling and (FInstaller is TFPCNativeInstaller)) or
+        ( CrossCompiling and
         (FInstaller is TFPCCrossInstaller) and
         (FInstaller.CrossOS_Target=FParent.CrossOS_Target) and
         (FInstaller.CrossCPU_Target=FParent.CrossCPU_Target)
@@ -1476,7 +1479,7 @@ begin
       FInstaller.SourceDirectory:=FParent.LazarusDirectory;
       // the same ... may change in the future
       FInstaller.InstallDirectory:=FParent.LazarusDirectory;
-      (FInstaller as THelpLazarusInstaller).FPCBinDirectory:=IncludeTrailingBackslash(FParent.FPCInstallDirectory);// + 'bin' + DirectorySeparator + FInstaller.SourceCPU + '-' + FInstaller.SourceOS;
+      (FInstaller as THelpLazarusInstaller).FPCBinDirectory:=IncludeTrailingPathDelimiter(FParent.FPCInstallDirectory);// + 'bin' + DirectorySeparator + FInstaller.SourceCPU + '-' + FInstaller.SourceOS;
       (FInstaller as THelpLazarusInstaller).FPCSourceDirectory:=FParent.FPCSourceDirectory;
       (FInstaller as THelpLazarusInstaller).LazarusPrimaryConfigPath:=FParent.LazarusPrimaryConfigPath;
       end
@@ -1511,8 +1514,12 @@ begin
   if assigned(FInstaller) then
   begin
     FInstaller.BaseDirectory:=FParent.BaseDirectory;
-  if Assigned(FInstaller.SVNClient) then
     FInstaller.SVNClient.RepoExecutable := FParent.SVNExecutable;
+    {$IFDEF MSWINDOWS}
+    FInstaller.SVNClient.ForceLocal:=FParent.ForceLocalRepoClient;
+    FInstaller.GitClient.ForceLocal:=FParent.ForceLocalRepoClient;
+    FInstaller.HGClient.ForceLocal:=FParent.ForceLocalRepoClient;
+    {$ENDIF}
   FInstaller.HTTPProxyHost:=FParent.HTTPProxyHost;
   FInstaller.HTTPProxyPort:=FParent.HTTPProxyPort;
   FInstaller.HTTPProxyUser:=FParent.HTTPProxyUser;
@@ -1555,7 +1562,7 @@ begin
   begin
     // todo: add translation of instr
     result:=result+
-      'Instruction number: '+inttostr(ord(FStateMachine[i].instr))+' '+
+      'Instruction number: '+IntToStr(ord(FStateMachine[i].instr))+' '+
       FStateMachine[i].param;
     if i<High(FStateMachine) then
       result:=result+LineEnding;
@@ -1586,7 +1593,8 @@ function TSequencer.AddSequence(Sequence: string): boolean;
 //our mini parser
 var
   line,key,param:string;
-  i:integer;
+  PackageSettings:TStringList;
+  i,j:integer;
   instr:TKeyword;
   sequencename:string='';
 
@@ -1659,7 +1667,19 @@ while Sequence<>'' do
         sequencename:=param;
         end;
       if instr = SMdeclare then
-        FParent.FModulePublishedList.Add(param);
+      begin
+        key:='';
+        if (Pos('clean',param)=0) AND (Pos('uninstall',param)=0) AND (Pos('default',param)=0) then
+        begin
+          j:=UniModuleList.IndexOf(UpperCase(param));
+          if j>=0 then
+          begin
+            PackageSettings:=TStringList(UniModuleList.Objects[j]);
+            key:=StringReplace(PackageSettings.Values['Description'],'"','',[rfReplaceAll]);;
+          end;
+        end;
+        with FParent.FModulePublishedList do Add(Concat(param, NameValueSeparator, key));
+      end;
       end;
     end;
   end;

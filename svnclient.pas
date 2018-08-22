@@ -285,7 +285,7 @@ begin
   RetryAttempt := 1;
   if (ReturnCode <> 0) then
   begin
-    while (ReturnCode <> 0) and (RetryAttempt < MaxRetries) do
+    while (ReturnCode <> 0) and (RetryAttempt < MAXRETRIES) do
     begin
       //E155004: Working copy '<directory>' locked.
       //E175002: Connection failure
@@ -923,7 +923,7 @@ begin
   begin
     result:='--config-option servers:global:http-proxy-host='+FHTTPProxyHost;
     if FHTTPProxyPort<>0 then
-      result:=result+' --config-option servers:global:http-proxy-port='+inttostr(FHTTPProxyPort);
+      result:=result+' --config-option servers:global:http-proxy-port='+IntToStr(FHTTPProxyPort);
     if FHTTPProxyUser<>'' then
       result:=result+' --config-option servers:global:http-proxy-username='+FHTTPProxyUser;
     if FHTTPProxyPassword<>'' then

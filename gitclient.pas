@@ -221,7 +221,7 @@ begin
   begin
     // if we have a proxy, set it now !
     if Length(GetProxyCommand)>0 then ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) +  GetProxyCommand, Output, FVerbose);
-    while (FReturnCode <> 0) and (RetryAttempt < MaxRetries) do
+    while (FReturnCode <> 0) and (RetryAttempt < MAXRETRIES) do
     begin
       Sleep(500); //Give everybody a chance to relax ;)
       FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + Command, Output, FVerbose); //attempt again
@@ -500,7 +500,7 @@ begin
   if FHTTPProxyHost<>'' then
   begin
     s:=FHTTPProxyHost;
-    if FHTTPProxyPort<>0 then s:=s+':'+inttostr(FHTTPProxyPort);
+    if FHTTPProxyPort<>0 then s:=s+':'+IntToStr(FHTTPProxyPort);
     if FHTTPProxyUser<>'' then
     begin
       s:='@'+s;

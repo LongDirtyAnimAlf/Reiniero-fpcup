@@ -34,17 +34,19 @@ const
   DEFAULTFPCVERSION     = '3.0.4';
   DEFAULTLAZARUSVERSION = '1.8.4';
 
-  FPCTRUNKVERSION  = '3.1.1';
-  FPCTRUNKBOOTVERSION  = '3.0.2';
+  FPCTRUNKVERSION       = '3.3.1';
+  FPCTRUNKBOOTVERSION   = '3.0.4';
   LAZARUSTRUNKVERSION  = '1.9';
 
   FPCSVNURL = 'https://svn.freepascal.org/svn';
-  FPCFTPURL = 'ftp://ftp.freepascal.org/pub/fpc/dist';
+  FPCFTPURL = 'ftp://ftp.freepascal.org/pub/fpc';
+
+  BINUTILSURL = FPCSVNURL + '/fpcbuild';
 
   {$IFDEF MSWINDOWS}
-  BINUTILSURL = FPCSVNURL + '/fpcbuild';
   //FPC prebuilt binaries of the GNU Binutils
   PREBUILTBINUTILSURL = BINUTILSURL + '/binaries/i386-win32';
+  PREBUILTBINUTILSURLWINCE = BINUTILSURL + '/tags/release_3_0_4/install/crossbinwce';
   {$ENDIF}
 
   CHM_URL_LATEST_SVN = FPCSVNURL + '/lazarus/binaries/docs/chm';
@@ -58,7 +60,9 @@ const
   STANDARDCOMPILEROPTIONS='-vw-n-h-l-d-u-t-p-c-';
   {$ENDIF}
 
-  NASMURL='http://www.nasm.us/pub/nasm/releasebuilds/2.13.01';
+  NASMWIN32URL='https://www.nasm.us/pub/nasm/releasebuilds/2.13/win32/nasm-2.13-win32.zip';
+  NASMWIN64URL='https://www.nasm.us/pub/nasm/releasebuilds/2.13/win64/nasm-2.13-win64.zip';
+  NASMFPCURL=BINUTILSURL + '/trunk/install/crossbinmsdos/nasm.exe';
 
   SnipMagicBegin='# begin fpcup do not remove '; //look for this/add this in fpc.cfg cross-compile snippet. Note: normally followed by FPC CPU-os code
   SnipMagicEnd='# end fpcup do not remove'; //denotes end of fpc.cfg cross-compile snippet
@@ -67,6 +71,7 @@ type
   TUtilCategory = (ucBinutil {regular binutils like as.exe},
     ucDebugger32 {Debugger (support) files 32bit},
     ucDebugger64 {Debugger (support) files 64bit},
+    ucDebuggerWince {Debugger (support) files for wince},
     ucQtFile {e.g. Qt binding},
     ucOther {unknown});
 
@@ -89,6 +94,7 @@ type
     FCrossOS_Target: string; //When cross-compiling: OS, e.g. win64
     FCrossOS_SubArch: string; //When cross-compiling for embedded: CPU, e.g. for Teensy SUBARCH=ARMV7EM
     procedure SetURL(value:string);
+    procedure SetSourceDirectory(value:string);
     function GetMake: string;
     procedure SetHTTPProxyHost(AValue: string);
     procedure SetHTTPProxyPassword(AValue: string);
@@ -98,6 +104,7 @@ type
     // Get fpcup registred cross-compiler, if any, if not, return nil
     function GetCrossInstaller: TCrossInstaller;
   protected
+    FCleanModuleSuccess: boolean;
     FBaseDirectory: string; //Base directory for fpc(laz)up(deluxe) install itself
     FSourceDirectory: string; //Top source directory for a product (FPC, Lazarus)
     FInstallDirectory: string; //Top install directory for a product (FPC, Lazarus)
@@ -132,7 +139,6 @@ type
     FMajorVersion: integer; //major part of the version number, e.g. 1 for 1.0.8, or -1 if unknown
     FMinorVersion: integer; //minor part of the version number, e.g. 0 for 1.0.8, or -1 if unknown
     FReleaseVersion: integer; //release part of the version number, e.g. 8 for 1.0.8, or -1 if unknown
-    FCandidateVersion: integer; //RC part of the version number, e.g. 2 for 1.0.8RC2, or -1 if unknown
     FUtilFiles: array of TUtilsList; //Keeps track of binutils etc download locations, filenames...
     FExportOnly: boolean;
     FNoJobs: boolean;
@@ -141,8 +147,9 @@ type
     FTar: string;
     FBunzip2: string;
     F7zip: string;
+    FWget: string;
     FUnrar: string;
-    FGit: string;
+    //FGit: string;
     FProcessEx: TProcessEx;
     FSwitchURL: boolean;
     property Make: string read GetMake;
@@ -169,6 +176,7 @@ type
     {$IFDEF MSWINDOWS}
     function DownloadSVN: boolean;
     function DownloadOpenSSL: boolean;
+    function DownloadWget: boolean;
     {$ENDIF}
     function DownloadJasmin: boolean;
     procedure DumpOutput(Sender: TProcessEx; output: string);
@@ -190,12 +198,14 @@ type
     InfoText: string;
     LocalInfoText: string;
     property SVNClient: TSVNClient read FSVNClient;
+    property GitClient: TGitClient read FGitClient;
+    property HGClient: THGClient read FHGClient;
     // Get processor for termination of running processes
     property Processor: TProcessEx read FProcessEx;
     // Get processerrors and put them into FErrorLog
     procedure ProcessError(Sender:TProcessEx; {%H-}IsException:boolean);
     // Source directory for installation (fpcdir, lazdir,... option)
-    property SourceDirectory: string write FSourceDirectory;
+    property SourceDirectory: string write SetSourceDirectory;
     //Base directory for fpc(laz)up(deluxe) itself
     property BaseDirectory: string write FBaseDirectory;
     // Source directory for installation (fpcdir, lazdir,... option)
@@ -323,7 +333,14 @@ begin
   FMajorVersion := -1;
   FMinorVersion := -1;
   FReleaseVersion := -1;
-  FCandidateVersion := -1;
+end;
+
+procedure TInstaller.SetSourceDirectory(value:string);
+begin
+  FSourceDirectory:=value;
+  FMajorVersion := -1;
+  FMinorVersion := -1;
+  FReleaseVersion := -1;
 end;
 
 function TInstaller.GetMake: string;
@@ -384,7 +401,7 @@ function TInstaller.CheckAndGetTools: boolean;
 var
   AllThere: boolean;
   OperationSucceeded: boolean;
-  aURL,Output: string;
+  aURL,aLocalClientBinary,Output: string;
 begin
   localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (CheckAndGetTools): ';
 
@@ -399,28 +416,28 @@ begin
     FTar := '';
     FUnrar := '';
     F7zip := '';
-    FGit := '';
+    FWget := '';
     {$ENDIF MSWINDOWS}
     {$IFDEF LINUX}
     FBunzip2 := 'bunzip2';
     FTar := 'tar';
     F7zip := '7za';
+    FWget := 'wget';
     FUnrar := 'unrar';
-    FGit := 'git';
     {$ENDIF LINUX}
     {$IFDEF BSD} //OSX, *BSD
     {$IFDEF DARWIN}
     FBunzip2 := ''; //not really necessary now
     FTar := 'bsdtar'; //gnutar is not available by default on Mavericks
     F7zip := '7za';
+    FWget := 'wget';
     FUnrar := 'unrar';
-    FGit := 'git';
     {$ELSE} //FreeBSD, OpenBSD, NetBSD
     FBunzip2 := 'bunzip2';
     FTar := 'tar'; //At least FreeBSD tar apparently takes some gnu tar options nowadays.
     F7zip := '7za';
+    FWget := 'wget';
     FUnrar := 'unrar';
-    FGit := 'git';
     {$ENDIF DARWIN}
     {$ENDIF BSD}
 
@@ -454,6 +471,17 @@ begin
         infoln(localinfotext+'Found OpenSLL library files.',etDebug);
     end;
       if (NOT IsSSLloaded) then InitSSLInterface;
+    end;
+
+    FWget:=Which('wget');
+    if Not FileExists(FWget) then FWget := IncludeTrailingPathDelimiter(FMakeDir) + '\wget\wget.exe';
+    if Not FileExists(FWget) then
+    begin
+      infoln(localinfotext+'Getting Wget.',etInfo);
+      DownloadWget;
+      OperationSucceeded:=FileExists(FWget);
+      // do not fail
+      OperationSucceeded:=True;
     end;
 
     // Get patch binary from default binutils URL
@@ -565,23 +593,38 @@ begin
       OperationSucceeded:=True;
     end;
 
-    if Assigned(FGitClient)
-       then FGit:=FGitClient.RepoExecutableName
-       else FGit:=Which('git');
-    if Not FileExists(FGit) then FGit:=IncludeTrailingPathDelimiter(FMakeDir)+'git\cmd\git.exe';
-    if Not FileExists(FGit) then
+    with FGitClient do
+    begin
+      OperationSucceeded:=False;
+      aLocalClientBinary:=IncludeTrailingPathDelimiter(FMakeDir)+'git\cmd\git.exe';
+      // try to find systemwide GIT
+      if (NOT ForceLocal) then
+      begin
+        RepoExecutable:=Which(RepoExecutableName+'.exe');
+        OperationSucceeded:=FileExists(RepoExecutable);
+      end;
+      // try to find fpcupdeluxe GIT
+      if (NOT OperationSucceeded) then
+      begin
+        OperationSucceeded:=FileExists(aLocalClientBinary);
+        if OperationSucceeded then RepoExecutable:=aLocalClientBinary;
+      end;
+      if (NOT OperationSucceeded) then
     begin
       //Source:
-      //https://github.com/git-for-windows/git/releases/download/v2.13.2.windows.1/Git-2.13.2-32-bit.exe
+        //https://github.com/git-for-windows
+
       ForceDirectoriesUTF8(IncludeTrailingPathDelimiter(FMakeDir)+'git');
       {$ifdef win32}
       //Output:='git32.7z';
       Output:='git32.zip';
-      aURL:='https://github.com/git-for-windows/git/releases/download/v2.17.1.windows.2/MinGit-2.17.1.2-32-bit.zip';
+        //aURL:='https://github.com/git-for-windows/git/releases/download/v2.17.1.windows.2/MinGit-2.17.1.2-32-bit.zip';
+        aURL:='https://github.com/git-for-windows/git/releases/download/v2.18.0.windows.1/MinGit-2.18.0-32-bit.zip';
       {$else}
       //Output:='git64.7z';
       Output:='git64.zip';
-      aURL:='https://github.com/git-for-windows/git/releases/download/v2.17.1.windows.2/MinGit-2.17.1.2-64-bit.zip';
+        //aURL:='https://github.com/git-for-windows/git/releases/download/v2.17.1.windows.2/MinGit-2.17.1.2-64-bit.zip';
+        aURL:='https://github.com/git-for-windows/git/releases/download/v2.18.0.windows.1/MinGit-2.18.0-64-bit.zip';
       {$endif}
       //aURL:=FPCUPGITREPO+'/releases/download/Git-2.13.2/'+Output;
       infoln(localinfotext+'GIT not found. Downloading it (may take time) from '+aURL,etInfo);
@@ -594,26 +637,94 @@ begin
       end;
       if OperationSucceeded then
       begin
-        infoln(localinfotext+'GIT download ready: unpacking (may take time).',etInfo);
-        OperationSucceeded:=(ExecuteCommand(F7zip+' x -o"'+IncludeTrailingPathDelimiter(FMakeDir)+'git\'+'" '+IncludeTrailingPathDelimiter(FMakeDir)+'git\'+Output,FVerbose)=0);
-        if NOT OperationSucceeded then
-        begin
-          OperationSucceeded:=(ExecuteCommand('7z'+GetExeExt+' x -o"'+IncludeTrailingPathDelimiter(FMakeDir)+'git\'+'" '+IncludeTrailingPathDelimiter(FMakeDir)+'git\'+Output,FVerbose)=0);
+          infoln(localinfotext+'GIT client download ready: unpacking (may take time).',etInfo);
+          with TNormalUnzipper.Create do
+          begin
+            try
+              OperationSucceeded:=DoUnZip(IncludeTrailingPathDelimiter(FMakeDir)+'git\'+Output,IncludeTrailingPathDelimiter(FMakeDir)+'git\',[]);
+            finally
+              Free;
+            end;
+          end;
+          if OperationSucceeded then
+          begin
+            SysUtils.DeleteFile(IncludeTrailingPathDelimiter(FMakeDir)+'git\'+Output);
+            OperationSucceeded:=FileExists(aLocalClientBinary);
+          end;
         end;
+        if OperationSucceeded then RepoExecutable:=aLocalClientBinary else RepoExecutable:=RepoExecutableName+'.exe';
+      end;
+      if RepoExecutable <> EmptyStr then
+      begin
+        // check exe, but do not fail: GIT is not 100% essential !
+        CheckExecutable(RepoExecutable, '--version', '');
+      end;
+      // do not fail: GIT is not 100% essential !
+      OperationSucceeded:=True;
+    end;
+
+    with FHGClient do
+    begin
+      OperationSucceeded:=False;
+      aLocalClientBinary:=IncludeTrailingPathDelimiter(FMakeDir)+'hg\hg.exe';
+      // try to find systemwide HG
+      if (NOT ForceLocal) then
+      begin
+        RepoExecutable:=Which(RepoExecutableName+'.exe');
+        OperationSucceeded:=FileExists(RepoExecutable);
+      end;
+      // try to find fpcupdeluxe HG
+      if (NOT OperationSucceeded) then
+        begin
+        OperationSucceeded:=FileExists(aLocalClientBinary);
+        if OperationSucceeded then RepoExecutable:=aLocalClientBinary;
+        end;
+      if (NOT OperationSucceeded) then
+      begin
+        //original source from : https://www.mercurial-scm.org/
+        {$ifdef win32}
+        Output:='hg32.zip';
+        {$else}
+        Output:='hg64.zip';
+        {$endif}
+        aURL:=FPCUPGITREPO+'/releases/download/HG-4.7/'+Output;
+        ForceDirectoriesUTF8(IncludeTrailingPathDelimiter(FMakeDir)+'hg');
+        infoln(localinfotext+'HG (mercurial) client not found. Downloading it (may take time) from '+aURL,etInfo);
+        OperationSucceeded:=GetFile(aURL,IncludeTrailingPathDelimiter(FMakeDir)+'hg\'+Output);
         if NOT OperationSucceeded then
         begin
-          OperationSucceeded:=(ExecuteCommand('7za'+GetExeExt+' x -o"'+IncludeTrailingPathDelimiter(FMakeDir)+'git\'+'" '+IncludeTrailingPathDelimiter(FMakeDir)+'git\'+Output,FVerbose)=0);
+          // try one more time
+          SysUtils.DeleteFile(IncludeTrailingPathDelimiter(FMakeDir)+'hg\'+Output);
+          OperationSucceeded:=GetFile(aURL,IncludeTrailingPathDelimiter(FMakeDir)+'hg\'+Output);
         end;
         if OperationSucceeded then
         begin
-          SysUtils.DeleteFile(IncludeTrailingPathDelimiter(FMakeDir)+'git\'+Output);
-          OperationSucceeded:=FileExists(FGit);
+          infoln(localinfotext+'HG download ready: unpacking (may take time).',etInfo);
+          with TNormalUnzipper.Create do
+          begin
+            try
+              OperationSucceeded:=DoUnZip(IncludeTrailingPathDelimiter(FMakeDir)+'hg\'+Output,IncludeTrailingPathDelimiter(FMakeDir)+'hg\',[]);
+            finally
+              Free;
+            end;
+          end;
+          if OperationSucceeded then
+          begin
+            SysUtils.DeleteFile(IncludeTrailingPathDelimiter(FMakeDir)+'hg\'+Output);
+            OperationSucceeded:=FileExists(aLocalClientBinary);
+          end;
         end;
+        if OperationSucceeded then RepoExecutable:=aLocalClientBinary else RepoExecutable:=RepoExecutableName+'.exe';
+        end;
+      if RepoExecutable <> EmptyStr then
+      begin
+        // check exe, but do not fail: HG is not 100% essential !
+        CheckExecutable(RepoExecutable, '--version', '');
       end;
-      // do not fail ... perhaps there is another git available in the path
+      // do not fail: HG is not 100% essential !
       OperationSucceeded:=True;
     end;
-    if FileExists(FGit) AND Assigned(FGitClient) then FGitClient.RepoExecutable:=FGit;
+
     {$ENDIF}
 
     {$IF defined(LINUX) or (defined(BSD) and (not defined(DARWIN)))} //Linux,FreeBSD,NetBSD,OpenBSD, but not OSX
@@ -658,13 +769,17 @@ begin
       end;
 
       {$IFDEF MSWINDOWS}
-      if NOT AllThere then
+      if (NOT AllThere) OR (FSVNClient.ForceLocal) then
+      begin
+        FSVNDirectory := IncludeTrailingPathDelimiter(FMakeDir) + FSVNClient.RepoExecutableName + DirectorySeparator;
+        AllThere:=FindSVNSubDirs;
+        if (NOT AllThere) then
       begin
         infoln(localinfotext+'Going to download SVN',etInfo);
         // Download will look in and below FSVNDirectory
         // and set FSVNClient.SVNExecutable if succesful
-        FSVNDirectory := IncludeTrailingPathDelimiter(FMakeDir) + FSVNClient.RepoExecutableName + DirectorySeparator;
         AllThere := DownloadSVN;
+      end;
       end;
       {$ENDIF}
 
@@ -694,16 +809,6 @@ begin
       if FTar <> EmptyStr then
       begin
         OperationSucceeded := CheckExecutable(FTar, '--version', '');
-      end;
-    end;
-
-    if OperationSucceeded then
-    begin
-      // Check for valid tar executable, if it is needed
-      if FGit <> EmptyStr then
-      begin
-        // check exe, but do not fail: GIT is not always needed
-        CheckExecutable(FGit, '--version', '');
       end;
     end;
 
@@ -811,6 +916,8 @@ procedure TInstaller.CreateBinutilsList(aVersion:string);
 // Windows-centric
 const
   SourceURL_gdb = FPCSVNURL+'/lazarus/binaries/i386-win32/gdb/bin/';
+  //SourceURL_gdb = 'https://sourceforge.net/projects/lazarus/files/Lazarus%20Windows%2064%20bits/Alternative%20GDB/GDB%208.1/gdb.exe/download';
+  //SourceURL_gdbserver = 'https://sourceforge.net/projects/lazarus/files/Lazarus%20Windows%2064%20bits/Alternative%20GDB/GDB%208.1/gdbserver.exe/download';
   //SourceURL_gdb = 'https://github.com/newpascal/fpcupdeluxe/releases/download/gdb-7.11.1/GDB-i386-win32.zip';
   SourceURL64_gdb = FPCSVNURL+'/lazarus/binaries/x86_64-win64/gdb/bin/';
   //SourceURL64_gdb = 'https://github.com/newpascal/fpcupdeluxe/releases/download/gdb-7.11.1/GDB-x86_64-win64.zip';
@@ -839,7 +946,7 @@ begin
 
   SetLength(FUtilFiles,0); //clean out any cruft
 
-  {$IFDEF MSWINDOWS}
+  {$ifdef MSWINDOWS}
 
   // default
   if aVersion='' then aVersion:=DEFAULTFPCVERSION;
@@ -848,7 +955,7 @@ begin
   // if Win7 or higher: use modern (2.4.0 and higher) binutils
   if aMajor>5 then
   begin
-    if (GetNumericalVersionSafe(aVersion)<(2*10000+4*100+0)) then
+    if (GetNumericalVersion(aVersion)<(2*10000+4*100+0)) then
        aVersion:='2.4.0';
   end;
 
@@ -940,7 +1047,11 @@ begin
   //No equivalent for Win64...
   //AddNewUtil('Qt4Pas5.dll',SourceURL64_Qt,'',ucQtFile);
   {$endif win64}
-  {$ENDIF MSWINDOWS}
+
+  // add wince gdb
+  AddNewUtil('gdb-6.4-win32-arm-wince.zip',FPCFTPURL+'/contrib/cross/','',ucDebuggerWince);
+
+  {$endif MSWINDOWS}
 end;
 
 procedure TInstaller.CreateStoreRepositoryDiff(DiffFileName: string; UpdateWarnings: TStringList; RepoClass: TObject);
@@ -1272,7 +1383,7 @@ begin
 
       if not Result then
       begin
-        writelnlog(localinfotext+'SVN gave error code: '+inttostr(CheckoutOrUpdateReturnCode));
+        writelnlog(localinfotext+'SVN gave error code: '+IntToStr(CheckoutOrUpdateReturnCode));
         writelnlog(localinfotext+'SVN gave error message: '+FSVNClient.ReturnOutput);
       end;
 
@@ -1348,13 +1459,13 @@ const
   //SourceURL = 'https://www.visualsvn.com/files/Apache-Subversion-1.9.5.zip';
   // SourceURL = 'https://www.visualsvn.com/files/Apache-Subversion-1.9.7.zip';
   SourceURL = 'https://www.visualsvn.com/files/Apache-Subversion-1.10.0.zip';
-  SourceURL_LastResort = 'https://sourceforge.net/projects/win32svn/files/1.8.15/apache24/svn-win32-1.8.17-ap24.zip/download';
+  SourceURL_LastResort = 'https://sourceforge.net/projects/win32svn/files/1.8.17/apache24/svn-win32-1.8.17-ap24.zip/download';
   // confirmed by winetricks bug report that this is the only one left...
   // this link seems down 'http://download.microsoft.com/download/vc60pro/update/1/w9xnt4/en-us/vc6redistsetup_enu.exe';
 var
   MajorVersion,MinorVersion,BuildNumber: integer;
   OperationSucceeded: boolean;
-  SVNZip: string;
+  SVNZip,Output: string;
 begin
   localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (DownloadSVN): ';
 
@@ -1393,6 +1504,20 @@ begin
         FHTTPProxyPort,
         FHTTPProxyUser,
         FHTTPProxyPassword);
+
+      if NOT OperationSucceeded then
+      try
+        SysUtils.Deletefile(SVNZip); //Get rid of temp zip if any.
+        // use powershell
+        OperationSucceeded := DownloadByPowerShell(SourceURL,SVNZip);
+      except
+        on E: Exception do
+        begin
+          OperationSucceeded := false;
+          writelnlog(etError, localinfotext + 'PowerShell Exception ' + E.ClassName + '/' + E.Message + ' downloading SVN', true);
+        end;
+      end;
+
   except
     // Deal with timeouts, wrong URLs etc
     on E: Exception do
@@ -1417,6 +1542,20 @@ begin
         FHTTPProxyPort,
         FHTTPProxyUser,
         FHTTPProxyPassword);
+
+        if NOT OperationSucceeded then
+        try
+          SysUtils.Deletefile(SVNZip); //Get rid of temp zip if any.
+          // use powershell
+          OperationSucceeded := DownloadByPowerShell(SourceURL_LastResort,SVNZip);
+        except
+          on E: Exception do
+          begin
+            OperationSucceeded := false;
+            writelnlog(etError, localinfotext + 'PowerShell Exception ' + E.ClassName + '/' + E.Message + ' downloading SVN', true);
+          end;
+        end;
+
   except
     // Deal with timeouts, wrong URLs etc
     on E: Exception do
@@ -1456,17 +1595,24 @@ end;
 function TInstaller.DownloadOpenSSL: boolean;
 const
   {$ifdef win64}
-  SourceURL = 'http://indy.fulgan.com/SSL/openssl-1.0.2o-x64_86-win64.zip';
-  SourceURLfailsafe = 'http://packages.lazarus-ide.org/openssl-1.0.2o-x64_86-win64.zip';
+  NewSourceURL : array [0..2] of string = (
+    'https://indy.fulgan.com/SSL/openssl-1.0.2o-x64_86-win64.zip',
+    'http://wiki.overbyte.eu/arch/openssl-1.0.2p-win64.zip',
+    'http://www.magsys.co.uk/download/software/openssl-1.0.2o-win64.zip'
+    );
   {$endif}
   {$ifdef win32}
-  SourceURL = 'http://indy.fulgan.com/SSL/openssl-1.0.2o-i386-win32.zip';
-  SourceURLfailsafe = 'http://packages.lazarus-ide.org/openssl-1.0.2o-i386-win32.zip';
+  NewSourceURL : array [0..2] of string = (
+    'https://indy.fulgan.com/SSL/openssl-1.0.2o-i386-win32.zip',
+    'http://wiki.overbyte.eu/arch/openssl-1.0.2p-win32.zip',
+    'http://www.magsys.co.uk/download/software/openssl-1.0.2o-win32.zip'
+    );
   {$endif}
 var
   OperationSucceeded: boolean;
   ResultCode: longint;
-  OpenSSLZip: string;
+  OpenSSLZip,Output,aSourceURL: string;
+  i:integer;
 begin
   localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (DownloadOpenSSL): ';
 
@@ -1476,26 +1622,41 @@ begin
 
   OpenSSLZip := SysUtils.GetTempFileName('','FPCUPTMP') + '.zip';
 
+  for i:=0 to (Length(NewSourceURL)-1) do
   try
+    aSourceURL:=NewSourceURL[i];
     //always get this file with the native downloader !!
-    OperationSucceeded:=GetFile(SourceURL,OpenSSLZip,true,true);
+    OperationSucceeded:=GetFile(aSourceURL,OpenSSLZip,true,true);
     if (NOT OperationSucceeded) then
     begin
       // try one more time
       SysUtils.DeleteFile(OpenSSLZip);
-      OperationSucceeded:=GetFile(SourceURL,OpenSSLZip,true,true);
-      if (NOT OperationSucceeded) then
+      OperationSucceeded:=GetFile(aSourceURL,OpenSSLZip,true,true);
+    end;
+    if OperationSucceeded then break;
+  except
+    on E: Exception do
       begin
-        // try one more time on failsafe URL
-        SysUtils.DeleteFile(OpenSSLZip);
-        OperationSucceeded:=GetFile(SourceURLfailsafe,OpenSSLZip,true,true);
+      OperationSucceeded := false;
+      writelnlog(etError, localinfotext + 'Exception ' + E.ClassName + '/' + E.Message + ' downloading OpenSSL library', true);
       end;
     end;
+
+  if NOT OperationSucceeded then
+  begin
+    // use Windows PowerShell !!
+    for i:=0 to (Length(NewSourceURL)-1) do
+    try
+      aSourceURL:=NewSourceURL[i];
+      SysUtils.DeleteFile(OpenSSLZip);
+      OperationSucceeded := DownloadByPowerShell(aSourceURL,OpenSSLZip);
+      if OperationSucceeded then break;
   except
     on E: Exception do
     begin
       OperationSucceeded := false;
-      writelnlog(etError, localinfotext + 'Exception ' + E.ClassName + '/' + E.Message + ' downloading OpenSSL library', true);
+        writelnlog(etError, localinfotext + 'PowerShell Exception ' + E.ClassName + '/' + E.Message + ' downloading OpenSSL library', true);
+      end;
     end;
   end;
 
@@ -1530,9 +1691,78 @@ begin
   end;
 
   if OperationSucceeded
-     then infoln(localinfotext+'OpenSLL library files download and unpacking ok',etWarning)
+     then infoln(localinfotext+'OpenSLL library files download and unpacking from '+aSourceURL+' ok',etInfo)
      else infoln(localinfotext+'Could not download/install openssl library', etError);
     SysUtils.Deletefile(OpenSSLZip); //Get rid of temp zip if success.
+  Result := OperationSucceeded;
+end;
+
+function TInstaller.DownloadWget: boolean;
+const
+  {$ifdef win64}
+  NewSourceURL : array [0..0] of string = (
+    'https://eternallybored.org/misc/wget/1.19.4/64/wget.exe'
+    );
+  {$endif}
+  {$ifdef win32}
+  NewSourceURL : array [0..0] of string = (
+    'https://eternallybored.org/misc/wget/1.19.4/32/wget.exe'
+    );
+  {$endif}
+var
+  OperationSucceeded: boolean;
+  WgetExe: string;
+  i:integer;
+begin
+  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (DownloadWget): ';
+
+  infoln(localinfotext+'No Wget found. Going to download it.',etInfo);
+
+  OperationSucceeded := false;
+
+  if ForceDirectoriesUTF8(IncludeTrailingPathDelimiter(FMakeDir)+'wget') then
+  begin
+
+    WgetExe := IncludeTrailingPathDelimiter(FMakeDir)+'wget'+DirectorySeparator+'wget.exe';
+
+    for i:=0 to (Length(NewSourceURL)-1) do
+    try
+      //always get this file with the native downloader !!
+      OperationSucceeded:=GetFile(NewSourceURL[i],WgetExe,true,true);
+      if (NOT OperationSucceeded) then
+      begin
+        // try one more time
+        SysUtils.DeleteFile(WgetExe);
+        OperationSucceeded:=GetFile(NewSourceURL[i],WgetExe,true,true);
+      end;
+      if OperationSucceeded then break;
+    except
+      on E: Exception do
+      begin
+        OperationSucceeded := false;
+        writelnlog(etError, localinfotext + 'Exception ' + E.ClassName + '/' + E.Message + ' downloading Wget', true);
+      end;
+    end;
+
+    if NOT OperationSucceeded then
+    begin
+      // use Windows PowerShell !!
+      for i:=0 to (Length(NewSourceURL)-1) do
+      try
+        SysUtils.DeleteFile(WgetExe);
+        OperationSucceeded := DownloadByPowerShell(NewSourceURL[i],WgetExe);
+        if OperationSucceeded then break;
+      except
+        on E: Exception do
+        begin
+          OperationSucceeded := false;
+          writelnlog(etError, localinfotext + 'PowerShell Exception ' + E.ClassName + '/' + E.Message + ' downloading Wget', true);
+        end;
+      end;
+    end;
+  end;
+
+  if NOT OperationSucceeded then SysUtils.Deletefile(WgetExe);
   Result := OperationSucceeded;
 end;
 
@@ -1674,8 +1904,8 @@ var
   searchResult: TSearchRec;
 begin
   result:='';
-  WritelnLog('Going to search for SVN client in ' + IncludeTrailingBackSlash(dirName)+'*');
-  if FindFirst(IncludeTrailingBackSlash(dirName)+'*', faAnyFile, searchResult)=0 then
+  WritelnLog('Going to search for SVN client in ' + IncludeTrailingPathDelimiter(dirName)+'*');
+  if FindFirst(IncludeTrailingPathDelimiter(dirName)+'*', faAnyFile, searchResult)=0 then
   begin
     try
       repeat
@@ -1683,11 +1913,11 @@ begin
         begin
           if SameText(searchResult.Name, FSVNClient.RepoExecutableName + GetExeExt) then
           begin
-            FSVNClient.RepoExecutable:=IncludeTrailingBackSlash(dirName)+searchResult.Name;
+            FSVNClient.RepoExecutable:=IncludeTrailingPathDelimiter(dirName)+searchResult.Name;
           end;
         end else if (searchResult.Name<>'.') and (searchResult.Name<>'..') then
         begin
-          FileSearch(IncludeTrailingBackSlash(dirName)+searchResult.Name);
+          FileSearch(IncludeTrailingPathDelimiter(dirName)+searchResult.Name);
         end;
       until ( (FindNext(searchResult)<>0) OR (Length(FSVNClient.RepoExecutable)<>0) );
     finally
@@ -1799,7 +2029,7 @@ end;
 
 function TInstaller.GetCompilerInDir(Dir: string): string;
 begin
-  Result := IncludeTrailingBackslash(Dir) + 'bin' + DirectorySeparator + GetFPCTarget(true) + DirectorySeparator + 'fpc' + GetExeExt;
+  Result := IncludeTrailingPathDelimiter(Dir) + 'bin' + DirectorySeparator + GetFPCTarget(true) + DirectorySeparator + 'fpc' + GetExeExt;
   {$IFDEF UNIX}
   if FileExistsUTF8(Result + '.sh') then
   begin
@@ -1825,6 +2055,7 @@ end;
 function TInstaller.CleanModule(ModuleName: string): boolean;
 begin
   result:=false;
+  FCleanModuleSuccess:=false;
   infotext:=Copy(Self.ClassName,2,MaxInt)+' (CleanModule: '+ModuleName+'): ';
   infoln(infotext+'Entering ...',etDebug);
 end;
@@ -1953,11 +2184,15 @@ begin
       if PatchFilePath='DARWINQT5HACK_LAZPATCH' then j:=0;
       {$endif}
 
-      {$if NOT defined(MSWINDOWS)}
-      if PatchFilePath='OPENSSL_FPCPATCH' then j:=0;
+      // In general, only patch trunk !
+      // This can be changed to take care of versions ... but not for now !
+      // Should be removed in future fpcup versions !!
+      if PatchFPC then if (FMajorVersion*10000+FMinorVersion*100+FReleaseVersion)<(GetNumericalVersion(FPCTRUNKVERSION)) then j:=0;
+      {$ifndef FPCONLY}
+      if PatchLaz then if (FMajorVersion*10000+FMinorVersion*100+FReleaseVersion)<(GetNumericalVersion(LAZARUSTRUNKVERSION)) then j:=0;
       {$endif}
 
-      if j>0 then
+      if (j>0) then
       begin
         if (NOT DirectoryExists(PatchDirectory)) then ForceDirectories(PatchDirectory);
         SaveFileFromResource(PatchDirectory+DirectorySeparator+PatchFilePath+'.patch',resourcefiles[i]);
@@ -2074,6 +2309,7 @@ begin
   // List of binutils that can be downloaded:
   // CreateBinutilsList;
   FNeededExecutablesChecked:=false;
+  FCleanModuleSuccess:=false;
   // Set up verbose log: will be done in dumpoutput
   // as it depends on verbosity etc
   //FLogVerbose: TLogger.Create;
@@ -2082,7 +2318,11 @@ begin
 
   FCrossCPU_Target:='invalid';
   FCrossOS_Target:='invalid';
-  FCrossOS_SubArch:=''
+  FCrossOS_SubArch:='';
+
+  FMajorVersion := -1;
+  FMinorVersion := -1;
+  FReleaseVersion := -1;
 end;
 
 function TInstaller.GetFile(aURL,aFile:string; forceoverwrite:boolean=false; forcenative:boolean=false):boolean;
@@ -2098,7 +2338,7 @@ begin
     if ((forceoverwrite) AND (SysUtils.FileExists(aFile))) then SysUtils.DeleteFile(aFile);
     infoln(localinfotext+'Downloading ' + aURL,etInfo);
     result:=Download(aUseWget,aURL,aFile,FHTTPProxyHost,FHTTPProxyPort,FHTTPProxyUser,FHTTPProxyPassword);
-    if (NOT result) then infoln(localinfotext+'Could not download file with URL ' + aURL +' into ' + ExtractFileDir(aFile) + ' (filename: ' + ExtractFileName(aFile) + ')',etWarning);
+    if (NOT result) then infoln(localinfotext+'Could not download file with URL ' + aURL +' into ' + ExtractFileDir(aFile) + ' (filename: ' + ExtractFileName(aFile) + ')',etInfo);
   end;
 end;
 

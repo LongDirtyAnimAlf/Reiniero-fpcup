@@ -73,6 +73,7 @@ uses
   m_any_to_androidmipsel,
   m_any_to_androidjvm,
   m_any_to_androidaarch64, //not yet available !!
+  m_any_to_androidx64,     //not yet available !!
   m_any_to_linuxarm,
   m_any_to_linuxmips,
   m_any_to_linuxmipsel,
@@ -86,10 +87,13 @@ uses
   m_any_to_javajvm,
   m_any_to_aixpowerpc,
   m_any_to_msdosi8086,
-  {$IFDEF LINUX}
+  {$ifdef LINUX}
+  //{$ifdef CPUX86}
   m_linux386_to_mips,
-  {$ENDIF}
-  {$IFDEF Darwin}
+  m_linux386_to_wincearm,
+  //{$endif}
+  {$endif}
+  {$ifdef Darwin}
   m_crossdarwin64,
   m_crossdarwin32,
   m_crossdarwinpowerpc,
@@ -109,7 +113,7 @@ uses
   m_freebsd_to_linux386,
   {$ifdef CPU64}
   m_freebsd64_to_freebsd32,
-  {$endif}
+  {$endif CPU64}
   m_freebsd_to_linux64,
   {$else}
   m_any_to_linux386,
@@ -118,15 +122,15 @@ uses
   m_any_to_freebsd386,
   m_any_to_openbsd386,
   {$endif}
-  {$IFDEF MSWINDOWS}
+  {$ifdef MSWINDOWS}
+  m_win32_to_linuxmips, m_win32_to_go32v2i386, m_win32_to_wincearm,
   {$ifdef win64}
   m_crosswin32,
-  {$endif}
+  {$endif win64}
   {$ifdef win32}
   m_crosswin64,
-  m_win32_to_linuxmips, m_win32_to_go32v2i386, m_win32_to_wincearm,
-  {$endif}
-  {$endif}
+  {$endif win32}
+  {$endif MSWINDOWS}
   m_anyinternallinker_to_win386,
   m_anyinternallinker_to_win64,
   checkoptions

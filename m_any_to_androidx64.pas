@@ -1,5 +1,5 @@
-unit m_any_to_androidaarch64;
-{ Cross compiles from any platform (with supported crossbin utils0 to Android ARM 64 bit (aarch64)
+unit m_any_to_androidx64;
+{ Cross compiles from any platform (with supported crossbin utils0 to Android AMD 64 bit (x64)
 Copyright (C) 2013 Reinier Olislagers
 
 This library is free software; you can redistribute it and/or modify it
@@ -43,18 +43,18 @@ uses
 implementation
 
 const
-  ARCH='aarch64';
-  ARCHSHORT='arm64';
+  ARCH='x86_64';
+  ARCHSHORT='x86_64';
   OS='android';
   NDKVERSIONBASENAME=OS+'-ndk-r';
-  NDKTOOLCHAINVERSIONS:array[0..1] of string = (ARCH+'-linux-'+OS+'-4.8',ARCH+'-linux-'+OS+'-4.9');
+  NDKTOOLCHAINVERSIONS:array[0..0] of string = (ARCH+'-4.9');
   NDKARCHDIRNAME='arch-'+ARCHSHORT;
   PLATFORMVERSIONBASENAME=OS+'-';
 
 type
 
-{ TAny_AndroidAarch64 }
-TAny_AndroidAarch64 = class(TCrossInstaller)
+{ TAny_Androidx64 }
+TAny_Androidx64 = class(TCrossInstaller)
 private
   FAlreadyWarned: boolean; //did we warn user about errors and fixes already?
 public
@@ -64,9 +64,9 @@ public
   destructor Destroy; override;
 end;
 
-{ TAny_AndroidAarch64 }
+{ TAny_Androidx64 }
 
-function TAny_AndroidAarch64.GetLibs(Basepath:string): boolean;
+function TAny_Androidx64.GetLibs(Basepath:string): boolean;
 const
   DirName=ARCH+'-'+OS;
   // we presume, libc.so has to be present in a cross-library for arm
@@ -210,7 +210,7 @@ begin
   end;
 end;
 
-function TAny_AndroidAarch64.GetBinUtils(Basepath:string): boolean;
+function TAny_Androidx64.GetBinUtils(Basepath:string): boolean;
 const
   DirName=ARCH+'-'+OS;
 var
@@ -390,7 +390,7 @@ begin
   end;
 end;
 
-constructor TAny_AndroidAarch64.Create;
+constructor TAny_Androidx64.Create;
 begin
   inherited Create;
   FTargetCPU:=ARCH;
@@ -404,18 +404,18 @@ begin
   ShowInfo;
 end;
 
-destructor TAny_AndroidAarch64.Destroy;
+destructor TAny_Androidx64.Destroy;
 begin
   inherited Destroy;
 end;
 
 var
-  Any_AndroidAarch64:TAny_AndroidAarch64;
+  Any_Androidx64:TAny_Androidx64;
 
 initialization
-  Any_AndroidAarch64:=TAny_AndroidAarch64.Create;
-  RegisterExtension(Any_AndroidAarch64.TargetCPU+'-'+Any_AndroidAarch64.TargetOS,Any_AndroidAarch64);
+  Any_Androidx64:=TAny_Androidx64.Create;
+  RegisterExtension(Any_Androidx64.TargetCPU+'-'+Any_Androidx64.TargetOS,Any_Androidx64);
 finalization
-  Any_AndroidAarch64.Destroy;
+  Any_Androidx64.Destroy;
 end.
 

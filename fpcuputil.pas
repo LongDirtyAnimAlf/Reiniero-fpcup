@@ -217,7 +217,7 @@ type
   end;
   {$endif}
 
-  {$IFDEF ENABLEWGET}
+  {$ifdef ENABLEWGET}
   TUseWGetDownloader = Class(TBasicDownLoader)
   private
     FCURLOk:boolean;
@@ -232,23 +232,23 @@ type
     function HTTPDownload(Const URL : String; Dest : TStream):boolean;
   public
     constructor Create;override;
+    constructor Create(aWGETBinary:string);
     function getFile(const URL,filename:string):boolean;override;
     function getFTPFileList(const URL:string; filelist:TStringList):boolean;override;
     function checkURL(const URL:string):boolean;override;
   end;
-
-  {$ENDIF}
+  {$endif}
 
   {$ifdef ENABLENATIVE}
   TNativeDownloader = TUseNativeDownLoader;
   {$else}
   TNativeDownloader = TUseWGetDownloader;
   {$endif}
-  {$IFDEF ENABLEWGET}
+  {$ifdef ENABLEWGET}
   TWGetDownloader = TUseWGetDownloader;
-  {$ELSE}
+  {$else}
   TWGetDownloader = TUseNativeDownLoader;
-  {$ENDIF}
+  {$endif}
 
 // Create shortcut on desktop to Target file
 procedure CreateDesktopShortCut(Target, TargetArguments, ShortcutName: string) ;
@@ -270,14 +270,17 @@ function DeleteFilesExtensionsSubdirs(const DirectoryName: string; const Extensi
 // only if filename contains specfied part somewhere
 function DeleteFilesNameSubdirs(const DirectoryName: string; const OnlyIfNameHas: string): boolean;
 function GetFileNameFromURL(URL:string):string;
-function GetVersionFromUrl(URL:string): string;
 function StripUrl(URL:string): string;
+function GetCompilerVersion(CompilerPath: string): string;
 procedure GetVersionFromString(const VersionSnippet:string;var Major,Minor,Build: Integer);
+function GetNumericalVersion(VersionSnippet: string): word;
+function GetVersionFromUrl(URL:string): string;
 // Download from HTTP (includes Sourceforge redirection support) or FTP
 // HTTP download can work with http proxy
 function Download(UseWget:boolean; URL, TargetFile: string; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''): boolean;
-procedure GetGitHubFileList(aURL:string;fileurllist:TStringList);
+procedure GetGitHubFileList(aURL:string;fileurllist:TStringList; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string='');
 {$IFDEF MSWINDOWS}
+function DownloadByPowerShell(URL, TargetFile: string): boolean;
 // Get Windows major and minor version number (e.g. 5.0=Windows 2000)
 function GetWin32Version(out Major,Minor,Build : Integer): Boolean;
 function IsWindows64: boolean;
@@ -327,7 +330,7 @@ function ExtractFileNameOnly(const AFilename: string): string;
 function GetCompilerName(Cpu_Target:string):string;
 function GetCrossCompilerName(Cpu_Target:string):string;
 function DoubleQuoteIfNeeded(s: string): string;
-function GetNumericalVersionSafe(VersionSnippet: string): word;
+
 function UppercaseFirstChar(s: String): String;
 function DirectoryIsEmpty(Directory: string): Boolean;
 function GetTargetCPU:string;
@@ -730,7 +733,7 @@ begin
     // this may fail if shortcut exists already
     try
       XdgDesktopContent.SaveToFile(XdgDesktopFile);
-      FPChmod(XdgDesktopFile, &711); //rwx--x--x
+      FpChmod(XdgDesktopFile, &711); //rwx--x--x
       OperationSucceeded:=(ExecuteCommand('xdg-desktop-icon install ' + XdgDesktopFile,false)=0);
     except
       OperationSucceeded:=false;
@@ -801,7 +804,7 @@ begin
     ScriptText.Add(Target+' '+TargetArguments);
     try
       ScriptText.SaveToFile(ScriptFile);
-      FPChmod(ScriptFile, &755); //rwxr-xr-x
+      FpChmod(ScriptFile, &755); //rwxr-xr-x
     except
       on E: Exception do
         infoln('CreateHomeStartLink: could not create link: '+E.Message,etWarning);
@@ -824,57 +827,31 @@ begin
   result:=URI.Document;
 end;
 
-function GetVersionFromUrl(URL:string): string;
-var
-  VersionSnippet:string;
-  i:integer;
-  VersionList : TStringList;
-  MajorVersion,MinorVersion,ReleaseVersion : string;
-begin
-  if Pos('trunk',URL)>0 then result:='trunk' else
-  begin
-    MajorVersion := '0';
-    MinorVersion := '0';
-    ReleaseVersion := '0';
-
-    VersionSnippet:=UpperCase(URL);
-
-    // find first occurence of _ and delete everything before it
-    // if url contains a version, this version always starts with first _
-
-    i := Pos('_',VersionSnippet);
-    if i>0 then
-    begin
-      Delete(VersionSnippet,1,i);
-      // ignore release candidate numbering
-      i := Pos('_RC',VersionSnippet);
-      if i>0 then Delete(VersionSnippet,i,200);
-      VersionSnippet:=StringReplace(VersionSnippet,'_',',',[rfReplaceAll]);
-    end;
-
-    if Length(VersionSnippet)>0 then
-    begin
-      VersionList := TStringList.Create;
-      try
-        VersionList.CommaText := VersionSnippet;
-        if VersionList.Count>0 then MajorVersion := VersionList[0];
-        if VersionList.Count>1 then MinorVersion := VersionList[1];
-        if VersionList.Count>2 then ReleaseVersion := VersionList[2];
-      finally
-        VersionList.Free;
-      end;
-    end;
-    result:=MajorVersion+'.'+MinorVersion+'.'+ReleaseVersion;
-
-  end;
-end;
-
 function StripUrl(URL:string): string;
 var
   URI:TURI;
 begin
   URI:=ParseURI(URL);
   result:=URI.Host+URI.Path;
+    end;
+
+function GetCompilerVersion(CompilerPath: string): string;
+var
+  Output: string;
+    begin
+  Result:='0.0.0';
+  if CompilerPath='' then exit;
+      try
+    Output:='';
+    // -iW does not work on older compilers : use -iV
+    if (ExecuteCommand(CompilerPath+ ' -iV', Output, false)=0) then
+    //-iVSPTPSOTO
+    begin
+      Output:=TrimRight(Output);
+      if Length(Output)>0 then Result:=Output;
+      end;
+  except
+  end;
 end;
 
 procedure GetVersionFromString(const VersionSnippet:string;var Major,Minor,Build: Integer);
@@ -897,8 +874,10 @@ begin
   end;
   if found then Major:=j;
 
-  // move towards second numerical
-  while (Length(VersionSnippet)>=i) AND (NOT (VersionSnippet[i] in ['0'..'9'])) do Inc(i);
+  // skip random symbols to move towards next digit
+  //while (Length(VersionSnippet)>=i) AND (NOT (VersionSnippet[i] in ['0'..'9'])) do Inc(i);
+  // skip a single random symbol to move towards next digit
+  if (Length(VersionSnippet)>=i) then Inc(i);
   // get minor version
   j:=0;
   found:=false;
@@ -910,8 +889,10 @@ begin
   end;
   if found then Minor:=j;
 
-  // move towards third numerical
-  while (Length(VersionSnippet)>=i) AND (NOT (VersionSnippet[i] in ['0'..'9'])) do Inc(i);
+  // skip random symbols to move towards next digit
+  //while (Length(VersionSnippet)>=i) AND (NOT (VersionSnippet[i] in ['0'..'9'])) do Inc(i);
+  // skip a single random symbol to move towards next digit
+  if (Length(VersionSnippet)>=i) then Inc(i);
   // get build version
   j:=0;
   found:=false;
@@ -924,6 +905,74 @@ begin
   if found then Build:=j;
 end;
 
+function GetNumericalVersion(VersionSnippet: string): word;
+var
+  Major,Minor,Build: Integer;
+begin
+  Major:=0;
+  Minor:=0;
+  Build:=0;
+  GetVersionFromString(VersionSnippet,Major,Minor,Build);
+  result:=Major*10000+Minor*100+Build;
+end;
+
+function GetVersionFromUrl(URL:string): string;
+var
+  VersionSnippet:string;
+  i:integer;
+  VersionList : TStringList;
+begin
+  result:='0.0.0';
+
+  if Pos('trunk',URL)>0 then result:='trunk' else
+  if Pos('newpascal',URL)>0 then result:='trunk' else
+  if Pos('freepascal.git',URL)>0 then result:='trunk' else
+  if Pos('lazarus.git',URL)>0 then result:='trunk' else
+  begin
+
+    VersionSnippet := UpperCase(URL);
+    i := Length(VersionSnippet);
+
+    // remove trailing delimiter
+    if (i>0) and CharInSet(VersionSnippet[i],['\','/']) then
+    begin
+      Dec(i);
+      SetLength(VersionSnippet,i);
+    end;
+
+    // extract last part of URL, the part that should contain the version
+    while (i > 0) and (not CharInSet(VersionSnippet[i],['\','/'])) do Dec(i);
+    VersionSnippet := Copy(VersionSnippet, i + 1, MaxInt);
+
+    // find first occurence of _ and delete everything before it
+    // if url contains a version, this version always starts with first _
+    i := Pos('_',VersionSnippet);
+    if i>0 then
+    begin
+      Delete(VersionSnippet,1,i);
+      // ignore release candidate numbering
+      i := Pos('_RC',VersionSnippet);
+      if i>0 then Delete(VersionSnippet,i,200);
+      VersionSnippet:=StringReplace(VersionSnippet,'_',',',[rfReplaceAll]);
+    end;
+
+    if Length(VersionSnippet)>0 then
+    begin
+      VersionList := TStringList.Create;
+      try
+        VersionList.CommaText := VersionSnippet;
+        if VersionList.Count>0 then
+        begin
+          result:=VersionList[0];
+          if VersionList.Count>1 then result:=result+'.'+VersionList[1];
+          if VersionList.Count>2 then result:=result+'.'+VersionList[2];
+        end;
+      finally
+        VersionList.Free;
+      end;
+    end;
+  end;
+end;
 
 {$IFDEF MSWINDOWS}
 procedure DeleteDesktopShortcut(ShortcutName: string);
@@ -1214,7 +1263,7 @@ begin
   end;
 end;
 
-procedure GetGitHubFileList(aURL:string;fileurllist:TStringList);
+procedure GetGitHubFileList(aURL:string;fileurllist:TStringList; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string='');
 var
   {$ifdef Darwin}
   Http:TNSHTTPSendAndReceive;
@@ -1236,6 +1285,16 @@ begin
   try
     Http.Address := aURL;
     Http.AddHeader('Content-Type', 'application/json');
+    if Length(HTTPProxyHost)>0 then
+    begin
+      with Http do
+      begin
+        Proxy.Host:=HTTPProxyHost;
+        Proxy.Port:=HTTPProxyPort;
+        Proxy.UserName:=HTTPProxyUser;
+        Proxy.Password:=HTTPProxyPassword;
+      end;
+    end;
     Ms := TMemoryStream.Create;
     try
       if Http.SendAndReceive(nil, Ms) then
@@ -1257,6 +1316,20 @@ begin
      Http.AddHeader('Content-Type', 'application/json');
      Http.IOTimeout:=5000;
      Http.AllowRedirect:=true;
+
+    if Length(HTTPProxyHost)>0 then
+    begin
+      with Http do
+      begin
+        {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
+        Proxy.Host:=HTTPProxyHost;
+        Proxy.Port:=HTTPProxyPort;
+        Proxy.UserName:=HTTPProxyUser;
+        Proxy.Password:=HTTPProxyPassword;
+        {$endif}
+      end;
+    end;
+
      Content:=Http.Get(aURL);
   finally
     Http.Free;
@@ -1312,6 +1385,12 @@ begin
 end;
 
 {$IFDEF MSWINDOWS}
+function DownloadByPowerShell(URL, TargetFile: string): boolean;
+var
+  Output:string;
+begin
+  result:=(ExecuteCommand('powershell -command "(new-object System.Net.WebClient).DownloadFile('''+URL+''','''+TargetFile+''')"', Output, False)=0);
+end;
 
 function GetLocalAppDataPath: string;
 var
@@ -1354,7 +1433,7 @@ begin
   try
     if FileExists(SrcFileName) then
     begin
-      if FileUtil.CopyFile(SrcFilename, DestFileName) then Sysutils.DeleteFile(SrcFileName);
+      if FileUtil.CopyFile(SrcFilename, DestFileName) then SysUtils.DeleteFile(SrcFileName);
       result:=true;
     end
     else
@@ -1795,58 +1874,6 @@ function DoubleQuoteIfNeeded(s: string): string;
 begin
   result:=Trim(s);
   if (Pos(' ',result)<>0) AND (Pos('"',result)=0) then result:='"'+result+'"';
-end;
-
-function GetNumericalVersionSafe(VersionSnippet: string): word;
-var
-  i,j:integer;
-  found:boolean;
-begin
-  result := 0;
-  i:=1;
-
-  // move towards first numerical
-  while (Length(VersionSnippet)>=i) AND (NOT (VersionSnippet[i] in ['0'..'9'])) do Inc(i);
-  // get major version
-  j:=0;
-  found:=false;
-  while (Length(VersionSnippet)>=i) AND (VersionSnippet[i] in ['0'..'9']) do
-  begin
-    found:=true;
-    j:=j*10+Ord(VersionSnippet[i])-$30;
-    Inc(i);
-  end;
-  if found then result:=result+(j*10000) else exit;
-
-  // skip random symbols to move towards next digit
-  //while (Length(VersionSnippet)>=i) AND (NOT (VersionSnippet[i] in ['0'..'9'])) do Inc(i);
-  // skip a single random symbol to move towards next digit
-  if (Length(VersionSnippet)>=i) then Inc(i);
-  // get minor version
-  j:=0;
-  found:=false;
-  while (Length(VersionSnippet)>=i) AND (VersionSnippet[i] in ['0'..'9']) do
-  begin
-    found:=true;
-    j:=j*10+Ord(VersionSnippet[i])-$30;
-    Inc(i);
-  end;
-  if found then result:=result+(j*100) else exit;
-
-  // skip random symbols to move towards next digit
-  //while (Length(VersionSnippet)>=i) AND (NOT (VersionSnippet[i] in ['0'..'9'])) do Inc(i);
-  // skip a single random symbol to move towards next digit
-  if (Length(VersionSnippet)>=i) then Inc(i);
-  // get build version
-  j:=0;
-  found:=false;
-  while (Length(VersionSnippet)>=i) AND (VersionSnippet[i] in ['0'..'9']) do
-  begin
-    found:=true;
-    j:=j*10+Ord(VersionSnippet[i])-$30;
-    Inc(i);
-  end;
-  if found then result:=result+(j*1);
 end;
 
 function UppercaseFirstChar(s: String): String;
@@ -2555,7 +2582,7 @@ begin
     begin
       writeln('Remote site says: ',H);
       writeln('Enter username (empty quits): ');
-    readLn(UN);
+      readln(UN);
     RepeatRequest:=(UN<>'');
     if RepeatRequest then
     begin
@@ -2606,7 +2633,7 @@ begin
     Proxy.Port:=FHTTPProxyPort;
     Proxy.UserName:=FHTTPProxyUser;
     Proxy.Password:=FHTTPProxyPassword;
-    {$ENDIF}
+    {$endif}
   end;
 end;
 
@@ -2824,9 +2851,16 @@ begin
 
   FCURLOk:=LoadCurlLibrary;
 
+  if Length(WGETBinary)=0 then WGETBinary:='wget';
+
+  FWGETOk:=CheckExecutable(WGETBinary, '-V', '', etCustom);
+
   {$ifdef MSWINDOWS}
+  if (NOT FWGETOk) then
+  begin
   WGETBinary:='wget.exe';
   FWGETOk:=CheckExecutable(WGETBinary, '-V', '', etCustom);
+  end;
   {$ifdef CPU64}
   if (NOT FWGETOk) then
   begin
@@ -2834,15 +2868,18 @@ begin
     FWGETOk:=CheckExecutable(WGETBinary, '-V', '', etCustom);
   end;
   {$endif}
-  {$else MSWINDOWS}
-  WGETBinary:='wget';
-  FWGETOk:=CheckExecutable(WGETBinary, '-V', '', etCustom);
   {$endif MSWINDOWS}
 
   if (NOT FCURLOk) AND (NOT FWGETOk) then
   begin
     infoln('Could not initialize either libcurl or wget: expect severe failures !',etError);
   end;
+end;
+
+constructor TUseWGetDownloader.Create(aWGETBinary:string);
+begin
+  WGETBinary:=aWGETBinary;
+  inherited Create;
 end;
 
 function TUseWGetDownloader.WGetDownload(Const URL : String; Dest : TStream):boolean;

@@ -154,6 +154,7 @@ type
 
 var
   sequences:string;
+  UniModuleList:TStringList=nil;
 
 Const
   CONFIGFILENAME='fpcup.ini';
@@ -174,7 +175,6 @@ Const
 var
   CurrentConfigFile:string;
   IniGeneralSection:TStringList=nil;
-  UniModuleList:TStringList=nil;
   UniModuleEnabledList:TStringlist=nil;
 
 {$ifndef FPCONLY}
@@ -446,6 +446,8 @@ begin
            (ReqPackage<>'cairocanvas_pkg') AND
            (ReqPackage<>'SynEdit') AND
            (ReqPackage<>'RunTimeTypeInfoControls') AND
+           (ReqPackage<>'DebuggerIntf') AND
+           (ReqPackage<>'LazDebuggerGdbmi') AND
            (ReqPackage<>'CodeTools') then
         begin
           InstallPackage(ReqPackage, WorkingDir, RegisterOnly, true);
@@ -473,7 +475,7 @@ begin
   try
     Processor.Execute;
     result := (Processor.ExitStatus=0);
-    if result then RegisterPackageFeature:=(GetNumericalVersionSafe(Processor.OutputString)>=(1*10000+7*100+0));
+    if result then RegisterPackageFeature:=(GetNumericalVersion(Processor.OutputString)>=(1*10000+7*100+0));
   except
     on E: Exception do
     begin
@@ -1173,7 +1175,7 @@ var
       while k>0 do
         begin //replace # with current count
         delete(key,k,1);
-        insert(inttostr(count),key,k);
+        insert(IntToStr(count),key,k);
         k:=pos('#',key);
         end;
       LazarusConfig.SetVariable(filename,key,trim(copy(exec,j+1,length(exec))));
@@ -1437,7 +1439,7 @@ begin
       infoln(infotext+'Please wait: this can take some time (if repo is big or has a large history).',etInfo);
       UpdateWarnings:=TStringList.Create;
       try
-        FUrl:=RemoteURL;
+        FURL:=RemoteURL;
         FSVNClient.ModuleName:=ModuleName;
         FSVNClient.Verbose:=FVerbose;
         FSVNClient.ExportOnly:=FExportOnly;
