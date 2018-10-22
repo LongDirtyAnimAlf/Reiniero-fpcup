@@ -1,6 +1,6 @@
-unit m_any_to_embeddedmipsel;
-{ Cross compiles from any platform with correct binutils to Embedded Mipsel
-Copyright (C) 2017 Alf
+unit m_any_to_aixpowerpc64;
+{ Cross compiles from any platform with correct binutils to AIX on 32 bit powerpc
+Copyright (C) 2013 Reinier Olislagers
 
 This library is free software; you can redistribute it and/or modify it
 under the terms of the GNU Library General Public License as published by
@@ -29,19 +29,17 @@ Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 }
 
 {
-Setup: based on cross binaries from
-http://svn.freepascal.org/svn/fpcbuild/binaries/i386-win32/
-with binutils 2.22
+Setup: currently aimed at using the crossfpc supplied binaries/libs
+See
+http://wiki.lazarus.freepascal.org/FPC_AIX_Port
+- Get Windows binutils from ftp://ftp.freepascal.org/pub/fpc/contrib/aix/fpc-2.7.1.powerpc-aix-win32.zip
+powerpc-aix-ar.exe
+powerpc-aix-as.exe
+powerpc-aix-ld.exe
+powerpc-aix-nm.exe
+powerpc-aix-strip.exe
 
-Add a cross directory under the fpcup "root" installdir directory (e.g. c:\development\cross, and e.g. regular fpc sources in c:\development\fpc)
-Then place the binaries in c:\development\cross\bin\mipsel-embedded
-Binaries include
-mipsel-embedded-ar.exe
-mipsel-embedded-as.exe
-mipsel-embedded-ld.exe
-mipsel-embedded-objcopy.exe
-mipsel-embedded-objdump.exe
-mipsel-embedded-strip.exe
+- *nix: compile cross binutils yourself; see wiki page above
 }
 
 {$mode objfpc}{$H+}
@@ -49,13 +47,19 @@ mipsel-embedded-strip.exe
 interface
 
 uses
-  Classes, SysUtils, m_crossinstaller, fileutil, fpcuputil;
+  Classes, SysUtils, m_crossinstaller, fileutil;
 
 implementation
+
+const
+  ARCH='powerpc64';
+  ARCHUNIVERSAL='powerpc';
+  OS='aix';
+
 type
 
-{ TAny_Embeddedmipsel }
-TAny_Embeddedmipsel = class(TCrossInstaller)
+{ TAny_AIXPowerPC64 }
+TAny_AIXPowerPC64 = class(TCrossInstaller)
 private
   FAlreadyWarned: boolean; //did we warn user about errors and fixes already?
 public
@@ -68,25 +72,32 @@ public
   destructor Destroy; override;
 end;
 
-{ TAny_Embeddedmipsel }
+{ TAny_AIXPowerPC64 }
 
-function TAny_Embeddedmipsel.GetLibs(Basepath:string): boolean;
+function TAny_AIXPowerPC64.GetLibs(Basepath:string): boolean;
 const
-  DirName='mipsel-embedded';
-  LibName='';
+  DirName=ARCH+'-'+OS;
+  LibName='libc.so';
 begin
-  // mipsel-embedded does not need libs by default, but user can add them.
 
   result:=FLibsFound;
   if result then exit;
 
+  // begin simple: check presence of library file in basedir
+  result:=SearchLibrary(Basepath,LibName);
   // search local paths based on libbraries provided for or adviced by fpc itself
-  result:=SimpleSearchLibrary(BasePath,DirName,LibName);
+  if not result then
+    result:=SimpleSearchLibrary(BasePath,DirName,LibName);
 
   if result then
   begin
+    FLibsFound:=true;
+    //todo: check if -XR is needed for fpc root dir Prepend <x> to all linker search paths
+    //todo: implement -Xr for other platforms if this setup works
     FFPCCFGSnippet:=FFPCCFGSnippet+LineEnding+
-    '-Fl'+IncludeTrailingPathDelimiter(FLibsPath) {buildfaq 1.6.4/3.3.1:  the directory to look for the target  libraries};
+      '-Xd'+LineEnding+ {buildfaq 3.4.1 do not pass parent /lib etc dir to linker}
+      '-Fl'+IncludeTrailingPathDelimiter(FLibsPath)+LineEnding+ {buildfaq 1.6.4/3.3.1: the directory to look for the target  libraries}
+      '-Xr/usr/lib'; {buildfaq 3.3.1: makes the linker create the binary so that it searches in the specified directory on the target system for libraries}
     SearchLibraryInfo(result);
   end
   else
@@ -100,21 +111,20 @@ begin
 end;
 
 {$ifndef FPCONLY}
-function TAny_Embeddedmipsel.GetLibsLCL(LCL_Platform: string; Basepath: string): boolean;
+function TAny_AIXPowerPC64.GetLibsLCL(LCL_Platform: string; Basepath: string): boolean;
 begin
   // todo: get gtk at least, add to FFPCCFGSnippet
-  ShowInfo('Todo: implement lcl libs path from basepath '+BasePath,etdebug);
+  ShowInfo('Implement lcl libs path from basepath '+BasePath+' for platform '+LCL_Platform,etdebug);
   result:=inherited;
 end;
 {$endif}
 
-function TAny_Embeddedmipsel.GetBinUtils(Basepath:string): boolean;
+function TAny_AIXPowerPC64.GetBinUtils(Basepath:string): boolean;
 const
-  DirName='mipsel-embedded';
+  DirName=ARCH+'-'+OS;
 var
-  AsFile,aOption: string;
+  AsFile: string;
   BinPrefixTry: string;
-  i:integer;
 begin
   result:=inherited;
   if result then exit;
@@ -123,55 +133,38 @@ begin
   AsFile:=FBinUtilsPrefix+'as'+GetExeExt;
 
   result:=SearchBinUtil(BasePath,AsFile);
-  if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+  if not result then
+    result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
 
-  // Now also allow for mipsel- binutilsprefix
+  // Also allow for crossfpc naming
   if not result then
   begin
-    BinPrefixTry:='mipsel-';
+    BinPrefixTry:=ARCH+'-'+OS+'-';
     AsFile:=BinPrefixTry+'as'+GetExeExt;
     result:=SearchBinUtil(BasePath,AsFile);
     if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
     if result then FBinUtilsPrefix:=BinPrefixTry;
   end;
 
-  // Now also allow for mipsel-elf- binutilsprefix
+  // Also allow for universal crossfpc bins
   if not result then
   begin
-    BinPrefixTry:='mipsel-elf-';
+    BinPrefixTry:=ARCHUNIVERSAL+'-'+OS+'-';
     AsFile:=BinPrefixTry+'as'+GetExeExt;
     result:=SearchBinUtil(BasePath,AsFile);
     if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+    if not result then result:=SimpleSearchBinUtil(BasePath,ARCHUNIVERSAL+'-'+OS,AsFile);
     if result then FBinUtilsPrefix:=BinPrefixTry;
   end;
 
-  // Now also allow for pic32- binutilsprefix
-  if not result then
-  begin
-    BinPrefixTry:='pic32-';
-    AsFile:=BinPrefixTry+'as'+GetExeExt;
-    result:=SearchBinUtil(BasePath,AsFile);
-    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
-    if result then FBinUtilsPrefix:=BinPrefixTry;
-  end;
-
-  // Now also allow for xc32- binutilsprefix
-  if not result then
-  begin
-    BinPrefixTry:='xc32-';
-    AsFile:=BinPrefixTry+'as'+GetExeExt;
-    result:=SearchBinUtil(BasePath,AsFile);
-    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
-    if result then FBinUtilsPrefix:=BinPrefixTry;
-  end;
-
-  // Now also allow for empty binutilsprefix:
+  // Also allow for crossbinutils without prefix
   if not result then
   begin
     BinPrefixTry:='';
     AsFile:=BinPrefixTry+'as'+GetExeExt;
     result:=SearchBinUtil(BasePath,AsFile);
     if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+    if not result then result:=SimpleSearchBinUtil(BasePath,ARCHUNIVERSAL+'-'+OS,AsFile);
     if result then FBinUtilsPrefix:=BinPrefixTry;
   end;
 
@@ -179,58 +172,46 @@ begin
 
   if not result then
   begin
-    {$ifdef mswindows}
-    ShowInfo('Suggestion for pic32 cross binutils: http://chipkit.s3.amazonaws.com');
-    {$endif}
+    ShowInfo('Suggestion for cross binutils: please check http://wiki.lazarus.freepascal.org/FPC_AIX_Port.',etInfo);
     FAlreadyWarned:=true;
   end
   else
   begin
     FBinsFound:=true;
-
     // Configuration snippet for FPC
-    AddFPCCFGSnippet('-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath));
-    AddFPCCFGSnippet('-XP'+FBinUtilsPrefix); {Prepend the binutils names};
-
-    i:=StringListStartsWith(FCrossOpts,'-Cp');
-    if i=-1 then
-    begin
-      aOption:='-Cpmips32';
-      FCrossOpts.Add(aOption+' ');
-      //When compiling for mipsel-embedded, a sub-architecture (e.g. SUBARCH=pic32mx) must be defined)
-      FSubArch:='pic32mx';
-      ShowInfo('Did not find any -Cp architecture parameter; using -Cpmips32 and SUBARCH=pic32mx.');
-    end else aOption:=Trim(FCrossOpts[i]);
-    AddFPCCFGSnippet(aOption);
-
+    FFPCCFGSnippet:=FFPCCFGSnippet+LineEnding+
+    '-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath)+LineEnding+ {search this directory for compiler utilities}
+    '-XP'+FBinUtilsPrefix; {Prepend the binutils names}
   end;
 end;
 
-constructor TAny_Embeddedmipsel.Create;
+constructor TAny_AIXPowerPC64.Create;
 begin
   inherited Create;
-  FBinUtilsPrefix:='mipsel-embedded-';
+  FTargetCPU:=ARCH;
+  FTargetOS:=OS;
+  FBinUtilsPrefix:=ARCH+'-'+OS+'-';
   FBinUtilsPath:='';
   FFPCCFGSnippet:=''; //will be filled in later
   FLibsPath:='';
-  FTargetCPU:='mipsel';
-  FTargetOS:='embedded';
   FAlreadyWarned:=false;
   ShowInfo;
 end;
 
-destructor TAny_Embeddedmipsel.Destroy;
+destructor TAny_AIXPowerPC64.Destroy;
 begin
   inherited Destroy;
 end;
 
 var
-  Any_Embeddedmipsel:TAny_Embeddedmipsel;
+  Any_AIXPowerPC64:TAny_AIXPowerPC64;
 
 initialization
-  Any_Embeddedmipsel:=TAny_Embeddedmipsel.Create;
-  RegisterExtension(Any_Embeddedmipsel.TargetCPU+'-'+Any_Embeddedmipsel.TargetOS,Any_Embeddedmipsel);
+  Any_AIXPowerPC64:=TAny_AIXPowerPC64.Create;
+  RegisterExtension(Any_AIXPowerPC64.TargetCPU+'-'+Any_AIXPowerPC64.TargetOS,Any_AIXPowerPC64);
+
 finalization
-  Any_Embeddedmipsel.Destroy;
+  Any_AIXPowerPC64.Destroy;
+
 end.
 

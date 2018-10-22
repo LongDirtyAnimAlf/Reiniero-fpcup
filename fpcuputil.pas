@@ -72,8 +72,7 @@ uses
   eventlog;
 
 Const
-  // Maximum retries when downloading a file
-  DefMaxRetries = 5;
+  MAXCONNECTIONRETRIES=5;
   {$ifdef LCL}
   BeginSnippet='fpcupdeluxe:'; //helps identify messages as coming from fpcupdeluxe instead of make etc
   {$else}
@@ -171,7 +170,7 @@ type
     procedure parseFTPHTMLListing(F:TStream;filelist:TStringList);
   protected
     procedure SetVerbose(aValue:boolean);virtual;
-    property MaxRetries : Byte Read FMaxRetries Write FMaxRetries default DefMaxRetries;
+    property MaxRetries : Byte Read FMaxRetries Write FMaxRetries;
     property Username: string read FUsername;
     property Password: string read FPassword;
     property HTTPProxyHost: string read FHTTPProxyHost;
@@ -193,7 +192,7 @@ type
   {$ifdef ENABLENATIVE}
   TUseNativeDownLoader = Class(TBasicDownLoader)
   private
-    {$ifdef Darwin}
+    {$ifdef Darwinn}
     aFPHTTPClient:TNSHTTPSendAndReceive;
     {$else}
     aFPHTTPClient:TFPHTTPClient;
@@ -272,31 +271,39 @@ function DeleteFilesNameSubdirs(const DirectoryName: string; const OnlyIfNameHas
 function GetFileNameFromURL(URL:string):string;
 function StripUrl(URL:string): string;
 function GetCompilerVersion(CompilerPath: string): string;
+function GetLazbuildVersion(LazbuildPath: string): string;
 procedure GetVersionFromString(const VersionSnippet:string;var Major,Minor,Build: Integer);
+function CalculateFullVersion(Major,Minor,Release:integer):dword;
 function GetNumericalVersion(VersionSnippet: string): word;
 function GetVersionFromUrl(URL:string): string;
+function GetReleaseCandidateFromUrl(aURL:string): integer;
 // Download from HTTP (includes Sourceforge redirection support) or FTP
 // HTTP download can work with http proxy
 function Download(UseWget:boolean; URL, TargetFile: string; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''): boolean;
 procedure GetGitHubFileList(aURL:string;fileurllist:TStringList; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string='');
 {$IFDEF MSWINDOWS}
+function CheckFileSignature(aFilePath: string): boolean;
 function DownloadByPowerShell(URL, TargetFile: string): boolean;
 // Get Windows major and minor version number (e.g. 5.0=Windows 2000)
 function GetWin32Version(out Major,Minor,Build : Integer): Boolean;
 function IsWindows64: boolean;
-{$ENDIF}
-//check if there is at least one directory between Dir and root
-function ParentDirectoryIsNotRoot(Dir:string):boolean;
-{$IFDEF MSWINDOWS}
 // Get path for Windows per user storage of application data. Useful for storing settings
 function GetLocalAppDataPath: string;
 {$ENDIF MSWINDOWS}
+//check if there is at least one directory between Dir and root
+function ParentDirectoryIsNotRoot(Dir:string):boolean;
 // Shows non-debug messages on screen (no logging); also shows debug messages if DEBUG defined
 procedure infoln(Message: string; Level: TEventType);
 // Moves file if it exists, overwriting destination file
 function MoveFile(const SrcFilename, DestFilename: string): boolean;
+//Get a temp file
+Function GetTempFileNameExt(Const Dir,Prefix,Ext : String) : String;
 // Correct line-endings
 function FileCorrectLineEndings(const SrcFilename, DestFilename: string): boolean;
+// Correct directory separators
+function FixPath(const s:string):string;
+function FileIsReadOnly(const s:string):boolean;
+function MaybeQuoted(const s:string):string;
 // Like ExpandFilename but does not expand an empty string to current directory
 function SafeExpandFileName (Const FileName : String): String;
 // Like ExpandFilenameUTF8 but does not expand an empty string to current directory
@@ -316,15 +323,15 @@ function StringListStartsWith(SearchIn:TStringList; SearchFor:string; StartIndex
 function XdgConfigHome: String;
 function GetGCCDirectory:string;
 {$ENDIF UNIX}
-{$IFDEF DARWIN}
+{$ifdef Darwin}
 function GetSDKVersion(aSDK: string):string;
-function GetDarwinVersion(out Major,Minor,Build : Integer): Boolean;
-{$ENDIF DARWIN}
+{$endif}
 function CompareVersionStrings(s1,s2: string): longint;
 function ExistWordInString(aString:pchar; aSearchString:string; aSearchOptions: TStringSearchOptions): Boolean;
 function GetEnumNameSimple(aTypeInfo:PTypeInfo;const aEnum:integer):string;
 // Emulates/runs which to find executable in path. If not found, returns empty string
 function Which(Executable: string): string;
+function IsExecutable(Executable: string):boolean;
 function CheckExecutable(Executable, Parameters, ExpectOutput: string): boolean;
 function ExtractFileNameOnly(const AFilename: string): string;
 function GetCompilerName(Cpu_Target:string):string;
@@ -339,6 +346,7 @@ function GetTargetCPUOS:string;
 function GetFPCTargetCPUOS(const aCPU,aOS:string;const Native:boolean=true): string;
 function GetDistro:string;
 function GetFreeBSDVersion:byte;
+function checkGithubRelease(const aURL:string):string;
 
 var
   resourcefiles:TStringList;
@@ -357,6 +365,7 @@ uses
   ftplist,
   {$endif}
   FileUtil, LazFileUtils, LazUTF8,
+  fpwebclient,fphttpwebclient,
   fpjson, jsonparser,
   uriparser
   {$IFDEF MSWINDOWS}
@@ -381,6 +390,7 @@ const
   //USERAGENT = 'Mozilla/4.0 (compatible; MSIE 5.01; Windows NT 5.0)';
   CURLUSERAGENT='curl/7.51.0';
 
+{$i revision.inc}
 
 function GetStringFromBuffer(const field:PChar):string;
 begin
@@ -722,8 +732,9 @@ begin
     XdgDesktopContent.Add('Encoding=UTF-8');
     XdgDesktopContent.Add('Type=Application');
     XdgDesktopContent.Add('Icon='+ExtractFilePath(Target)+'images/icons/lazarus.ico');
-    XdgDesktopContent.Add('Exec='+Target+' '+TargetArguments);
+    XdgDesktopContent.Add('Exec='+Target+' '+TargetArguments+' %f');
     XdgDesktopContent.Add('Name='+ShortcutName);
+    XdgDesktopContent.Add('GenericName=Lazarus IDE with Free Pascal Compiler');
     XdgDesktopContent.Add('Category=Application;IDE;Development;GUIDesigner;');
     XdgDesktopContent.Add('Keywords=editor;Pascal;IDE;FreePascal;fpc;Design;Designer;');
     //XdgDesktopContent.Add('StartupWMClass=Lazarus');
@@ -816,13 +827,14 @@ begin
 end;
 
 function GetFileNameFromURL(URL:string):string;
+const
+  URLMAGIC='/download';
 var
   URI:TURI;
   aURL:string;
 begin
-  if AnsiEndsStr('/download',URL)
-     then aURL:=Copy(URL,1,Length(URL)-9)
-     else aURL:=URL;
+  aURL:=URL;
+  if AnsiEndsStr(URLMAGIC,URL) then SetLength(aURL,Length(URL)-Length(URLMAGIC));
   URI:=ParseURI(aURL);
   result:=URI.Document;
 end;
@@ -840,7 +852,7 @@ var
   Output: string;
     begin
   Result:='0.0.0';
-  if CompilerPath='' then exit;
+  if ((CompilerPath='') OR (NOT FileExists(CompilerPath))) then exit;
       try
     Output:='';
     // -iW does not work on older compilers : use -iV
@@ -850,6 +862,38 @@ var
       Output:=TrimRight(Output);
       if Length(Output)>0 then Result:=Output;
       end;
+  except
+  end;
+end;
+
+function GetLazbuildVersion(LazbuildPath: string): string;
+var
+  Output: string;
+  OutputLines:TStringList;
+begin
+  Result:='0.0.0';
+  if ((LazbuildPath='') OR (NOT FileExists(LazbuildPath))) then exit;
+  try
+    Output:='';
+    // -iW does not work on older compilers : use -iV
+    if (ExecuteCommand(LazbuildPath+ ' --version', Output, false)=0) then
+    begin
+      Output:=TrimRight(Output);
+      if Length(Output)>0 then
+      begin
+        OutputLines:=TStringList.Create;
+        try
+          OutputLines.Text:=Output;
+          if OutputLines.Count>0 then
+          begin
+            // lazbuild outputs version info as last line
+            result:=OutputLines.Strings[OutputLines.Count-1];
+          end;
+        finally
+          OutputLines.Free;
+        end;
+      end;
+    end;
   except
   end;
 end;
@@ -905,6 +949,11 @@ begin
   if found then Build:=j;
 end;
 
+function CalculateFullVersion(Major,Minor,Release:integer):dword;
+begin
+  result:=(Major *  100 + Minor) * 100 + Release;
+end;
+
 function GetNumericalVersion(VersionSnippet: string): word;
 var
   Major,Minor,Build: Integer;
@@ -913,7 +962,7 @@ begin
   Minor:=0;
   Build:=0;
   GetVersionFromString(VersionSnippet,Major,Minor,Build);
-  result:=Major*10000+Minor*100+Build;
+  result:=CalculateFullVersion(Major,Minor,Build);
 end;
 
 function GetVersionFromUrl(URL:string): string;
@@ -973,6 +1022,36 @@ begin
     end;
   end;
 end;
+
+function GetReleaseCandidateFromUrl(aURL:string): integer;
+const
+  RC_MAGIC='_RC';
+var
+  VersionSnippet:string;
+  i:integer;
+begin
+  result:=-1;
+
+  VersionSnippet := UpperCase(aURL);
+  i := Length(VersionSnippet);
+
+  // remove trailing delimiter
+  if (i>0) and CharInSet(VersionSnippet[i],['\','/']) then
+  begin
+    Dec(i);
+    SetLength(VersionSnippet,i);
+  end;
+
+  // find last occurence of _RC
+  // if url contains a RC, this always starts with _RC
+  i := RPos(RC_MAGIC,VersionSnippet);
+  if i>0 then
+  begin
+    Delete(VersionSnippet,1,i+Length(RC_MAGIC)-1);
+    result:=StrToIntDef(VersionSnippet,-1);
+  end;
+end;
+
 
 {$IFDEF MSWINDOWS}
 procedure DeleteDesktopShortcut(ShortcutName: string);
@@ -1337,6 +1416,7 @@ begin
   {$endif}
   Json:=GetJSON(Content);
   try
+    if Json=Nil then exit;
     JsonArray:=Json.FindPath('assets') as TJSONArray;
     i:=JsonArray.Count;
     while (i>0) do
@@ -1385,6 +1465,38 @@ begin
 end;
 
 {$IFDEF MSWINDOWS}
+function CheckFileSignature(aFilePath: string): boolean;
+var
+  s:TFileStream;
+  magic:word;
+  offset:integer;
+begin
+  result:=true;
+  if NOT FileExists(aFilePath) then exit;
+  s:=TFileStream.Create(aFilePath,fmOpenRead);
+  try
+    s.Position:=0;
+    magic:=s.ReadWord;
+    if magic<>$5A4D then exit;
+    s.Seek(60,soBeginning);
+    offset:=0;
+    s.ReadBuffer(offset,4);
+    s.Seek(offset,soBeginning);
+    magic:=s.ReadWord;
+    if magic<>$4550 then exit;
+    s.Seek(offset+4,soBeginning);
+    magic:=s.ReadWord;
+  finally
+    s.Free;
+  end;
+  {$ifdef win32}
+  result:=(magic=$014C);
+  {$endif}
+  {$ifdef win64}
+  result:=((magic=$0200) OR (magic=$8664));
+  {$endif}
+end;
+
 function DownloadByPowerShell(URL, TargetFile: string): boolean;
 var
   Output:string;
@@ -1427,6 +1539,31 @@ begin
 {$ENDIF NOCONSOLE}
 end;
 
+Function GetTempFileNameExt(Const Dir,Prefix,Ext : String) : String;
+Var
+  I : Integer;
+  Start,Extension : String;
+begin
+  if (Dir='') then
+    Start:=GetTempDir
+  else
+    Start:=IncludeTrailingPathDelimiter(Dir);
+  if (Prefix='') then
+    Start:=Start+'TMP'
+  else
+    Start:=Start+Prefix;
+  if (Ext='') then
+    Extension:='tmp'
+  else
+    Extension:=Ext;
+  i:=0;
+  repeat
+    Result:=Format('%s%.5d.'+Extension,[Start,i]);
+    Inc(i);
+  until not FileExists(Result);
+end;
+
+
 function MoveFile(const SrcFilename, DestFilename: string): boolean;
 // We might (in theory) be moving files across partitions so we cannot use renamefile
 begin
@@ -1468,6 +1605,83 @@ begin
   end;
 end;
 
+function FixPath(const s:string):string;
+var
+  i : longint;
+begin
+  { Fix separator }
+  result:=s;
+  for i:=1 to length(s) do
+   if s[i] in ['/','\'] then
+    result[i]:=DirectorySeparator;
+end;
+
+function FileIsReadOnly(const s:string):boolean;
+begin
+  result:=((FileGetAttr(s) AND faReadOnly) > 0);
+end;
+
+function MaybeQuoted(const s:string):string;
+const
+  FORBIDDEN_CHARS_DOS = ['!', '@', '#', '$', '%', '^', '&', '*', '(', ')',
+                     '{', '}', '''', '`', '~'];
+  FORBIDDEN_CHARS_OTHER = ['!', '@', '#', '$', '%', '^', '&', '*', '(', ')',
+                     '{', '}', '''', ':', '\', '`', '~'];
+var
+  forbidden_chars: set of char;
+  i  : integer;
+  quote_char: ansichar;
+  quoted : boolean;
+begin
+  {$ifdef Windows}
+  forbidden_chars:=FORBIDDEN_CHARS_DOS;
+  quote_char:='"';
+  {$else}
+  forbidden_chars:=FORBIDDEN_CHARS_OTHER;
+  include(forbidden_chars,'"');
+  quote_char:='''';
+  {$endif}
+
+  quoted:=false;
+  result:=quote_char;
+  for i:=1 to length(s) do
+   begin
+     if s[i]=quote_char then
+       begin
+         quoted:=true;
+         result:=result+'\'+quote_char;
+       end
+     else case s[i] of
+       '\':
+         begin
+           {$ifdef UNIX}
+           result:=result+'\\';
+           quoted:=true;
+           {$else}
+           result:=result+'\';
+           {$endif}
+         end;
+       ' ',
+       #128..#255 :
+         begin
+           quoted:=true;
+           result:=result+s[i];
+         end;
+       else begin
+         if s[i] in forbidden_chars then
+           quoted:=True;
+         result:=result+s[i];
+       end;
+     end;
+   end;
+  if quoted then
+    result:=result+quote_char
+  else
+    result:=s;
+end;
+
+
+
 function StringListStartsWith(SearchIn:TStringList; SearchFor:string; StartIndex:integer; CS:boolean): integer;
 var
   Found:boolean=false;
@@ -1503,6 +1717,7 @@ function GetGCCDirectory:string;
 var
   output,s1,s2:string;
   i,j:integer;
+  ReturnCode: integer;
 begin
 
   {$IF (defined(BSD)) and (not defined(Darwin))}
@@ -1513,8 +1728,10 @@ begin
   output:='';
 
   try
-    ExecuteCommand('gcc -v', Output, false);
+    ReturnCode:=ExecuteCommand('gcc -v', Output, false);
 
+    if (ReturnCode=0) then
+    begin
     s1:=' --libdir=';
     i:=Ansipos(s1, Output);
     if i > 0 then
@@ -1567,13 +1784,34 @@ begin
       if i > 0 then delete(s2,i,MaxInt);
       result:=result+s2;
     end;
+    end;
+
   except
     // ignore errors
   end;
+
+  if ReturnCode<>0 then
+  begin
+    output:=result+'/'+GetTargetCPUOS+'-gnu/7';
+    if DirectoryExists(output) then result:=output else
+    begin
+      output:=result+'/'+GetTargetCPUOS+'-gnu/6';
+      if DirectoryExists(output) then result:=output else
+      begin
+        output:=result+'/'+GetTargetCPUOS+'-gnu/5';
+        if DirectoryExists(output) then result:=output else
+        begin
+          output:=result+'/'+GetTargetCPUOS+'-gnu/4';
+          if DirectoryExists(output) then result:=output;
+        end;
+      end;
+    end;
+  end;
+
 end;
 {$ENDIF UNIX}
 
-{$IFDEF DARWIN}
+{$ifdef Darwin}
 function GetSDKVersion(aSDK: string):string;
 const
   SearchTarget='SDKVersion: ';
@@ -1596,22 +1834,28 @@ begin
         s:=s+Output[i];
         Inc(i);
       end;
+    end
+    else
+    begin
+      //xcodebuild not working ... try something completely different ...
+      if aSDK='macosx' then
+      begin
+        ExecuteCommand('sw_vers -productVersion', Output, False);
+        if (Length(Output)>0) then
+        begin
+          i:=1;
+          while (Length(Output)>i) AND (Output[i] in ['0'..'9','.']) do
+          begin
+            s:=s+Output[i];
+            Inc(i);
+          end;
     end;
+  end;
+end;
   end;
   result:=s;
 end;
-function GetDarwinVersion(out Major,Minor,Build: Integer): Boolean;
-var
-  output:string;
-begin
-  result:=(ExecuteCommand('sw_vers -productVersion', Output, False)=0);
-  if result then
-  begin
-    if Length(Output)>0 then GetVersionFromString(Output,Major,Minor,Build);
-  end;
-end;
-
-{$ENDIF DARWIN}
+{$endif}
 
 // 1on1 copy from unit cutils from the fpc compiler;
 function CompareVersionStrings(s1,s2: string): longint;
@@ -1732,6 +1976,28 @@ begin
   *)
 end;
 
+function IsExecutable(Executable: string):boolean;
+var
+  aPath:string;
+begin
+  result:=false;
+  //aPath:=FindDefaultExecutablePath(Executable);
+  aPath:=Executable;
+  if NOT FileExists(aPath) then exit;
+  {$ifdef Windows}
+  //if ExtractFileExt(aPath)='' then aPath:=aPath+'.exe';
+  {$endif}
+  if ExtractFileExt(aPath)=GetExeExt then
+  begin
+    {$ifdef Windows}
+    result:=true;
+    {$else}
+    result:=(fpAccess(aPath,X_OK)=0);
+    {$endif}
+  end;
+end;
+
+
 {$IFDEF UNIX}
 //Adapted from sysutils; Unix/Linux only
 Function XdgConfigHome: String;
@@ -1757,7 +2023,14 @@ begin
   try
     Output:='';
     ExeName := ExtractFileName(Executable);
+    {$IFDEF DEBUG}
+    ResultCode := ExecuteCommand(Executable + ' ' + Parameters, Output, True);
+    {$ELSE}
     ResultCode := ExecuteCommand(Executable + ' ' + Parameters, Output, False);
+    {$ENDIF}
+    {$IFDEF DEBUG}
+    infoln(Executable + ': Result code was: ' + IntToStr(ResultCode),etDebug);
+    {$ENDIF}
     if ResultCode >= 0 then //Not all non-0 result codes are errors. There's no way to tell, really
     begin
       if (ExpectOutput <> '') and (Ansipos(ExpectOutput, Output) = 0) then
@@ -1775,8 +2048,12 @@ begin
     end
     else
     begin
+      {$IFDEF DEBUG}
+      infoln(Executable + ' is not a valid ' + ExeName + ' application (' + ExeName + ' result code was: ' + IntToStr(ResultCode) + ')',etDebug);
+      {$ELSE}
       // This is not a warning/error message as sometimes we can use multiple different versions of executables
       if Level<>etCustom then infoln(Executable + ' is not a valid ' + ExeName + ' application (' + ExeName + ' result code was: ' + IntToStr(ResultCode) + ')',Level);
+      {$ENDIF}
       OperationSucceeded := false;
     end;
   except
@@ -1794,6 +2071,8 @@ end;
 
 function CheckExecutable(Executable, Parameters, ExpectOutput: string): boolean;
 begin
+  //result:=IsExecutable(Executable);
+  //if result then
   result:=CheckExecutable(Executable, Parameters, ExpectOutput, etInfo);
 end;
 
@@ -1853,6 +2132,8 @@ begin
     Result:=Result+'a64'
   else if SysUtils.CompareText(TargetCPU,'i8086')=0 then
     Result:=Result+'8086'
+  else if SysUtils.CompareText(TargetCPU,'jvm')=0 then
+    Result:=Result+'jvm'
   else
     Result:='fpc';
   Result:=Result+GetExeExt;
@@ -2015,8 +2296,14 @@ begin
         if Length(s)>0 then t:=Trim(s);
       end;
       if Length(s)=0 then t:=GetTargetOS;
-      if GetDarwinVersion(Major,Minor,Build)
-         then t:=t+' '+InttoStr(Major)+'.'+InttoStr(Minor)+'.'+InttoStr(Build);
+      if (ExecuteCommand('sw_vers -productVersion', s, false)=0) then
+      begin
+        if Length(s)>0 then
+        begin
+          GetVersionFromString(s,Major,Minor,Build);
+          t:=t+' '+InttoStr(Major)+'.'+InttoStr(Minor)+'.'+InttoStr(Build);
+        end;
+      end;
     {$endif Darwin}
   {$endif Unix}
 
@@ -2075,6 +2362,107 @@ begin
   Result := processorname + '-' + os;
 end;
 
+function checkGithubRelease(const aURL:string):string;
+var
+  Webclient  : TAbstractWebClient;
+  Req        : TWebClientRequest;
+  Resp       : TWebClientResponse;
+  s,aFile    : string;
+  Json       : TJSONData;
+  JsonObject : TJSONObject;
+  Releases   : TJSONArray;
+  NewVersion : boolean;
+  i          : integer;
+  aStream    : TStream;
+begin
+  NewVersion:=false;
+  result:='';
+  Req:=Nil;
+  Resp:=Nil;
+  if (Length(aURL)>0) then
+  begin
+    aStream:=TMemoryStream.Create;
+    try
+      WebClient:=TFPHTTPWebClient.Create(nil);
+      try
+        Req:=WebClient.CreateRequest;
+        Req.ResponseContent:=aStream;
+        Req.Headers.Add('User-Agent: '+USERAGENT);
+        Req.Headers.Add('Content-Type: application/json');
+        try
+          Resp:=WebClient.ExecuteRequest('GET', aURL, Req);
+        except
+          //Ignore exceptions
+        end;
+        if (Resp<>Nil) then
+        begin
+          aStream.Position:=0;
+          Json:=GetJSON(aStream);
+          try
+            if JSON=Nil then exit;
+            JsonObject := TJSONObject(Json);
+            // Example ---
+            // tag_name: "1.6.2b"
+            // name: "Release v1.6.2b of fpcupdeluxe"
+            s:=JsonObject.Get('tag_name');
+            if GetNumericalVersion(s)>GetNumericalVersion(DELUXEVERSION) then NewVersion:=True;
+            if GetNumericalVersion(s)=GetNumericalVersion(DELUXEVERSION) then
+            begin
+              if Ord(s[Length(s)])>Ord(DELUXEVERSION[Length(DELUXEVERSION)]) then NewVersion:=True;
+            end;
+            if NewVersion then
+            begin
+              s:=JsonObject.Get('prerelease');//Should be False
+              NewVersion:=(s='False');
+            end;
+            //YES !!!
+            if NewVersion then
+            begin
+              //Assets is an array of binaries belonging to a release
+              Releases:=JsonObject.Get('assets',TJSONArray(nil));
+              for i:=0 to (Releases.Count-1) do
+              begin
+                JsonObject := TJSONObject(Releases[i]);
+                // Example ---
+                // browser_download_url: "https://github.com/newpascal/fpcupdeluxe/releases/download/1.6.2b/fpcupdeluxe-aarch64-linux"
+                // name: "fpcupdeluxe-aarch64-linux"
+                // created_at: "2018-10-14T06:58:44Z"
+                s:=JsonObject.Get('name');
+
+                aFile:='fpcupdeluxe-'+GetTargetCPUOS;
+                {$ifdef Darwin}
+                {$ifdef LCLCARBON}
+                aFile:=aFile+'-carbon';
+                {$endif}
+                {$ifdef LCLCOCOA}
+                aFile:=aFile+'-cocoa';
+                {$endif}
+                {$endif}
+                {$if defined(LCLQT) or defined(LCLQT5)}
+                aFile:=aFile+'-qt5';
+                {$endif}
+
+                if (Pos(aFile,s)=1) then
+                begin
+                  result:=JsonObject.Get('browser_download_url');
+                  break;
+                end;
+              end;
+            end;
+          finally
+            Json.Free;
+          end;
+        end;
+      finally
+        Resp.Free;
+        Req.Free;
+        WebClient.Free;
+      end;
+    finally
+      aStream.Free;
+    end;
+  end;
+end;
 
 {TThreadedUnzipper}
 
@@ -2423,6 +2811,7 @@ end;
 constructor TBasicDownLoader.Create(AOwner: TComponent);
 begin
   inherited;
+  FMaxRetries:=MAXCONNECTIONRETRIES;
   FVerbose:=False;
   FUsername:='';
   FPassword:='';
@@ -2499,18 +2888,22 @@ end;
 constructor TUseNativeDownLoader.Create;
 begin
   Inherited;
-  {$ifdef Darwin}
+  FMaxRetries:=MAXCONNECTIONRETRIES;
+  {$ifdef Darwinn}
   // GitHub needs TLS 1.2 .... native FPC client does not support this (through OpenSSL)
   // So, use client by Phil, a Lazarus forum member
   // See: https://macpgmr.github.io/
   aFPHTTPClient:=TNSHTTPSendAndReceive.Create;
+  with aFPHTTPClient do
+  begin
+    TimeOut:=10000;
+  end;
   {$else}
   aFPHTTPClient:=TFPHTTPClient.Create(Nil);
   with aFPHTTPClient do
   begin
     AllowRedirect:=True;
     //ConnectTimeout:=10000;
-    FMaxRetries:=DefMaxRetries;
     //RequestHeaders.Add('Connection: Close');
     // User-Agent needed for sourceforge and GitHub
     AddHeader('User-Agent',USERAGENT);
@@ -2823,14 +3216,18 @@ begin
 end;
 
 function TUseNativeDownLoader.Download(const URL: String; filename:string):boolean;
+const
+  URLMAGIC='/download';
 Var
   URI : TURI;
-  P : String;
+  aURL,P : String;
 begin
   result:=false;
-  URI:=ParseURI(URL);
-  infoln('Native downloader: Getting ' + URI.Document + ' from '+URI.Host+URI.Path,etInfo);
+  aURL:=URL;
+  if AnsiEndsStr(URLMAGIC,URL) then SetLength(aURL,Length(URL)-Length(URLMAGIC));
+  URI:=ParseURI(aURL);
   P:=URI.Protocol;
+  infoln('Native downloader: Getting ' + URI.Document + ' from '+P+'://'+URI.Host+URI.Path,etInfo);
   If CompareText(P,'ftp')=0 then
     result:=FTPDownload(URL,filename)
   else if CompareText(P,'http')=0 then
