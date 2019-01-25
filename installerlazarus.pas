@@ -246,11 +246,11 @@ implementation
 uses
   fpcuputil, fileutil,
   repoclient,
-  LazFileUtils {for resolvedots},
   updatelazconfig
   {$ifdef Darwin}
   {$ifdef LCLQT5}
   , baseunix
+  ,LazFileUtils
   {$endif LCLQT5}
   {$endif Darwin}
   ;
@@ -472,6 +472,12 @@ begin
   Result:=inherited;
 
   OperationSucceeded := true;
+
+  //Get Freetype and Zlib for ao fpreport ... just to be sure
+  {$IFDEF MSWINDOWS}
+  //DownloadFreetype;
+  //DownloadZlib;
+  {$ENDIF}
 
   LazBuildApp := IncludeTrailingPathDelimiter(FInstallDirectory) + LAZBUILDNAME + GetExeExt;
 
@@ -1175,7 +1181,7 @@ begin
   begin
     // Look for make etc in the current compiler directory:
     FBinPath := ExcludeTrailingPathDelimiter(ExtractFilePath(FCompiler));
-    PlainBinPath := LazFileUtils.ResolveDots(SafeExpandFileName(IncludeTrailingPathDelimiter(FBinPath) + '..'+DirectorySeparator+'..'));
+    PlainBinPath := SafeExpandFileName(IncludeTrailingPathDelimiter(FBinPath) + '..'+DirectorySeparator+'..');
     {$IFDEF MSWINDOWS}
     // Try to ignore existing make.exe, fpc.exe by setting our own path:
     // Note: apparently on Windows, the FPC, perhaps Lazarus make scripts expect
@@ -1244,7 +1250,7 @@ var
   LazarusConfig: TUpdateLazConfig;
   PCPSnippet: TStringList;
   i,j:integer;
-  s,aFileName:string;
+  aFileName:string;
 begin
   Result := inherited;
   Result := true;
@@ -1316,14 +1322,17 @@ begin
       if (NOT FileExists(DebuggerPath)) OR (NOT CheckExecutable(DebuggerPath, '--version', 'GNU gdb')) then DebuggerPath := which('gdb');
 
       {$IF (defined(Darwin))}
+      if (NumericalVersion>=CalculateFullVersion(2,0,0)) then
+      begin
       if Length(DebuggerPath)=0 then
       begin
-        //Check for newest lldb debugger ... could work !!
+          //Check for newest lldb debugger ... does work !!
         DebuggerPath:='/Library/Developer/CommandLineTools/usr/bin/lldb';
         if FileExists(DebuggerPath) then
           DebuggerType:='TLldbDebugger'
         else
           DebuggerPath:='';
+      end;
       end;
       {$endif}
 
@@ -1461,7 +1470,6 @@ begin
   finally
     LazarusConfig.Free;
   end;
-
 end;
 
 function TLazarusInstaller.CleanModule(ModuleName: string): boolean;
@@ -1485,6 +1493,7 @@ begin
   end;
 
   Result := InitModule;
+
   if not Result then exit;
 
   // If cleaning primary config:

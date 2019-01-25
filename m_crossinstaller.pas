@@ -56,15 +56,17 @@ const
   {$endif}
   DEFAULTARMCPU = 'ARMV7A';
 
-  NEWPASCALGITREPO='https://github.com/newpascal';
+  NEWPASCALGITREPO='https://github.com/LongDirtyAnimAlf';
   FPCUPGITREPO=NEWPASCALGITREPO+'/fpcupdeluxe';
 
   BOOTSTRAPPERVERSION='bootstrappers_v1.0';
   FPCUPGITREPOBOOTSTRAPPER=FPCUPGITREPO+'/releases/download/'+BOOTSTRAPPERVERSION;
-  FPCUPGITREPOAPI='https://api.github.com/repos/newpascal/fpcupdeluxe/releases';
+  FPCUPGITREPOAPI='https://api.github.com/repos/LongDirtyAnimAlf/fpcupdeluxe/releases';
   FPCUPGITREPOBOOTSTRAPPERAPI=FPCUPGITREPOAPI+'/tags/'+BOOTSTRAPPERVERSION;
 
   FPCUPPRIVATEGITREPO='https://www.consulab.nl/git/Alfred/FPCbootstrappers/raw/master';
+
+  LIBCNAME='libc.so';
 
 type
   CompilerType=(ctBootstrap,ctInstalled);
@@ -157,8 +159,7 @@ Var
 implementation
 
 uses
-  StrUtils,
-  LazFileUtils;
+  StrUtils;
 
 { TCrossInstaller }
 procedure RegisterExtension(Platform:string;Extension:TCrossInstaller);
@@ -214,11 +215,19 @@ end;
 function TCrossInstaller.SearchLibrary(Directory, LookFor: string): boolean;
 begin
   result:=SearchUtil(Directory, LookFor, true);
+  if NOT result then
+  begin
+    if LookFor=LIBCNAME then result:=SearchUtil(Directory, LIBCNAME+'.6', true);
+  end;
 end;
 
 function TCrossInstaller.SimpleSearchLibrary(BasePath,DirName: string; const LookFor:string): boolean;
 begin
   result:=FPCUPToolsSearch(BasePath,DirName,true,LookFor);
+  if NOT result then
+  begin
+    if LookFor=LIBCNAME then result:=FPCUPToolsSearch(BasePath,DirName,true,LIBCNAME+'.6');
+  end;
 end;
 
 function TCrossInstaller.SearchBinUtil(Directory, LookFor: string): boolean;

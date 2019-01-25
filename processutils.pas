@@ -73,6 +73,11 @@ const
   {$ENDIF MSWINDOWS}
 
 type
+  {$IF FPC_FULLVERSION < 30300}
+  TprocessChar   = {Ansi}Char;
+  TProcessString = {Ansi}String;
+  {$ENDIF}
+
   TProcessEx = class; //forward
   TDumpFunc = procedure (Sender:TProcessEx; output:string);
   TDumpMethod = procedure (Sender:TProcessEx; output:string) of object;
@@ -99,7 +104,6 @@ type
   { TProcessEx }
 
   TProcessEx = class(TProcess)
-  //TProcessEx = class(TProcessUTF8)
     private
       FExceptionInfoStrings: TstringList;
       FExitStatus: integer; //result code/exit status that executable returned with

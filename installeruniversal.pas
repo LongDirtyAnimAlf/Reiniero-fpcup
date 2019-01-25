@@ -157,6 +157,8 @@ type
   function CheckIncludeModule(ModuleName: string):boolean;
   function SetConfigFile(aConfigFile: string):boolean;
   function GetCPUOSCombo(aCPU,aOS:string):TCPUOS;
+  function GetARMArch(aARMArch:string):TARMARCH;
+  function GetARMArchFPCDefine(aARMArch:TARMARCH):string;
 
 var
   sequences:string;
@@ -174,7 +176,7 @@ Const
 implementation
 
 uses
-  StrUtils, typinfo,inifiles, FileUtil, LazFileUtils, LazUTF8, fpcuputil, process;
+  StrUtils, typinfo,inifiles, FileUtil, fpcuputil, process;
 
 Const
   MAXSYSMODULES=200;
@@ -225,10 +227,7 @@ begin
   Processor.Executable := Make;
   Processor.CurrentDirectory := ExcludeTrailingPathDelimiter(LazarusInstallDir);
   Processor.Parameters.Clear;
-
-  {$IFDEF lazarus_parallel_make}
-  if ((FCPUCount>1) AND (NOT FNoJobs)) then Processor.Parameters.Add('--jobs='+IntToStr(FCPUCount));
-  {$ENDIF}
+  //if ((FCPUCount>1) AND (NOT FNoJobs)) then Processor.Parameters.Add('--jobs='+IntToStr(FCPUCount));
   Processor.Parameters.Add('FPC=' + FCompiler);
   Processor.Parameters.Add('PP=' + ExtractFilePath(FCompiler)+GetCompilerName(GetTargetCPU));
   Processor.Parameters.Add('USESVN2REVISIONINC=0');
@@ -920,7 +919,7 @@ begin
     InstallDir:=IncludeTrailingPathDelimiter(SafeExpandFileName(GetValueFromKey('InstallDir',sl)));
     InstallDir:=FixPath(InstallDir);
     if InstallDir<>'' then
-      ForceDirectoriesUTF8(InstallDir);
+      ForceDirectories(InstallDir);
     Installer:=TWinInstaller.Create(InstallDir,FCompiler,FVerbose);
     try
       //todo: make installer module-level; split out config from build part; would also require fixed svn dirs etc
@@ -1487,7 +1486,7 @@ begin
     FSourceDirectory:=InstallDir;
 
     if InstallDir<>'' then
-      ForceDirectoriesUTF8(InstallDir);
+      ForceDirectories(InstallDir);
 
     // Common keywords for all repo methods
     FDesiredRevision:=GetValueFromKey('Revision',PackageSettings);
@@ -1682,7 +1681,7 @@ begin
             begin
               aFile:=FilesList[i];
               aFile:=StringReplace(aFile,aName,aName+DirectorySeparator+'..',[]);
-              aFile:=ResolveDots(aFile);
+              aFile:=SafeExpandFileName(aFile);
               if NOT DirectoryExists(ExtractFileDir(aFile)) then CreateDir(ExtractFileDir(aFile));
               SysUtils.RenameFile(FilesList[i],aFile);
               end;
@@ -2309,6 +2308,22 @@ begin
   end;
 
 end;
+
+function GetARMArch(aARMArch:string):TARMARCH;
+begin
+  if Length(aARMArch)=0 then
+    result:=TARMARCH.default
+  else
+    result:=TARMARCH(GetEnumValue(TypeInfo(TARMARCH),aARMArch));
+  if Ord(result) < 0 then
+    raise Exception.CreateFmt('Invalid ARM Arch name "%s" for GetARMArch.', [aARMArch]);
+end;
+
+function GetARMArchFPCDefine(aARMArch:TARMARCH):string;
+begin
+  result:=ARMArchFPCStr[aARMArch];
+end;
+
 
 initialization
   IniGeneralSection:=TStringList.create;
