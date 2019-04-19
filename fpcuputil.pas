@@ -67,7 +67,10 @@ uses
   {$ifdef darwin}
   ns_url_request,
   {$endif}
-  fpopenssl,openssl,
+  {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30000)}
+  fpopenssl,
+  {$ENDIF}
+  openssl,
   //fpftpclient,
   eventlog;
 
@@ -288,12 +291,15 @@ function Download(UseWget:boolean; URL, TargetFile: string; HTTPProxyHost: strin
 function GetGitHubFileList(aURL:string;fileurllist:TStringList; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''):boolean;
 {$IFDEF MSWINDOWS}
 function CheckFileSignature(aFilePath: string): boolean;
+function DownloadByBitsAdmin(URL, TargetFile: string): boolean;
 function DownloadByPowerShell(URL, TargetFile: string): boolean;
 // Get Windows major and minor version number (e.g. 5.0=Windows 2000)
 function GetWin32Version(out Major,Minor,Build : Integer): Boolean;
+function CheckWin32Version(aMajor,aMinor: Integer): Boolean;
 function IsWindows64: boolean;
 // Get path for Windows per user storage of application data. Useful for storing settings
-function GetLocalAppDataPath: string;
+function GetWindowsDownloadFolder: string;
+function GetWindowsAppDataFolder: string;
 {$ENDIF MSWINDOWS}
 //check if there is at least one directory between Dir and root
 function ParentDirectoryIsNotRoot(Dir:string):boolean;
@@ -353,7 +359,10 @@ function GetDistro:string;
 function GetFreeBSDVersion:byte;
 function checkGithubRelease(const aURL:string):string;
 {$IF FPC_FULLVERSION < 30300}
-Function Pos(Const Substr : RawByteString; Const Source : RawByteString; Offset : Sizeint = 1) : SizeInt;
+Function Pos(Const Substr : string; Const Source : string; Offset : Sizeint = 1) : SizeInt;
+{$ENDIF}
+{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION < 30000)}
+Function CharInSet(Ch:AnsiChar;Const CSet : TSysCharSet) : Boolean; inline;
 {$ENDIF}
 var
   resourcefiles:TStringList;
@@ -373,7 +382,10 @@ uses
   {$endif}
   FileUtil,
   LazFileUtils,
-  fpwebclient,fphttpwebclient,
+  {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30000)}
+  fpwebclient,
+  fphttpwebclient,
+  {$ENDIF}
   fpjson, jsonparser,
   uriparser
   {$IFDEF MSWINDOWS}
@@ -482,6 +494,17 @@ begin
   end;
 end
   else result:=false;
+end;
+
+function CheckWin32Version(aMajor,aMinor: Integer): Boolean;
+var
+  Major,Minor,Build : Integer;
+begin
+  if GetWin32Version(Major,Minor,Build) then
+  begin
+    result:=(Major>aMajor) or
+            ((Major=aMajor) and (Minor>=aMinor));
+  end else result:=false;
 end;
 
 function IsWindows64: boolean;
@@ -626,7 +649,11 @@ var
   fs:Tfilestream;
   ms:TMemoryStream;
   BackupFileName:string;
+  {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
   Ini:TMemIniFile;
+  {$ELSE}
+  Ini:TIniFile;
+  {$ENDIF}
   OldIniVersion,NewIniVersion:string;
 begin
   result:=false;
@@ -650,7 +677,12 @@ begin
      end;
      ms.Position:=0;
 
+       {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
      Ini:=TMemIniFile.Create(ms);
+       {$ELSE}
+       Ini:=TIniFile.Create(ms);
+       {$ENDIF}
+
      {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
      Ini.Options:=[ifoStripQuotes];
      {$ELSE}
@@ -1099,7 +1131,11 @@ function DeleteDirectoryEx(DirectoryName: string): boolean;
 // - removes directory itself
 // Adapted from fileutil.DeleteDirectory, thanks to Paweł Dmitruk
 var
+  {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
   FileInfo: TRawByteSearchRec;
+  {$ELSE}
+  FileInfo: TSearchRec;
+  {$ENDIF}
   CurSrcDir: String;
   CurFilename: String;
 begin
@@ -1152,10 +1188,14 @@ function DeleteFilesSubDirs(const DirectoryName: string;
 // Will try to remove read-only files.
 //todo: check how this works with case insensitive file system like Windows
 var
+  {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
+  FileInfo: TRawByteSearchRec;
+  {$ELSE}
+  FileInfo: TSearchRec;
+  {$ENDIF}
   AllFiles: boolean;
   CurSrcDir: String;
   CurFilename: String;
-  FileInfo: TRawByteSearchRec;
 begin
   Result:=false;
   AllFiles:=(Names.Count=0);
@@ -1216,10 +1256,14 @@ function DeleteFilesExtensionsSubdirs(const DirectoryName: string; const Extensi
 // Will try to remove read-only files.
 //todo: check how this works with case insensitive file system like Windows
 var
+  {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
+  FileInfo: TRawByteSearchRec;
+  {$ELSE}
+  FileInfo: TSearchRec;
+  {$ENDIF}
   AllFiles: boolean;
   CurSrcDir: String;
   CurFilename: String;
-  FileInfo: TRawByteSearchRec;
   i: integer;
 begin
   Result:=false;
@@ -1281,10 +1325,14 @@ function DeleteFilesNameSubdirs(const DirectoryName: string; const OnlyIfNameHas
 // Will try to remove read-only files.
 //todo: check how this works with case insensitive file system like Windows
 var
+  {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
+  FileInfo: TRawByteSearchRec;
+  {$ELSE}
+  FileInfo: TSearchRec;
+  {$ENDIF}
   AllFiles: boolean;
   CurSrcDir: String;
   CurFilename: String;
-  FileInfo: TRawByteSearchRec;
   i: integer;
 begin
   Result:=false;
@@ -1366,6 +1414,14 @@ begin
     SysUtils.Deletefile(TargetFile);
     result:=DownloadByPowerShell(URL,TargetFile);
   end;
+  //Third resort: use BitsAdmin
+  {
+  if (NOT result) then
+  begin
+    SysUtils.Deletefile(TargetFile);
+    result:=DownloadByBitsAdmin(URL,TargetFile);
+  end;
+  }
   {$endif}
 
   //Final resort: use wget by force
@@ -1470,9 +1526,10 @@ begin
   try
      Http.AddHeader('User-Agent',USERAGENT);
      Http.AddHeader('Content-Type', 'application/json');
+      {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
      Http.IOTimeout:=5000;
      Http.AllowRedirect:=true;
-
+      {$ENDIF}
     if Length(HTTPProxyHost)>0 then
     begin
       with Http do
@@ -1513,16 +1570,20 @@ end;
 // returns file size in bytes or 0 if not found.
 function FileSize(FileName: string) : Int64;
 var
-  sr : TRawByteSearchRec;
+  {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
+  FileInfo: TRawByteSearchRec;
+  {$ELSE}
+  FileInfo: TSearchRec;
+  {$ENDIF}
 begin
 {$ifdef unix}
   result:=filesize(FileName);
 {$else}
-  if SysUtils.FindFirst(FileName, faAnyFile, sr ) = 0 then
-     result := Int64(sr.FindData.nFileSizeHigh) shl Int64(32) + Int64(sr.FindData.nFileSizeLow)
+  if SysUtils.FindFirst(FileName, faAnyFile, FileInfo ) = 0 then
+     result := Int64(FileInfo.FindData.nFileSizeHigh) shl Int64(32) + Int64(FileInfo.FindData.nFileSizeLow)
   else
      result := 0;
-  SysUtils.FindClose(sr);
+  SysUtils.FindClose(FileInfo);
 {$endif}
 end;
 
@@ -1577,6 +1638,28 @@ begin
   end;
 end;
 
+function DownloadByBitsAdmin(URL, TargetFile: string): boolean;
+const
+  URLMAGIC='/download';
+var
+  Output : String;
+  URI    : TURI;
+  aURL,P : String;
+begin
+  aURL:=URL;
+  if AnsiEndsStr(URLMAGIC,URL) then SetLength(aURL,Length(URL)-Length(URLMAGIC));
+  URI:=ParseURI(aURL);
+  P:=URI.Protocol;
+  infoln('BitsAdmin downloader: Getting ' + URI.Document + ' from '+P+'://'+URI.Host+URI.Path,etDebug);
+  //result:=(ExecuteCommand('bitsadmin.exe /SetMinRetryDelay "JobName" 1', Output, False)=0);
+  //result:=(ExecuteCommand('bitsadmin.exe /SetNoProgressTimeout "JobName" 1', Output, False)=0);
+  result:=(ExecuteCommand('bitsadmin.exe /transfer "JobName" '+URL+' '+TargetFile, Output, False)=0);
+  if result then
+  begin
+    result:=FileExists(TargetFile);
+  end;
+end;
+
 function DownloadByPowerShell(URL, TargetFile: string): boolean;
 const
   URLMAGIC='/download';
@@ -1590,6 +1673,7 @@ begin
   URI:=ParseURI(aURL);
   P:=URI.Protocol;
   infoln('PowerShell downloader: Getting ' + URI.Document + ' from '+P+'://'+URI.Host+URI.Path,etDebug);
+  //result:=(ExecuteCommand('powershell -command "[Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; (new-object System.Net.WebClient).DownloadFile('''+URL+''','''+TargetFile+''')"', Output, False)=0);
   result:=(ExecuteCommand('powershell -command "(new-object System.Net.WebClient).DownloadFile('''+URL+''','''+TargetFile+''')"', Output, False)=0);
   if result then
   begin
@@ -1597,14 +1681,48 @@ begin
   end;
 end;
 
-function GetLocalAppDataPath: string;
+{
+function GetWindowsFolder(aFolder:TGUID): string;
 var
-  AppDataPath: array[0..MaxPathLen] of char; //Allocate memory
+  w : pwidechar;
 begin
-  AppDataPath := '';
-  SHGetSpecialFolderPath(0, AppDataPath, CSIDL_LOCAL_APPDATA, False);
-  result:=AppDataPath;
+  SHGetKnownFolderPath(aFolder,0,0,w);
+  Result := w;
+  CoTaskMemFree(w);
 end;
+}
+
+function GetWindowsFolderOld(aFolder:longint): string;
+var
+  w :  Array[0..MaxPathLen] of Char;
+begin
+  SHGetSpecialFolderPath(0,w,aFolder,false);
+  Result := w;
+end;
+
+function GetWindowsDownloadFolder: string;
+begin
+  {
+  // if Vista or higher: use modern new functions
+  if aMajor>5 then
+    result:=GetWindowsFolder(FOLDERID_Downloads)
+  else
+  }
+    result:=GetWindowsFolderOld(CSIDL_MYDOCUMENTS);
+end;
+
+function GetWindowsAppDataFolder: string;
+begin
+  {
+  // if Vista or higher: use modern new functions
+  if aMajor>5 then
+    result:=GetWindowsFolder(FOLDERID_LocalAppData)
+  else
+  }
+    result:=GetWindowsFolderOld(CSIDL_LOCAL_APPDATA);
+end;
+
+
 {$ENDIF MSWINDOWS}
 
 procedure infoln(Message: string; const Level: TEventType=etInfo);
@@ -1847,6 +1965,7 @@ begin
     if (ReturnCode=0) then
     begin
     s1:=' --libdir=';
+      //s1:=' --libexecdir=';
     i:=Ansipos(s1, Output);
     if i > 0 then
     begin
@@ -1868,6 +1987,11 @@ begin
 
     s1:=' --build=';
     i:=Ansipos(s1, Output);
+      if i=0 then
+      begin
+        s1:=' --target=';
+        i:=Ansipos(s1, Output);
+      end;
     if i > 0 then
     begin
       s2:=RightStr(Output,Length(Output)-(i+Length(s1)-1));
@@ -1904,19 +2028,23 @@ begin
     // ignore errors
   end;
 
-  if ReturnCode<>0 then
+  //In case of errors, do a brute force search of gcc
+  if ((ReturnCode<>0) or (NOT DirectoryExists(result))) then
   begin
-    output:=result+'/'+GetTargetCPUOS+'-gnu/7';
-    if DirectoryExists(output) then result:=output else
+    {$IF (defined(BSD)) and (not defined(Darwin))}
+    result:='/usr/local/lib/gcc/';
+    {$else}
+    result:='/usr/lib/gcc/';
+    {$endif}
+    for i:=9 downto 4 do
     begin
-      output:=result+'/'+GetTargetCPUOS+'-gnu/6';
-      if DirectoryExists(output) then result:=output else
+      output:=IncludeTrailingPathDelimiter(result)+GetTargetCPUOS+'-gnu'+DirectorySeparator+InttoStr(i);
+      if DirectoryExists(output) then
       begin
-        output:=result+'/'+GetTargetCPUOS+'-gnu/5';
-        if DirectoryExists(output) then result:=output else
+        if FileExists(output+DirectorySeparator+'crtbegin.o') then
         begin
-          output:=result+'/'+GetTargetCPUOS+'-gnu/4';
-          if DirectoryExists(output) then result:=output;
+          result:=output;
+          break;
         end;
       end;
     end;
@@ -2313,16 +2441,20 @@ end;
 
 function DirectoryIsEmpty(Directory: string): Boolean;
 var
-  SR: TRawByteSearchRec;
+  {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
+  FileInfo: TRawByteSearchRec;
+  {$ELSE}
+  FileInfo: TSearchRec;
+  {$ENDIF}
   i: Integer;
 begin
   Result:=(NOT DirectoryExists(Directory));
   if Result=true then exit;
-  SysUtils.FindFirst(IncludeTrailingPathDelimiter(Directory) + '*', faAnyFile, SR);
+  SysUtils.FindFirst(IncludeTrailingPathDelimiter(Directory) + '*', faAnyFile, FileInfo);
   for i := 1 to 2 do
-    if (SR.Name = '.') or (SR.Name = '..') then
-      Result := SysUtils.FindNext(SR) <> 0;
-  SysUtils.FindClose(SR);
+    if (FileInfo.Name = '.') or (FileInfo.Name = '..') then
+      Result := SysUtils.FindNext(FileInfo) <> 0;
+  SysUtils.FindClose(FileInfo);
 end;
 
 function GetTargetCPU:string;
@@ -2607,7 +2739,7 @@ begin
 end;
 
 {$IF FPC_FULLVERSION < 30300}
-Function Pos(Const Substr : RawByteString; Const Source : RawByteString; Offset : Sizeint = 1) : SizeInt;
+Function Pos(Const Substr : string; Const Source : string; Offset : Sizeint = 1) : SizeInt;
 var
   i,MaxLen : SizeInt;
   pc : PAnsiChar;
@@ -2632,6 +2764,22 @@ begin
   end;
 end;
 {$ENDIF}
+
+{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION < 30000)}
+Function CharInSet(Ch:AnsiChar;Const CSet : TSysCharSet) : Boolean;
+begin
+  result:=ch in CSet;
+end;
+{$ENDIF}
+
+Function GetUpTickCount:QWORD;
+begin
+  {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
+  result:=SysUtils.GetTickCount64;
+  {$ELSE}
+  result:=QWORD(GetTickCount);
+  {$ENDIF}
+end;
 
 {TThreadedUnzipper}
 
@@ -2861,10 +3009,20 @@ begin
         then FTotalFileCnt:=FUnZipper.Entries.Count
         else FTotalFileCnt:=FFileList.Count;
 
+      try
       if FFileList.Count=0
         then FUnZipper.UnZipAllFiles
         else FUnZipper.UnZipFiles(FFileList);
-
+      except
+        on E:EFCreateError do
+        begin
+          infoln('TNormalUnzipper: Could not create file.',etError);
+        end
+        else
+        begin
+          infoln('TNormalUnzipper: Unknown exception error.',etError);
+        end;
+      end;
       { Flat option only available in FPC >= 3.1 }
       {$IF FPC_FULLVERSION < 30100}
       if Flat then
@@ -3038,7 +3196,7 @@ begin
         FilenameValid:=True;
         for j:=1 to Length(s) do
         begin
-          FilenameValid := (NOT SysUtils.CharInSet(s[j], [';', '=', '+', '<', '>', '|','"', '[', ']', '\', '/', '''']));
+          FilenameValid := (NOT CharInSet(s[j], [';', '=', '+', '<', '>', '|','"', '[', ']', '\', '/', '''']));
           if (NOT FilenameValid) then break;
         end;
         if FilenameValid then FilenameValid:=(Pos('..',s)=0);
@@ -3071,6 +3229,7 @@ begin
   aFPHTTPClient:=TFPHTTPClient.Create(Nil);
   with aFPHTTPClient do
   begin
+    {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
     AllowRedirect:=True;
     //ConnectTimeout:=10000;
     //RequestHeaders.Add('Connection: Close');
@@ -3083,6 +3242,7 @@ begin
       OnDataReceived:=@DoProgress;
       OnHeaders:=@DoHeaders;
     end;
+    {$ENDIF}
   end;
   {$endif}
 end;
@@ -3167,10 +3327,10 @@ begin
 end;
 begin
   //Show progress only every 5 seconds
-  if SysUtils.GetTickCount64>StoredTickCount+5000 then
+  if GetUpTickCount>StoredTickCount+5000 then
   begin
     infoln('Downloading '+aFileName+': '+KB(APos),etInfo);
-    StoredTickCount:=SysUtils.GetTickCount64;
+    StoredTickCount:=GetUpTickCount;
   end;
 end;
 
@@ -3181,15 +3341,21 @@ Var
 begin
   if FUsername <> '' then
   begin
+    {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
     TFPHTTPClient(Sender).UserName:=FUsername;
     TFPHTTPClient(Sender).Password:=FPassword;
+    {$ENDIF}
   end
   else
   begin
 
     with TFPHTTPClient(Sender) do
     begin
+      {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
       H:=GetHeader(ResponseHeaders,'WWW-Authenticate');
+      {$ELSE}
+      H:=GetHeader('WWW-Authenticate');
+      {$ENDIF}
     end;
     P:=Pos('realm',LowerCase(H));
     if (P>0) then
@@ -3201,6 +3367,7 @@ begin
     end;
 
     writeln('Authorization required !');
+    {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
     if Length(H)>1 then
     begin
       writeln('Remote site says: ',H);
@@ -3215,6 +3382,7 @@ begin
       TFPHTTPClient(Sender).Password:=PW;
     end;
     end;
+    {$ENDIF}
   end;
 end;
 
@@ -3227,6 +3395,7 @@ end;
 procedure TUseNativeDownLoader.SetVerbose(aValue:boolean);
 begin
   inherited;
+  {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
   {$ifndef Darwin}
   with aFPHTTPClient do
   begin
@@ -3244,6 +3413,7 @@ begin
     end;
   end;
   {$endif}
+  {$ENDIF}
 end;
 
 procedure TUseNativeDownLoader.setProxy(host:string;port:integer;user,pass:string);
@@ -3381,7 +3551,7 @@ begin
 
   aStream := TDownloadStream.Create(TFileStream.Create(filename, fmCreate));
   aStream.FOnWriteStream:=@DoOnWriteStream;
-  StoredTickCount:=SysUtils.GetTickCount64;
+  StoredTickCount:=GetUpTickCount;
 
   try
   with aFPHTTPClient do
@@ -3569,6 +3739,7 @@ var
   response:sizeint;
 begin
   result:=false;
+
   if (NOT FCURLOk) then exit;
 
   if LoadCurlLibrary then
@@ -3608,36 +3779,13 @@ begin
         if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_WRITEDATA,Pointer(Dest));
         if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_USERAGENT,PChar(CURLUSERAGENT));
 
-        if res=CURLE_OK then res := curl_easy_perform(hCurl);
-
-        if res=CURLE_OK then
+        //check the URL
+        if res=CURLE_OK then res:=curl_easy_getinfo(hCurl,CURLINFO_RESPONSE_CODE, @response);
+        if ( (res=CURLE_OK) AND (response<>0) AND (response<>404) ) then
         begin
-          while true do
-          begin
-            res:=curl_easy_getinfo(hCurl,CURLINFO_RESPONSE_CODE, @response);
-            // not needed anymore ... we set CURLOPT_FOLLOWLOCATION !
-            (*
-            if ( (res=CURLE_OK) AND ((response DIV 100)=3) ) then // we have a redirect !!
-            begin
-              res:=curl_easy_getinfo(hCurl, CURLINFO_REDIRECT_URL, aBuffer);
-              location:=GetStringFromBuffer(aBuffer);
-              if ( (res=CURLE_OK) AND (Length(location)>0) ) then
-              begin
-                res:=curl_easy_setopt(hCurl,CURLOPT_URL,PChar(location));
-                if res=CURLE_OK then
-                begin
-                  Dest.Position:=0;
                   res := curl_easy_perform(hCurl);
-                end;
-              end;
-            end
-            else
-            *)
-            break;
-          end;
-        end;
-
         result:=((res=CURLE_OK) AND (Dest.Size>0));
+        end else result:=false;
 
         curl_easy_cleanup(hCurl);
       end;

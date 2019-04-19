@@ -96,7 +96,7 @@ uses
   fpcuputil,
   Process,
   {$IFDEF UNIX}
-  Unix,
+  BaseUnix,Unix,
   {$ENDIF}
   strutils, regexpr;
 
@@ -203,6 +203,7 @@ end;
 
 procedure TSVNClient.CheckOut(UseForce:boolean=false);
 var
+  i:integer;
   Command: string;
   Output: string = '';
   ProxyCommand: string;
@@ -262,13 +263,23 @@ begin
   {$IFNDEF MSWINDOWS}
   if ExecuteSpecialDue2EmptyString then
   begin
+    if Verbose then infoln('Executing: '+FRepoExecutable+' '+Command);
+    //FReturnCode := ExecuteProcess(FRepoExecutable,Command,[]);
+    //FReturnCode := FpExecL(FRepoExecutable,[Command]);
+    //FReturnCode := FpExecL('/bin/sh',['-c',Command]);
     FReturnCode := fpSystem(FRepoExecutable+' '+Command);
+    sleep(5000);
+    //if FReturnCode=-1 then FReturnCode:=fpgeterrno;
     if FileExists(TempOutputFile) then
     begin
       TempOutputSL:=TStringList.Create();
       try
         TempOutputSL.LoadFromFile(TempOutputFile);
         Output:=TempOutputSL.ToString;
+        if Verbose then
+        begin
+          for i:=0 to (TempOutputSL.Count-1) do infoln(TempOutputSL[i]);
+        end;
       finally
         TempOutputSL.Free();
       end;
@@ -314,13 +325,23 @@ begin
       {$IFNDEF MSWINDOWS}
       if ExecuteSpecialDue2EmptyString then
       begin
+        if Verbose then infoln('Executing: '+FRepoExecutable+' '+Command);
+        //FReturnCode := ExecuteProcess(FRepoExecutable,Command,[]);
+        //FReturnCode := FpExecL(FRepoExecutable,[Command]);
+        //FReturnCode := FpExecL('/bin/sh',['-c',Command]);
         FReturnCode := fpSystem(FRepoExecutable+' '+Command);
+        sleep(2500);
+        //if FReturnCode=-1 then FReturnCode:=fpgeterrno;
         if FileExists(TempOutputFile) then
         begin
           TempOutputSL:=TStringList.Create();
           try
             TempOutputSL.LoadFromFile(TempOutputFile);
             Output:=TempOutputSL.ToString;
+            if Verbose then
+            begin
+              for i:=0 to (TempOutputSL.Count-1) do infoln(TempOutputSL[i]);
+            end;
           finally
             TempOutputSL.Free();
           end;
@@ -350,6 +371,7 @@ const
   MaxErrorRetries = 3;
   MaxUpdateRetries = 9;
 var
+  i:integer;
   Command: string;
   FileList: TStringList;
   Output: string = '';
@@ -415,15 +437,23 @@ begin
     {$IFNDEF MSWINDOWS}
     if ExecuteSpecialDue2EmptyString then
     begin
-      //FReturnCode := SysUtils.ExecuteProcess(FRepoExecutable+' '+Command,'');
+      if Verbose then infoln('Executing: '+FRepoExecutable+' '+Command);
+      //FReturnCode := ExecuteProcess(FRepoExecutable,Command,[]);
+      //FReturnCode := FpExecL(FRepoExecutable,[Command]);
+      //FReturnCode := FpExecL('/bin/sh',['-c',Command]);
       FReturnCode := fpSystem(FRepoExecutable+' '+Command);
-      //RunCommandInDir('',FRepoExecutable,[Command],Output,FReturnCode);
+      sleep(2500);
+      //if FReturnCode=-1 then FReturnCode:=fpgeterrno;
       if FileExists(TempOutputFile) then
       begin
         TempOutputSL:=TStringList.Create();
         try
           TempOutputSL.LoadFromFile(TempOutputFile);
           Output:=TempOutputSL.ToString;
+          if Verbose then
+          begin
+            for i:=0 to (TempOutputSL.Count-1) do infoln(TempOutputSL[i]);
+          end;
         finally
           TempOutputSL.Free();
         end;
@@ -473,15 +503,23 @@ begin
         {$IFNDEF MSWINDOWS}
         if ExecuteSpecialDue2EmptyString then
         begin
-          //FReturnCode := SysUtils.ExecuteProcess(FRepoExecutable+' '+Command,'');
+          if Verbose then infoln('Executing: '+FRepoExecutable+' '+Command);
+          //FReturnCode := ExecuteProcess(FRepoExecutable,Command,[]);
+          //FReturnCode := FpExecL(FRepoExecutable,[Command]);
+          //FReturnCode := FpExecL('/bin/sh',['-c',Command]);
           FReturnCode := fpSystem(FRepoExecutable+' '+Command);
-          //RunCommandInDir('',FRepoExecutable,[Command],Output,FReturnCode);
+          sleep(5000);
+          //if FReturnCode=-1 then FReturnCode:=fpgeterrno;
           if FileExists(TempOutputFile) then
           begin
             TempOutputSL:=TStringList.Create();
             try
               TempOutputSL.LoadFromFile(TempOutputFile);
               Output:=TempOutputSL.ToString;
+              if Verbose then
+              begin
+                for i:=0 to (TempOutputSL.Count-1) do infoln(TempOutputSL[i]);
+              end;
             finally
               TempOutputSL.Free();
             end;
@@ -779,7 +817,7 @@ begin
     exit;
   end;
 
-  FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' info '+GetProxyCommand+' '+FLocalRepository, Output, Verbose);
+  FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' info ' + FLocalRepository, Output, Verbose);
   FReturnOutput := Output;
 
   // If command fails due to wrong version, try again
@@ -788,11 +826,11 @@ begin
     // svn: E155036: Please see the 'svn upgrade' command
     // svn: E155036: The working copy is too old to work with client. You need to upgrade the working copy first
     // Let's try one time upgrade to fix it (don't update FReturnCode here)
-    if Pos('E155036', Output) > 0 then ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' upgrade '+GetProxyCommand+' --non-interactive ' + FLocalRepository, Verbose);
+    if Pos('E155036', Output) > 0 then ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' upgrade --non-interactive ' + FLocalRepository, Verbose);
     //Give everybody a chance to relax ;)
     Sleep(500);
     //attempt again
-    FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' info '+GetProxyCommand+' '+FLocalRepository, Output, Verbose);
+    FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' info ' + FLocalRepository, Output, Verbose);
     FReturnOutput := Output;
   end;
 
@@ -839,10 +877,16 @@ const
   RevLength = Length(RevTarget);
   RevExpression = '\:\s+(\d+)\s'; //regex to match revision in svn info
 var
+  i:integer;
   LRevision: string = ''; // Revision of repository as a whole
   Output: string = '';
   RevExtr: TRegExpr;
   RevCount: integer;
+
+  Command: string;
+  ExecuteSpecialDue2EmptyString:boolean;
+  TempOutputFile:string;
+  TempOutputSL:TStringList;
 begin
 
   // Only update if we have invalid revision info, in order to minimize svn info calls
@@ -850,8 +894,63 @@ begin
   begin
     if ExportOnly then
        begin
-         if (FDesiredRevision = '') or (trim(FDesiredRevision) = 'HEAD')
-            then FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' info '+GetProxyCommand+' '+FRepositoryURL, Output, Verbose)
+         if (FDesiredRevision = '') or (trim(FDesiredRevision) = 'HEAD') then
+            begin
+
+              Command := '';
+
+              if Length(UserName)>0 then
+              begin
+                // svn quirk : even if no password is needed, it needs an empty password.
+                // to prevent deleting this empty string, we fill it here with a special placeholder: emptystring, that gets replaced later, inside ExecuteCommand
+                if Length(Password)=0 then Password:='emptystring';
+                Command:=' --username '+UserName+' --password '+Password;
+              end;
+
+              Command:=' info '+GetProxyCommand + Command + ' --non-interactive --trust-server-cert ' + FRepositoryURL;
+
+              {$IFNDEF MSWINDOWS}
+              // due to the fact that strnew returns nil for an empty string, we have to use something special to process a command with empty strings on non windows systems
+              // see this [Function StringsToPCharList(List : TStrings) : PPChar] inside process.inc for Unix
+              if Pos('emptystring',Command)>0 then
+              begin
+                Command:=StringReplace(Command,'emptystring','""',[rfReplaceAll,rfIgnoreCase]);
+                TempOutputFile := GetTempFileNameExt('','FPCUPTMP','svn');
+                Command:=Command+' &> '+TempOutputFile;
+                ExecuteSpecialDue2EmptyString:=True;
+              end;
+              {$ENDIF}
+
+              {$IFNDEF MSWINDOWS}
+              if ExecuteSpecialDue2EmptyString then
+              begin
+                if Verbose then infoln('Executing: '+FRepoExecutable+' '+Command);
+                //FReturnCode := ExecuteProcess(FRepoExecutable,Command,[]);
+                //FReturnCode := FpExecL(FRepoExecutable,[Command]);
+                //FReturnCode := FpExecL('/bin/sh',['-c',Command]);
+                FReturnCode := fpSystem(FRepoExecutable+' '+Command);
+                sleep(1000);
+                //if FReturnCode=-1 then FReturnCode:=fpgeterrno;
+                if FileExists(TempOutputFile) then
+                begin
+                  TempOutputSL:=TStringList.Create;
+                  try
+                    TempOutputSL.LoadFromFile(TempOutputFile);
+                    Output:=TempOutputSL.ToString;
+                    if Verbose then
+                    begin
+                      for i:=0 to (TempOutputSL.Count-1) do infoln(TempOutputSL[i]);
+                    end;
+                  finally
+                    TempOutputSL.Free;
+                  end;
+                  SysUtils.DeleteFile(TempOutputFile);
+                end;
+              end
+              else
+              {$ENDIF}
+              FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + Command, Output, Verbose);
+            end
             else
             begin
               FLocalRevision := FDesiredRevision;
@@ -860,7 +959,7 @@ begin
               exit;
             end;
        end
-       else FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' info '+GetProxyCommand+' '+FLocalRepository, Output, Verbose);
+       else FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' info ' + FLocalRepository, Output, Verbose);
 
     FReturnOutput := Output;
     // Could have used svnversion but that would have meant calling yet another command...

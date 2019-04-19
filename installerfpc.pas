@@ -510,6 +510,7 @@ var
   Counter:integer;
   LibsAvailable,BinsAvailable:boolean;
   MakeCycle:TSTEPS;
+  ARMArch:TARMARCH;
   Minimum_OSX,Minimum_iOS:string;
 begin
   result:=inherited;
@@ -623,6 +624,10 @@ begin
           s1:='';
           {$ifdef Darwin}
           s1:=GetSDKVersion('macosx');
+          if CompareVersionStrings(s1,'10.8')>=0 then
+          begin
+            s1:='10.8';
+          end;
           {$endif}
           if Length(s1)>0 then
           begin
@@ -848,7 +853,17 @@ begin
           // or default to softfloat for ARM ?
           // if (Pos('-dFPC_ARMEL',Options)=0) then Options:=Options+' -dFPC_ARMEL';
           // decision: (nearly) always build hardfloat ... not necessary correct however !
-          if (Pos('-dFPC_ARMHF',Options)=0) AND (Pos('-dFPC_ARMEL',Options)=0) then Options:=Options+' -dFPC_ARMHF';
+            s2:=' -dFPC_ARMHF';
+            for ARMArch := Low(TARMARCH) to High(TARMARCH) do
+            begin
+              s1:=ARMArchFPCStr[ARMArch];
+              if (Length(s1)>0) and (Pos(s1,Options)>0) then
+              begin
+                s2:='';
+                break;
+              end;
+            end;
+            if Length(s2)>0 then Options:=Options+s2;
         end;
 
         {$ifdef solaris}
@@ -900,8 +915,8 @@ begin
           // if we have libs ... chances are +/-100% that we have bins, so set path to include bins !
           // but only in case we did not do it before
           // not sure if this is realy needed
-          if NOT CrossInstaller.BinUtilsPathInPath then
-             SetPath(IncludeTrailingPathDelimiter(CrossInstaller.BinUtilsPath),true,false);
+            //if NOT CrossInstaller.BinUtilsPathInPath then
+            //   SetPath(IncludeTrailingPathDelimiter(CrossInstaller.BinUtilsPath),true,false);
         end;
 
         if CrossInstaller.BinUtilsPath<>''then
@@ -966,6 +981,10 @@ begin
                infoln(infotext+'Running make [step # '+GetEnumNameSimple(TypeInfo(TSTEPS),Ord(MakeCycle))+'] (FPC crosscompiler: '+CrossInstaller.TargetCPU+'-'+CrossInstaller.TargetOS+')',etInfo)
           else
               infoln(infotext+'Running make [step # '+GetEnumNameSimple(TypeInfo(TSTEPS),Ord(MakeCycle))+'] (FPC crosscompiler: '+CrossInstaller.TargetCPU+'-'+CrossInstaller.TargetOS+') with CROSSOPT: '+CrossOptions,etInfo);
+
+            infoln(infotext+'Path: '+GetPath,etDebug);
+            infoln(infotext+'AS: '+Which('as'),etDebug);
+
           Processor.Execute;
           result:=(Processor.ExitStatus=0);
 
@@ -1203,6 +1222,10 @@ begin
   {$IFDEF DARWIN}
   //Add minimum required OSX version to prevent "crti not found" errors.
   s2:=GetSDKVersion('macosx');
+  if CompareVersionStrings(s2,'10.8')>=0 then
+  begin
+    s2:='10.8';
+  end;
   if Length(s2)>0 then
   begin
     s1:='-WM'+s2+' '+s1;
@@ -1537,21 +1560,6 @@ var
 begin
   s:=aVersion;
 
-  {$IFDEF CPUAARCH64}
-  if (s=FPCTRUNKVERSION) then result:=FPCTRUNKVERSION
-  else if s='3.2.0' then result:='3.2.0'
-  else result:='0.0.0';
-  exit;
-  {$ENDIF}
-
-  {$IF DEFINED(CPUPOWERPC64) AND DEFINED(FPC_ABI_ELFV2)}
-  if (s=FPCTRUNKVERSION) then result:=FPCTRUNKVERSION
-  else if s='3.2.0' then result:='3.2.0'
-  else result:='0.0.0';
-  exit;
-  {$ENDIF}
-
-
   result:='0.0.0';
 
   if s=FPCTRUNKVERSION then result:=FPCTRUNKBOOTVERSION
@@ -1580,6 +1588,16 @@ begin
   else if s='1.9.2' then result:='1.9.0'
   else if s='1.9.0' then result:='0.0.0';
 
+
+  {$IFDEF CPUAARCH64}
+  // we need at least 3.2.0 for aarch64
+  if GetNumericalVersion(result)<GetNumericalVersion('3.2.0') then result:='3.2.0';
+  {$ENDIF}
+
+  {$IF DEFINED(CPUPOWERPC64) AND DEFINED(FPC_ABI_ELFV2)}
+  // we need at least 3.2.0 for ppc64le
+  if GetNumericalVersion(result)<GetNumericalVersion('3.2.0') then result:='3.2.0';
+  {$ENDIF}
 end;
 
 function TFPCInstaller.GetBootstrapCompilerVersionFromSource(aSourcePath: string; GetLowestRequirement:boolean=false): string;
@@ -1593,16 +1611,6 @@ var
   FinalVersion,RequiredVersion,RequiredVersion2:integer;
 begin
   result:='0.0.0';
-
-  {$IFDEF CPUAARCH64}
-  result:=FPCTRUNKVERSION;
-  exit;
-  {$ENDIF}
-
-  {$IF DEFINED(CPUPOWERPC64) AND DEFINED(FPC_ABI_ELFV2)}
-  result:=FPCTRUNKVERSION;
-  exit;
-  {$ENDIF}
 
   s:=IncludeTrailingPathDelimiter(aSourcePath) + 'Makefile.fpc';
 
@@ -1655,6 +1663,16 @@ begin
         end;
     end;
 
+    {$IFDEF CPUAARCH64}
+    // we need at least 3.2.0 for aarch64
+    if FinalVersion<GetNumericalVersion('3.2.0') then FinalVersion:=GetNumericalVersion('3.2.0');
+    {$ENDIF}
+
+    {$IF DEFINED(CPUPOWERPC64) AND DEFINED(FPC_ABI_ELFV2)}
+    // we need at least 3.2.0 for ppc64le
+    if FinalVersion<GetNumericalVersion('3.2.0') then FinalVersion:=GetNumericalVersion('3.2.0');
+    {$ENDIF}
+
     result:=InttoStr(FinalVersion DIV 10000);
     FinalVersion:=FinalVersion MOD 10000;
     result:=result+'.'+InttoStr(FinalVersion DIV 100);
@@ -1684,9 +1702,9 @@ begin
   if FileExists(FPCScript) then
   begin
     infoln(localinfotext+'fpc.sh launcher script already exists ('+FPCScript+'); trying to overwrite it.',etInfo);
-    if not(sysutils.DeleteFile(FPCScript)) then
+    if not(SysUtils.DeleteFile(FPCScript)) then
     begin
-      infoln(localinfotext+'Error deleting existing launcher script for FPC:'+FPCScript,eterror);
+      infoln(localinfotext+'Error deleting existing launcher script for FPC:'+FPCScript,etError);
       Exit(false);
     end;
   end;
@@ -2495,11 +2513,11 @@ begin
   end else infoln(infotext+'Available bootstrapper has correct version !',etInfo);
 
   {$IFDEF CPUAARCH64}
-  // we build with >=3.1.1 (trunk), while aarch64 is not available for FPC =< 3.1.1
+    // we build with >=3.2.0 , while aarch64 is not available for FPC < 3.2.0
   FBootstrapCompilerOverrideVersionCheck:=true;
   {$ENDIF CPUAARCH64}
   {$IF DEFINED(CPUPOWERPC64) AND DEFINED(FPC_ABI_ELFV2)}
-  // we build with >=3.1.1 (trunk), while ppc64le is not available for FPC =< 3.1.1
+    // we build with >=3.2.0 , while ppc64le is not available for FPC < 3.2.0
   FBootstrapCompilerOverrideVersionCheck:=true;
   {$ENDIF}
 
@@ -3002,10 +3020,16 @@ begin
         s:=GetSDKVersion('macosx');
         if Length(s)>0 then
         begin
-          ConfigText.Insert(x,'#IFNDEF FPC_CROSSCOMPILING'); Inc(x);
+          //ConfigText.Insert(x,'#IFNDEF FPC_CROSSCOMPILING'); Inc(x);
+          ConfigText.Insert(x,'#IFDEF DARWIN'); Inc(x);
           ConfigText.Insert(x,'# Add minimum required OSX version for native compiling'); Inc(x);
-          ConfigText.Insert(x,'# Prevents crti not found errors'); Inc(x);
-          ConfigText.Insert(x,'-WM'+s); Inc(x);
+          ConfigText.Insert(x,'# Prevents crti not found linking errors'); Inc(x);
+          if CompareVersionStrings(s,'10.8')>=0 then
+            ConfigText.Insert(x,'-WM10.8')
+          else
+            ConfigText.Insert(x,'-WM'+s);
+          Inc(x);
+          {
           if CompareVersionStrings(s,'10.14')>=0 then
           begin
             ConfigText.Insert(x,'# MacOS 10.14 Mojave and newer have libs and tools in new, yet non-standard directory'); Inc(x);
@@ -3023,6 +3047,7 @@ begin
             //ConfigText.Insert(x,'-FD/Library/Developer/CommandLineTools/usr/bin'); Inc(x);
             //ConfigText.Insert(x,'-XR/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk'); Inc(x);
           end;
+          }
           ConfigText.Insert(x,'#ENDIF'); Inc(x);
         end;
       {$ifndef FPCONLY}
@@ -3154,6 +3179,7 @@ begin
         Processor.Parameters.Add('OS_TARGET='+GetTargetOS);
       end;
       Processor.Parameters.Add('distclean');
+
       if (NOT CrossCompiling) then
       begin
         infoln(infotext+'Running make distclean twice',etInfo);

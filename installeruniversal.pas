@@ -516,6 +516,15 @@ begin
     PackageFiles.Free;
   end;
 
+  // find an OPM component, if any
+  // all other packages will be ignored
+  if (NOT FileExists(PackageAbsolutePath)) then
+  begin
+    PackageFiles:=FindAllFiles(IncludeTrailingPathDelimiter(LazarusPrimaryConfigPath)+'onlinepackagemanager'+DirectorySeparator+'packages', PackageName+'.lpk' , true);
+    if PackageFiles.Count>0 then PackageAbsolutePath:=PackageFiles.Strings[0];
+    PackageFiles.Free;
+  end;
+
   lpkversion.Name:='unknown';
   if FileExists(PackageAbsolutePath) then
   begin
@@ -1731,6 +1740,7 @@ begin
          else {.tar and all others}
             ResultCode:=ExecuteCommand(FTar+' -xf '+aFile +' -C '+ExcludeTrailingPathDelimiter(InstallDir),FVerbose);
          end;
+
       if ResultCode <> 0 then
       begin
         result := False;

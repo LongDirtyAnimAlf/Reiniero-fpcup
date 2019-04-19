@@ -32,7 +32,7 @@ uses
 
 const
   DEFAULTFPCVERSION     = '3.0.4';
-  DEFAULTLAZARUSVERSION = '1.8.4';
+  DEFAULTLAZARUSVERSION = '2.0.0';
 
   FPCTRUNKVERSION       = '3.3.1';
   FPCTRUNKBOOTVERSION   = '3.0.4';
@@ -65,6 +65,23 @@ const
   NASMWIN32URL='https://www.nasm.us/pub/nasm/releasebuilds/2.13/win32/nasm-2.13-win32.zip';
   NASMWIN64URL='https://www.nasm.us/pub/nasm/releasebuilds/2.13/win64/nasm-2.13-win64.zip';
   NASMFPCURL=BINUTILSURL + '/trunk/install/crossbinmsdos/nasm.exe';
+
+  {$ifdef win64}
+  OpenSSLSourceURL : array [0..3] of string = (
+    'https://indy.fulgan.com/SSL/openssl-1.0.2r-x64_86-win64.zip',
+    'http://wiki.overbyte.eu/arch/openssl-1.0.2r-win64.zip',
+    'http://www.magsys.co.uk/download/software/openssl-1.0.2o-win64.zip',
+    'https://indy.fulgan.com/SSL/Archive/openssl-1.0.2p-x64_86-win64.zip'
+    );
+  {$endif}
+  {$ifdef win32}
+  OpenSSLSourceURL : array [0..3] of string = (
+    'https://indy.fulgan.com/SSL/openssl-1.0.2r-i386-win32.zip',
+    'http://wiki.overbyte.eu/arch/openssl-1.0.2r-win32.zip',
+    'http://www.magsys.co.uk/download/software/openssl-1.0.2o-win32.zip',
+    'https://indy.fulgan.com/SSL/Archive/openssl-1.0.2p-i386-win32.zip'
+    );
+  {$endif}
 
   SnipMagicBegin='# begin fpcup do not remove '; //look for this/add this in fpc.cfg cross-compile snippet. Note: normally followed by FPC CPU-os code
   SnipMagicEnd='# end fpcup do not remove'; //denotes end of fpc.cfg cross-compile snippet
@@ -296,11 +313,11 @@ type
     function GetCompiler: string;
     // Returns CPU-OS in the format used by the FPC bin directory, e.g. x86_64-win64:
     function GetFPCTarget(Native: boolean): string;
-    // Get currently set path
-    function GetPath: string;
     procedure LogError(Sender: TProcessEx; IsException: boolean);
     // Sets the search/binary path to NewPath or adds NewPath before or after existing path:
     procedure SetPath(NewPath: string; Prepend: boolean; Append: boolean);
+    // Get currently set path
+    function GetPath: string;
     function GetFile(aURL,aFile:string; forceoverwrite:boolean=false; forcenative:boolean=false):boolean;
   public
     InfoText: string;
@@ -403,12 +420,15 @@ implementation
 
 uses
   FileUtil
-  {$ifndef Haiku}
+  {$IFNDEF HAIKU}
   //,ssl_openssl
   // for runtime init of openssl
   {$IFDEF MSWINDOWS}
   //,blcksock, ssl_openssl_lib
-  ,fpopenssl,openssl
+  ,openssl
+  {$IF FPC_FULLVERSION > 30300}
+  ,opensslsockets
+  {$ENDIF}
   {$ENDIF}
   {$ENDIF}
   ;
@@ -594,8 +614,17 @@ begin
           DestroySSLInterface; // disable ssl and release libs
         end;
     end;
-      if (NOT IsSSLloaded) then InitSSLInterface;
+      if (NOT IsSSLloaded) then
+      begin
+        InitSSLInterface;
+      end;
     end;
+
+    if (NOT IsSSLloaded) then
+      infoln(localinfotext+'Could not init SSL interface.',etWarning)
+    else
+      infoln(localinfotext+'Init SSL interface success.',etInfo);
+
 
     FWget:=Which('wget');
     if Not FileExists(FWget) then FWget := IncludeTrailingPathDelimiter(FMakeDir) + 'wget\wget.exe';
@@ -739,7 +768,9 @@ begin
     begin
       //Source:
         //https://github.com/git-for-windows
-
+        //install GIT only on Windows Vista and higher
+        if CheckWin32Version(6,0) then
+        begin
         ForceDirectories(IncludeTrailingPathDelimiter(FMakeDir)+'git');
       {$ifdef win32}
       //Output:='git32.7z';
@@ -781,6 +812,7 @@ begin
           end;
         end;
         if OperationSucceeded then RepoExecutable:=aLocalClientBinary else RepoExecutable:=RepoExecutableName+'.exe';
+      end;
       end;
       if RepoExecutable <> EmptyStr then
       begin
@@ -947,21 +979,6 @@ begin
     begin
       OperationSucceeded := CheckExecutable(Make, '-v', '');
       if (NOT OperationSucceeded) then infoln(localinfotext+Make+' not found.',etDebug);
-
-      // expand make path ... not needed
-      //if OperationSucceeded then FMake:=FindDefaultExecutablePath(Make);
-      {
-      try
-        ExecuteCommand(Make + ' -v', Output, true);
-        if Ansipos('GNU Make', Output) = 0 then
-        begin
-          infoln(localinfotext+'Found make executable, but it is not GNU Make.',etError);
-          OperationSucceeded := false;
-        end else OperationSucceeded := true;
-      except
-        // ignore errors, this is only an extra check
-      end;
-      }
     end;
     {$ENDIF}
 
@@ -977,9 +994,9 @@ var
   i: integer;
   {$ENDIF MSWINDOWS}
   OperationSucceeded: boolean;
-  Output: string;
+  s1,s2: string;
 begin
-  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (DownloadBinUtils): ';
+  s2:=Copy(Self.ClassName,2,MaxInt)+' (DownloadBinUtils): ';
 
   OperationSucceeded := true;
 
@@ -991,7 +1008,7 @@ begin
     AllThere:=true;
     if DirectoryExists(FMakeDir) = false then
     begin
-      infoln(localinfotext+'Make path ' + FMakeDir + ' does not exist. Going to download binutils.',etInfo);
+      infoln(s2+'Make path ' + FMakeDir + ' does not exist. Going to download binutils.',etInfo);
       AllThere:=false;
     end
     else
@@ -1001,7 +1018,7 @@ begin
       begin
         if FUtilFiles[i].Category=ucBinutil then
         begin
-          if not(FileExists(IncludeTrailingPathDelimiter(FMakeDir)+FUtilFiles[i].FileName)) then
+          if (NOT FileExists(IncludeTrailingPathDelimiter(FMakeDir)+FUtilFiles[i].FileName)) then
           begin
             AllThere:=false;
             break;
@@ -1011,8 +1028,8 @@ begin
     end;
     if not(AllThere) then
     begin
-      infoln(localinfotext+'Make path [' + FMakeDir + '] does not have (all) binutils. Going to download needed binutils.',etInfo);
-      //infoln(localinfotext+'Some binutils missing: going to get them.',etInfo);
+      infoln(s2+'Make path [' + FMakeDir + '] does not have (all) binutils. Going to download needed binutils.',etInfo);
+      //infoln(s2+'Some binutils missing: going to get them.',etInfo);
       OperationSucceeded := DownloadBinUtils;
     end;
   end;
@@ -1023,18 +1040,28 @@ begin
 
     {$IFDEF MSWINDOWS}
     // check if we have make ... otherwise get it from standard URL
-    GetFile(BINUTILSURL+'/tags/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll])+
-            '/install/binw'+{$ifdef win64}'64'{$else}'32'{$endif}+'/'+ExtractFileName(Make),Make);
+    if (NOT FileExists(Make)) then
+    begin
+      s1:=BINUTILSURL+'/tags/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll])+'/install/binw'+{$ifdef win64}'64'{$else}'32'{$endif}+'/'+ExtractFileName(Make);
+      infoln(s2+'Make binary not found. Getting it from: '+s1+'.',etInfo);
+      GetFile(s1,Make);
+      OperationSucceeded:=FileExists(Make);
+    end;
     {$ENDIF MSWINDOWS}
 
     // Check for proper make executable
+    if OperationSucceeded then
     try
-      ExecuteCommand(Make + ' -v', Output, False);
-      if Ansipos('GNU Make', Output) = 0 then
+      ExecuteCommand(Make + ' -v', s1, False);
+      if AnsiPos('GNU Make', s1) = 0 then
       begin
-        ExecuteCommand(Make + ' -v', Output, True);
-        infoln(localinfotext+'Found make executable, but it is not GNU Make.',etError);
+        ExecuteCommand(Make + ' -v', s1, True);
+        infoln(s2+'Found make binary here: '+Make+'. But it is not GNU Make.',etError);
         OperationSucceeded := false;
+      end
+      else
+      begin
+        infoln(s2+'Found GNU make binary here: '+Make+'.',etInfo);
       end;
     except
       // ignore errors, this is only an extra check
@@ -1072,7 +1099,6 @@ var
   aSourceURL64:string;
   {$endif}
   aTag:string;
-  aMajor,aMinor,aBuild : Integer;
 begin
 
 
@@ -1083,9 +1109,8 @@ begin
   // default
   if aVersion='' then aVersion:=DEFAULTFPCVERSION;
 
-  GetWin32Version(aMajor,aMinor,aBuild);
-  // if Win7 or higher: use modern (2.4.0 and higher) binutils
-  if aMajor>5 then
+  // if Win Vista or higher: use modern (2.4.0 and higher) binutils
+  if CheckWin32Version(6,0) then
   begin
     if (GetNumericalVersion(aVersion)<CalculateFullVersion(2,4,0)) then
        aVersion:='2.4.0';
@@ -1710,23 +1735,6 @@ begin
 end;
 
 function TInstaller.DownloadOpenSSL: boolean;
-const
-  {$ifdef win64}
-  NewSourceURL : array [0..3] of string = (
-    'https://indy.fulgan.com/SSL/openssl-1.0.2q-x64_86-win64.zip',
-    'http://wiki.overbyte.eu/arch/openssl-1.0.2q-win64.zip',
-    'http://www.magsys.co.uk/download/software/openssl-1.0.2o-win64.zip',
-    'https://indy.fulgan.com/SSL/Archive/openssl-1.0.2p-x64_86-win64.zip'
-    );
-  {$endif}
-  {$ifdef win32}
-  NewSourceURL : array [0..3] of string = (
-    'https://indy.fulgan.com/SSL/openssl-1.0.2q-i386-win32.zip',
-    'http://wiki.overbyte.eu/arch/openssl-1.0.2q-win32.zip',
-    'http://www.magsys.co.uk/download/software/openssl-1.0.2o-win32.zip',
-    'https://indy.fulgan.com/SSL/Archive/openssl-1.0.2p-i386-win32.zip'
-    );
-  {$endif}
 var
   OperationSucceeded: boolean;
   ResultCode: longint;
@@ -1741,9 +1749,9 @@ begin
 
   OpenSSLZip := GetTempFileNameExt('','FPCUPTMP','zip');
 
-  for i:=0 to (Length(NewSourceURL)-1) do
+  for i:=0 to (Length(OpenSSLSourceURL)-1) do
   try
-    aSourceURL:=NewSourceURL[i];
+    aSourceURL:=OpenSSLSourceURL[i];
     //always get this file with the native downloader !!
     OperationSucceeded:=GetFile(aSourceURL,OpenSSLZip,true,true);
     if (NOT OperationSucceeded) then
@@ -1764,6 +1772,30 @@ begin
       writelnlog(etError, localinfotext + 'Exception ' + E.ClassName + '/' + E.Message + ' downloading OpenSSL library', true);
       end;
     end;
+
+  if (NOT OperationSucceeded) then
+  begin
+    infoln(localinfotext+'Could not download/install openssl library the normal way', etInfo);
+    infoln(localinfotext+'Now going to use BitsAdmin (may be slow)', etInfo);
+
+    for i:=0 to (Length(OpenSSLSourceURL)-1) do
+    try
+      aSourceURL:=OpenSSLSourceURL[i];
+      SysUtils.DeleteFile(OpenSSLZip);
+      OperationSucceeded:=DownloadByBitsAdmin(aSourceURL,OpenSSLZip);
+      if (NOT OperationSucceeded) then
+        SysUtils.DeleteFile(OpenSSLZip)
+      else
+        break;
+
+    except
+      on E: Exception do
+      begin
+        OperationSucceeded := false;
+        writelnlog(etError, localinfotext + 'Exception ' + E.ClassName + '/' + E.Message + ' downloading OpenSSL library by BitsAdmin', true);
+      end;
+    end;
+  end;
 
   if OperationSucceeded then
   begin
@@ -2319,6 +2351,7 @@ begin
   infotext:=Copy(Self.ClassName,2,MaxInt)+' (CleanModule: '+ModuleName+'): ';
   infoln(infotext+'Entering ...',etDebug);
 end;
+
 function TInstaller.ConfigModule(ModuleName: string): boolean;
 begin
   result:=false;

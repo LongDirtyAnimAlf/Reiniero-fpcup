@@ -995,7 +995,7 @@ end;
 function TLazarusInstaller.GetLazarusReleaseCandidateFromSource(aSourceDirectory:string):integer;
 const
   VERSIONMAGIC='LazarusVersionStr';
-  VERSIONMAGIC2='laz_patch';
+  //VERSIONMAGIC2='laz_patch';
 var
   s,aFileName:string;
   TxtFile:Text;
@@ -1064,6 +1064,7 @@ begin
     end;
   end;
 
+  {
   if result=-1 then
   begin
     aFileName:=IncludeTrailingPathDelimiter(aSourceDirectory) + 'components' + DirectorySeparator + 'lazutils' + DirectorySeparator  + 'lazversion.pas';
@@ -1096,6 +1097,7 @@ begin
       CloseFile(TxtFile);
     end;
   end;
+  }
 
 end;
 
@@ -1483,6 +1485,11 @@ var
   {$endif}
   oldlog: TErrorMethod;
   CleanCommand,CleanDirectory:string;
+  {
+  DeleteList: TStringList;
+  CrossCompiling: boolean;
+  CPUOS_Signature:string;
+  }
 begin
   Result := inherited;
 
@@ -1646,6 +1653,25 @@ begin
     end;
   end;
   {$endif MSWINDOWS}
+
+  {
+  // finally ... if something is still still still floating around ... delete it !!
+  CrossCompiling:=(Self is TLazarusCrossInstaller);
+  if CrossCompiling then
+    CPUOS_Signature:=GetFPCTarget(false)
+  else
+    CPUOS_Signature:=GetFPCTarget(true);
+  DeleteList := TStringList.Create;
+  try
+    DeleteList.Add('.ppu');
+    DeleteList.Add('.a');
+    DeleteList.Add('.o');
+    DeleteList.Add('.compiled');
+    DeleteFilesExtensionsSubdirs(FSourceDirectory,DeleteList,CPUOS_Signature);
+  finally
+    DeleteList.Free;
+  end;
+  }
 end;
 
 function TLazarusInstaller.GetModule(ModuleName: string): boolean;
@@ -1899,7 +1925,17 @@ begin
       UpdateWarnings:=TStringList.Create;
       try
         UpdateWarnings.LoadFromFile(VersionSnippet);
-        aIndex:=UpdateWarnings.IndexOf(DARWINHACKMAGIC);
+        aIndex:=UpdateWarnings.IndexOf(#9+DARWINHACKMAGIC);
+        if aIndex=-1 then
+        begin
+          // be very secure and sure about hacking the makefile: check extensively !!
+          aIndex:=(UpdateWarnings.Count-1);
+          while (aIndex>=0) do
+          begin
+            if Pos(DARWINHACKMAGIC,UpdateWarnings.Strings[aIndex])>0 then break;
+            Dec(aIndex);
+          end;
+        end;
         if aIndex=-1 then
         begin
           aIndex:=UpdateWarnings.IndexOf(DARWINCHECKMAGIC);

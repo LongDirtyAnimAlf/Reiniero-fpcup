@@ -440,7 +440,7 @@ begin
   begin
     {$IFDEF MSWINDOWS}
     // Somewhere in local appdata special folder
-    FLazarusPrimaryConfigPath:=ExcludeTrailingPathDelimiter(GetLocalAppDataPath())+DefaultPCPSubdir;
+    FLazarusPrimaryConfigPath:=IncludeTrailingPathDelimiter(GetWindowsAppDataFolder)+DefaultPCPSubdir;
     {$ELSE}
     // Note: normal GetAppConfigDir gets ~/.config/fpcup/.lazarusdev or something
     // XdgConfigHome normally resolves to something like ~/.config
@@ -1338,6 +1338,7 @@ begin
     FInstaller.InstallDirectory:=FParent.LazarusDirectory ;
 
     FInstaller.CompilerOptions:=FParent.LazarusOPT;
+
     FInstaller.DesiredRevision:=FParent.LazarusDesiredRevision;
     FInstaller.DesiredBranch:=FParent.LazarusDesiredBranch;
     // CrossLCL_Platform is only used when building LCL, but the Lazarus module
