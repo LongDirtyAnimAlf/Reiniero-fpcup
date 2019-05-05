@@ -1,7 +1,6 @@
-unit m_any_to_freebsdx64;
-
-{ Cross compiles from e.g. Linux 64 bit (or any other OS with relevant binutils/libs) to FreeBSD x86_64
-Copyright (C) 2014 Reinier Olislagers
+unit m_any_to_solarissparc;
+{ Cross compiles from any platform (with supported crossbin utils0 to Solaris sparc
+Copyright (C) 2013 Reinier Olislagers
 
 This library is free software; you can redistribute it and/or modify it
 under the terms of the GNU Library General Public License as published by
@@ -34,31 +33,36 @@ Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 interface
 
 uses
-  Classes, SysUtils, m_crossinstaller, fileutil;
+  Classes, SysUtils,
+  {$IFDEF UNIX}
+  baseunix,
+  {$ENDIF}
+  m_crossinstaller,fileutil,fpcuputil;
 
 implementation
 
+const
+  ARCH='sparc';
+  OS='solaris';
+
 type
 
-{ Tany_freebsdx64 }
-Tany_freebsdx64 = class(TCrossInstaller)
+{ TAny_SolarisSparc }
+TAny_SolarisSparc = class(TCrossInstaller)
 private
   FAlreadyWarned: boolean; //did we warn user about errors and fixes already?
 public
   function GetLibs(Basepath:string):boolean;override;
-  {$ifndef FPCONLY}
-  function GetLibsLCL(LCL_Platform:string; Basepath:string):boolean;override;
-  {$endif}
   function GetBinUtils(Basepath:string):boolean;override;
   constructor Create;
   destructor Destroy; override;
 end;
 
-{ Tany_freebsdx64 }
+{ TAny_SolarisSparc }
 
-function Tany_freebsdx64.GetLibs(Basepath:string): boolean;
+function TAny_SolarisSparc.GetLibs(Basepath:string): boolean;
 const
-  DirName='x86_64-freebsd';
+  DirName=ARCH+'-'+OS;
 begin
   result:=FLibsFound;
   if result then exit;
@@ -66,76 +70,58 @@ begin
   // begin simple: check presence of library file in basedir
   result:=SearchLibrary(Basepath,LIBCNAME);
 
-  // first search local paths based on libbraries provided for or adviced by fpc itself
+  // search local paths based on libbraries provided for or adviced by fpc itself
   if not result then
     result:=SimpleSearchLibrary(BasePath,DirName,LIBCNAME);
 
-  if not result then
-  begin
-    {$IFDEF UNIX}
-    FLibsPath:='/usr/lib/x86_64-freebsd-gnu'; //debian Jessie+ convention
-    result:=DirectoryExists(FLibsPath);
-    if not result then
-    ShowInfo('Searched but not found libspath '+FLibsPath);
-    {$ENDIF}
-  end;
-
-  SearchLibraryInfo(result);
   if result then
   begin
-    FLibsFound:=True;
-    //todo: check if -XR is needed for fpc root dir Prepend <x> to all linker search paths
-    FFPCCFGSnippet:=FFPCCFGSnippet+LineEnding+
-    '-Fl'+IncludeTrailingPathDelimiter(FLibsPath)+LineEnding+ {buildfaq 1.6.4/3.3.1: the directory to look for the target  libraries}
-    '-Xr/usr/lib';//+LineEnding+ {buildfaq 3.3.1: makes the linker create the binary so that it searches in the specified directory on the target system for libraries}
-    //'-FL/usr/lib/ld-linux.so.2' {buildfaq 3.3.1: the name of the dynamic linker on the target};
+    FLibsFound:=true;
+    AddFPCCFGSnippet('-Xd'); {buildfaq 3.4.1 do not pass parent /lib etc dir to linker}
+    AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath)); {buildfaq 1.6.4/3.3.1: the directory to look for the target  libraries}
+    // http://wiki.freepascal.org/FPC_AIX_Port#Cross-compiling
+    AddFPCCFGSnippet('-XR'+ExcludeTrailingPathDelimiter(FLibsPath)); {buildfaq 1.6.4/3.3.1: the directory to look for the target  libraries}
+    AddFPCCFGSnippet('-Xr/usr/lib'); {buildfaq 3.3.1: makes the linker create the binary so that it searches in the specified directory on the target system for libraries}
+    SearchLibraryInfo(result);
+  end
+  else
+  begin
+    //libs path is optional; it can be empty
+    ShowInfo('Libspath ignored; it is optional for this cross compiler.');
+    FLibsPath:='';
+    FLibsFound:=true;
+    result:=true;
   end;
 end;
 
-{$ifndef FPCONLY}
-function Tany_freebsdx64.GetLibsLCL(LCL_Platform: string; Basepath: string): boolean;
-begin
-  // todo: get gtk at least
-  result:=inherited;
-end;
-{$endif}
-
-function Tany_freebsdx64.GetBinUtils(Basepath:string): boolean;
+function TAny_SolarisSparc.GetBinUtils(Basepath:string): boolean;
 const
-  DirName='x86_64-freebsd';
+  DirName=ARCH+'-'+OS;
 var
   AsFile: string;
   BinPrefixTry: string;
-  i:integer;
 begin
   result:=inherited;
   if result then exit;
 
+  // Start with any names user may have given
   AsFile:=FBinUtilsPrefix+'as'+GetExeExt;
 
   result:=SearchBinUtil(BasePath,AsFile);
   if not result then
     result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
 
+  // Also allow for crossfpc naming
   if not result then
   begin
-    // look for versioned binutils
-    BinPrefixTry:='x86_64-freebsd';
-    for i:=12 downto 7 do
-    begin
-      AsFile:=BinPrefixTry+InttoStr(i)+'-'+'as'+GetExeExt;
-      result:=SearchBinUtil(BasePath,AsFile);
-      if not result then
-        result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
-      if result then
-      begin
-        FBinUtilsPrefix:=BinPrefixTry+InttoStr(i)+'-';
-        break;
-      end;
-    end;
+    BinPrefixTry:=ARCH+'-'+OS+'-';
+    AsFile:=BinPrefixTry+'as'+GetExeExt;
+    result:=SearchBinUtil(BasePath,AsFile);
+    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+    if result then FBinUtilsPrefix:=BinPrefixTry;
   end;
 
-  // Also allow for (cross)binutils without prefix
+  // Also allow for crossbinutils without prefix
   if not result then
   begin
     BinPrefixTry:='';
@@ -147,42 +133,46 @@ begin
 
   SearchBinUtilsInfo(result);
 
-  if result then
+  if not result then
+  begin
+    ShowInfo('Suggestion for cross binutils: please check http://wiki.lazarus.freepascal.org/Solaris_Port.',etInfo);
+    FAlreadyWarned:=true;
+  end
+  else
   begin
     FBinsFound:=true;
     // Configuration snippet for FPC
-    FFPCCFGSnippet:=FFPCCFGSnippet+LineEnding+
-    '-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath)+LineEnding+ {search this directory for compiler utilities}
-    '-XP'+FBinUtilsPrefix+LineEnding {Prepend the binutils names};
+    AddFPCCFGSnippet('-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath)); {search this directory for compiler utilities}
+    AddFPCCFGSnippet('-XP'+FBinUtilsPrefix); {Prepend the binutils names}
   end;
 end;
 
-constructor Tany_freebsdx64.Create;
+constructor TAny_SolarisSparc.Create;
 begin
   inherited Create;
-  FBinUtilsPrefix:='x86_64-freebsd-';
+  FTargetCPU:=ARCH;
+  FTargetOS:=OS;
+  // This prefix is HARDCODED into the compiler so should match (or be empty, actually)
+  FBinUtilsPrefix:=ARCH+'-'+OS+'-';
   FBinUtilsPath:='';
   FFPCCFGSnippet:='';
   FLibsPath:='';
-  FTargetCPU:='x86_64';
-  FTargetOS:='freebsd';
   FAlreadyWarned:=false;
   ShowInfo;
 end;
 
-destructor Tany_freebsdx64.Destroy;
+destructor TAny_SolarisSparc.Destroy;
 begin
   inherited Destroy;
 end;
 
 var
-  any_freebsdx64:Tany_freebsdx64;
+  Any_SolarisSparc:TAny_SolarisSparc;
 
 initialization
-  any_freebsdx64:=Tany_freebsdx64.Create;
-  RegisterExtension(any_freebsdx64.TargetCPU+'-'+any_freebsdx64.TargetOS,any_freebsdx64);
+  Any_SolarisSparc:=TAny_SolarisSparc.Create;
+  RegisterExtension(Any_SolarisSparc.TargetCPU+'-'+Any_SolarisSparc.TargetOS,Any_SolarisSparc);
 finalization
-  any_freebsdx64.Destroy;
-
+  Any_SolarisSparc.Destroy;
 end.
 

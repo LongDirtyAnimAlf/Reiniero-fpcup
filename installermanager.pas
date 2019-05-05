@@ -199,6 +199,7 @@ type
     FFPCURL: string;
     FIncludeModules: string;
     FKeepLocalDiffs: boolean;
+    FUseSystemFPC: boolean;
     {$ifndef FPCONLY}
     FLazarusDesiredRevision: string;
     FLazarusDesiredBranch: string;
@@ -300,6 +301,7 @@ type
     property HTTPProxyPort: integer read FHTTPProxyPort write FHTTPProxyPort;
     property HTTPProxyUser: string read FHTTPProxyUser write FHTTPProxyUser;
     property KeepLocalChanges: boolean read FKeepLocalDiffs write FKeepLocalDiffs;
+    property UseSystemFPC:boolean read FUseSystemFPC write FUseSystemFPC;
    {$ifndef FPCONLY}
     property LazarusDirectory: string read FLazarusDirectory write SetLazarusDirectory;
     property LazarusPrimaryConfigPath: string read GetLazarusPrimaryConfigPath write FLazarusPrimaryConfigPath ;
@@ -1257,6 +1259,7 @@ end;
 function TSequencer.GetInstaller(ModuleName: string): boolean;
 var
   CrossCompiling:boolean;
+  aCompiler:string;
 begin
   result:=true;
   CrossCompiling:=(FParent.CrossCPU_Target<>'') or (FParent.CrossOS_Target<>'');
@@ -1309,6 +1312,8 @@ begin
     or (ModuleName=_STARTLAZARUS)
     or (ModuleName=_LAZBUILD)
     or (ModuleName=_LCL)
+    or (ModuleName=_COMPONENTS)
+    or (ModuleName=_PACKAGER)
     or (ModuleName=_LCLCROSS)
     or (ModuleName=_IDE)
     or (ModuleName=_BIGIDE)
@@ -1438,13 +1443,18 @@ begin
   FInstaller.PatchCmd:=FParent.PatchCmd;
   FInstaller.Verbose:=FParent.Verbose;
 
+    aCompiler:='';
     if FInstaller.InheritsFrom(TFPCInstaller) then
     begin
       // override bootstrapper only for FPC if needed
-      if FParent.CompilerOverride<>''
-         then FInstaller.Compiler:=FParent.CompilerOverride
-         else FInstaller.Compiler:=''; // always use bootstrapper
-    end else FInstaller.Compiler:=FInstaller.GetCompilerInDir(FParent.FPCInstallDirectory); // use FPC compiler itself
+      if FParent.CompilerOverride<>'' then aCompiler:=FParent.CompilerOverride;
+    end
+    else
+    begin
+      if FParent.UseSystemFPC then aCompiler:=Which('fpc');
+      if (NOT FParent.UseSystemFPC) OR (Length(aCompiler)=0) then aCompiler:=FInstaller.GetCompilerInDir(FParent.FPCInstallDirectory); // use FPC compiler itself
+    end;
+    FInstaller.Compiler:=aCompiler;
 
     // only curl / wget works on OpenBSD (yet)
     {$IFDEF OPENBSD}

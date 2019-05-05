@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CONFIG>
   <ProjectOptions>
-    <Version Value="11"/>
+    <Version Value="12"/>
     <PathDelim Value="\"/>
     <General>
       <Flags>
         <SaveOnlyProjectUnits Value="True"/>
         <MainUnitHasCreateFormStatements Value="False"/>
         <MainUnitHasTitleStatement Value="False"/>
+        <CompatibilityMode Value="True"/>
       </Flags>
       <SessionStorage Value="InProjectDir"/>
-      <MainUnit Value="0"/>
       <Title Value="fpclazup"/>
       <UseAppBundle Value="False"/>
       <ResourceType Value="res"/>
@@ -43,9 +43,9 @@
             <OtherUnitFiles Value="synaser"/>
             <UnitOutputDirectory Value="libfpclazup\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
-          <Conditionals Value="if TargetOS = 'darwin' then begin
-  UsageCustomOptions += ' -k-macosx_version_min -k10.6';
-  UsageCustomOptions += ' -XR/Developer/SDKs/MacOSX10.6.sdk/';
+          <Conditionals Value="if TargetOS = &apos;darwin&apos; then begin
+  UsageCustomOptions += &apos; -k-macosx_version_min -k10.6&apos;;
+  UsageCustomOptions += &apos; -XR/Developer/SDKs/MacOSX10.6.sdk/&apos;;
 end;"/>
           <Parsing>
             <SyntaxOptions>
@@ -392,8 +392,6 @@ end;"/>
     </BuildModes>
     <PublishOptions>
       <Version Value="2"/>
-      <IncludeFileFilter Value="*.(pas|pp|inc|lfm|lpr|lrs|lpi|lpk|sh|xml)"/>
-      <ExcludeFileFilter Value="*.(bak|ppu|o|so);*~;backup"/>
     </PublishOptions>
     <RunParams>
       <local>
@@ -625,9 +623,9 @@ end;"/>
       <OtherUnitFiles Value="synaser"/>
       <UnitOutputDirectory Value="libfpclazup\$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
-    <Conditionals Value="if TargetOS = 'darwin' then begin
-  UsageCustomOptions += ' -k-macosx_version_min -k10.6';
-  UsageCustomOptions += ' -XR/Developer/SDKs/MacOSX10.6.sdk/';
+    <Conditionals Value="if TargetOS = &apos;darwin&apos; then begin
+  UsageCustomOptions += &apos; -k-macosx_version_min -k10.6&apos;;
+  UsageCustomOptions += &apos; -XR/Developer/SDKs/MacOSX10.6.sdk/&apos;;
 end;"/>
     <CodeGeneration>
       <SmartLinkUnit Value="True"/>

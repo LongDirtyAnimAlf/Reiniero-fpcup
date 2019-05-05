@@ -46,9 +46,9 @@ begin
   end;
 end;
 {$ELSEIF defined(solaris)}
-//untested
+//not implemented
   begin
-    t = sysconf(_SC_NPROC_ONLN);
+  Result:=1;
   end;
 {$ELSEIF defined(freebsd) or defined(darwin)}
 var

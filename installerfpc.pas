@@ -55,6 +55,7 @@ Const
 
 //standard uninstall
     _DECLARE+_FPC+_UNINSTALL+_SEP+
+    //_CLEANMODULE+_FPC+_SEP+
     _UNINSTALLMODULE+_FPC+_SEP+
     _END+
 
@@ -95,6 +96,11 @@ Const
     _DECLARE+_FPCCLEANBUILDONLY+_SEP+
     _CLEANMODULE+_FPC+_SEP+
     _BUILDMODULE+_FPC+_SEP+
+    _END+
+
+    _DECLARE+_FPCREMOVEONLY+_SEP+
+    _CLEANMODULE+_FPC+_SEP+
+    _UNINSTALLMODULE+_FPC+_SEP+
 
     _ENDFINAL;
 
@@ -185,6 +191,7 @@ type
     // Build module descendant customisation
     function BuildModuleCustom(ModuleName:string): boolean; override;
   public
+    function UnInstallModule(ModuleName:string): boolean; override;
     constructor Create;
     destructor Destroy; override;
     procedure SetTarget(aCPU,aOS,aSubArch:string);override;
@@ -268,6 +275,8 @@ begin
           exit;
       end;
 
+      if (SnippetText.Count>1) then
+      begin
         // found end of OS and CPU snippet ; now check detailed CPU setting
         for i:=SnipBegin to SnipEnd do
       begin
@@ -283,6 +292,7 @@ begin
             break;
           end;
         end;
+      end else result:=true;
     end;
 
     if result then
@@ -298,6 +308,9 @@ begin
       if ConfigText[ConfigText.Count-1]<>'' then ConfigText.Add('');
       SnipBegin:=ConfigText.Count;
     end;
+
+    if (SnippetText.Count>1) then
+    begin
     for i:=0 to (SnippetText.Count-1) do
     begin
       ConfigText.Insert(SnipBegin,SnippetText.Strings[i]);
@@ -317,6 +330,7 @@ begin
       end;
     end;
     {$endif}
+    end;
 
     ConfigText.SaveToFile(FPCCFG);
     result:=true;
@@ -1148,6 +1162,80 @@ begin
 
 end;
 
+function TFPCCrossInstaller.UnInstallModule(ModuleName: string): boolean;
+var
+  BinsAvailable,LibsAvailable:boolean;
+  aDir,FPCCfg :string;
+begin
+  result:=true; //succeed by default
+
+  FErrorLog.Clear;
+
+  if assigned(CrossInstaller) then
+  begin
+    CrossInstaller.Reset;
+
+    // get/set cross binary utils !!
+    BinsAvailable:=false;
+    CrossInstaller.SearchModeUsed:=smFPCUPOnly; // default;
+    if Length(CrossToolsDirectory)>0 then
+    begin
+      // we have a crosstools setting
+      if (CrossToolsDirectory='FPCUP_AUTO')
+         then CrossInstaller.SearchModeUsed:=smAuto
+         else CrossInstaller.SearchModeUsed:=smManual;
+    end;
+    if CrossInstaller.SearchModeUsed=smManual
+       then BinsAvailable:=CrossInstaller.GetBinUtils(CrossToolsDirectory)
+       else BinsAvailable:=CrossInstaller.GetBinUtils(FBaseDirectory);
+    if BinsAvailable then
+    begin
+      aDir:=CrossInstaller.BinUtilsPath;
+      if DeleteDirectoryEx(aDir)=false then
+      begin
+        WritelnLog(infotext+'Error deleting '+ModuleName+' directory '+aDir);
+      end;
+    end;
+
+    // get/set cross libraries !!
+    LibsAvailable:=false;
+    CrossInstaller.SearchModeUsed:=smFPCUPOnly;
+    if Length(CrossLibraryDirectory)>0 then
+    begin
+      // we have a crosslibrary setting
+      if (CrossLibraryDirectory='FPCUP_AUTO')
+         then CrossInstaller.SearchModeUsed:=smAuto
+         else CrossInstaller.SearchModeUsed:=smManual;
+    end;
+    if CrossInstaller.SearchModeUsed=smManual
+      then LibsAvailable:=CrossInstaller.GetLibs(CrossLibraryDirectory)
+      else LibsAvailable:=CrossInstaller.GetLibs(FBaseDirectory);
+    if LibsAvailable then
+    begin
+      aDir:=CrossInstaller.LibsPath;
+      if DeleteDirectoryEx(aDir)=false then
+      begin
+        WritelnLog(infotext+'Error deleting '+ModuleName+' directory '+aDir);
+      end;
+    end;
+
+    FPCCfg := IncludeTrailingPathDelimiter(FBinPath) + 'fpc.cfg';
+    InsertFPCCFGSnippet(FPCCfg,SnipMagicBegin+CrossCPU_target+'-'+CrossOS_Target);
+
+    aDir:=IncludeTrailingPathDelimiter(FInstallDirectory)+'bin'+DirectorySeparator+GetFPCTarget(false);
+    if DeleteDirectoryEx(aDir)=false then
+    begin
+      WritelnLog(infotext+'Error deleting '+ModuleName+' directory '+aDir);
+    end;
+    aDir:=IncludeTrailingPathDelimiter(FInstallDirectory)+'units'+DirectorySeparator+GetFPCTarget(false);
+    if DeleteDirectoryEx(aDir)=false then
+    begin
+      WritelnLog(infotext+'Error deleting '+ModuleName+' directory '+aDir);
+    end;
+
+  end;
+end;
+
 { TFPCNativeInstaller }
 
 function TFPCNativeInstaller.BuildModuleCustom(ModuleName: string): boolean;
@@ -1217,6 +1305,9 @@ begin
 
   {$IFDEF UNIX}
   s1:='-Sg '+s1;
+    {$IFDEF SOLARIS}
+    s1:='-Xn '+s1;
+    {$ENDIF}
   {$ENDIF}
 
   {$IFDEF DARWIN}
@@ -2116,8 +2207,10 @@ begin
           end;
           {$ENDIF}
 
+            end;
+
           // look for a previous compiler if not found, and use overrideversioncheck
-          if NOT aCompilerFound then
+            if (NOT aCompilerFound) then
           begin
             FBootstrapCompilerOverrideVersionCheck:=true;
             s:=GetBootstrapCompilerVersionFromVersion(aLocalBootstrapVersion);
@@ -2125,7 +2218,7 @@ begin
                then aLocalBootstrapVersion:=s
                else break;
           end;
-          end;
+
         end; // while
 
       finally
@@ -3014,6 +3107,9 @@ begin
       {$endif}
       s:=s+';'+GetGCCDirectory;
       ConfigText.Insert(x,s); Inc(x);
+        {$IFDEF SOLARIS}
+        ConfigText.Insert(x,'-Xn'); Inc(x);
+        {$ENDIF}
       {$ENDIF UNIX}
 
         {$ifdef Darwin}
@@ -3069,6 +3165,7 @@ begin
       ConfigText.Insert(x,SnipMagicEnd); Inc(x);
         // add empty line
       ConfigText.Insert(x,'');
+
       ConfigText.SaveToFile(FPCCfg);
     finally
       ConfigText.Free;

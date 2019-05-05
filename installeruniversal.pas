@@ -809,16 +809,6 @@ begin
       if LowerCase(ModuleName)='suggestedpackages' then
       begin
 
-    {$ifdef OpenBSD}
-    // the packages lazdatadict and lazdbexport are not suitable for OpenBSD: their FPC units are not included !
-    // so skip them in case they are included.
-    if (Pos('lazdatadict',PackagePath)>0) OR (Pos('lazdbexport',PackagePath)>0) then
-    begin
-          infoln(localinfotext+'Incompatible package '+ExtractFileName(PackagePath)+' skipped.',etInfo);
-      continue;
-    end;
-    {$endif}
-
     {$ifdef Darwin}
     {$ifdef CPUX64}
 
@@ -832,6 +822,27 @@ begin
     end;
 
         {$endif CPUX64}
+        {$else}
+        {$ifdef BSD}
+        // these packages are not suitable for OpenBSD: their FPC units are not included by default !
+        // so skip them in case they are included.
+        if (
+            (Pos('sqldblaz',PackagePath)>0)
+            OR
+            (Pos('dbflaz',PackagePath)>0)
+            OR
+            (Pos('leakview',PackagePath)>0)
+            OR
+            (Pos('lazdatadict',PackagePath)>0)
+            OR
+            (Pos('lazdbexport',PackagePath)>0)
+           ) then
+        begin
+          infoln(localinfotext+'Incompatible package '+ExtractFileName(PackagePath)+' skipped.',etInfo);
+          continue;
+        end;
+        {$endif}
+
         {$endif Darwin}
 
     {$if (NOT defined(CPUI386)) AND (NOT defined(CPUX86_64)) AND (NOT defined(CPUARM))}
@@ -1362,7 +1373,6 @@ begin
           AddToLazXML('helpoptions');
           AddToLazXML('miscellaneousoptions'); //e.g. list of packages to be installed on recompile
           AddToLazXML('packagefiles'); //e.g. list of available packages
-
           // Process special directives
           Directive:=GetValueFromKey('RegisterExternalTool',sl);
           if Directive<>'' then

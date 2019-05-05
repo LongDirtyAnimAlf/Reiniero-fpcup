@@ -104,12 +104,21 @@ const
   _RESET                   = 'Reset';
   _ONLY                    = 'Only';
 
-  _CLEANMODULE             = _CLEAN+'Module ';
-  _CHECKMODULE             = _CHECK+'Module ';
-  _GETMODULE               = _GET+'Module ';
-  _CONFIGMODULE            = _CONFIG+'Module ';
-  _BUILDMODULE             = _BUILD+'Module ';
-  _UNINSTALLMODULE         = _UNINSTALL+'Module ';
+  _DO                      = 'Do ';
+  _DECLARE                 = 'Declare ';
+  _EXECUTE                 = 'Exec ';
+  _SETCPU                  = 'SetCPU ';
+  _SETOS                   = 'SetOS ';
+  _REQUIRES                = 'Requires ';
+  _DECLAREHIDDEN           = 'DeclareHidden ';
+  _MODULE                  = 'Module ';
+
+  _CLEANMODULE             = _CLEAN+_MODULE;
+  _CHECKMODULE             = _CHECK+_MODULE;
+  _GETMODULE               = _GET+_MODULE;
+  _CONFIGMODULE            = _CONFIG+_MODULE;
+  _BUILDMODULE             = _BUILD+_MODULE;
+  _UNINSTALLMODULE         = _UNINSTALL+_MODULE;
 
   _CREATEFPCUPSCRIPT       = 'CreateFpcupScript';
   _CREATELAZARUSSCRIPT     = 'CreateLazarusScript';
@@ -119,24 +128,23 @@ const
   _LAZBUILD                = 'Lazbuild';
   _STARTLAZARUS            = 'StartLazarus';
   _LCL                     = 'LCL';
+  _COMPONENTS              = 'Components';
+  _PACKAGER                = 'Packager';
   _IDE                     = 'IDE';
   _BIGIDE                  = 'BigIDE';
   _USERIDE                 = 'UserIDE';
   _OLDLAZARUS              = 'OldLazarus';
   _PAS2JS                  = 'Pas2JS';
 
-  _DO                      = 'Do ';
-  _DECLARE                 = 'Declare ';
-  _EXECUTE                 = 'Exec ';
-  _SETCPU                  = 'SetCPU ';
-  _SETOS                   = 'SetOS ';
-  _REQUIRES                = 'Requires ';
-  _DECLAREHIDDEN           = 'DeclareHidden ';
-
-
   _UNIVERSALDEFAULT        = 'Universal'+_DEFAULT;
   _FPCCLEANBUILDONLY       = _FPC+_CLEAN+_BUILD+_ONLY;
+  _FPCREMOVEONLY           = _FPC+_CLEAN+_UNINSTALL+_ONLY;
   _LAZARUSCLEANBUILDONLY   = _LAZARUS+_CLEAN+_BUILD+_ONLY;
+  _LAZARUSREMOVEONLY       = _LAZARUS+_CLEAN+_UNINSTALL+_ONLY;
+  _LCLALLREMOVEONLY        = _LCL+'ALL'+_CLEAN+_ONLY;
+  _LCLREMOVEONLY           = _LCL+_CLEAN+_ONLY;
+  _COMPONENTSREMOVEONLY    = _COMPONENTS+_CLEAN+_ONLY;
+  _PACKAGERREMOVEONLY      = _PACKAGER+_CLEAN+_ONLY;
 
   _HELP                    = 'Help';
   _HELPFPC                 = _HELP+_FPC;
@@ -159,8 +167,8 @@ const
 
 
 type
-  TCPU = (i386,x86_64,arm,aarch64,powerpc,powerpc64,mips,mipsel,avr,jvm,i8086);
-  TOS  = (windows,linux,android,darwin,freebsd,openbsd,aix,wince,iphonesim,embedded,java,msdos,haiku);
+  TCPU = (i386,x86_64,arm,aarch64,powerpc,powerpc64,mips,mipsel,avr,jvm,i8086,sparc);
+  TOS  = (windows,linux,android,darwin,freebsd,openbsd,aix,wince,iphonesim,embedded,java,msdos,haiku,solaris,dragonfly,netbsd);
   TARMARCH  = (default,armel,armeb,armhf);
 
   TCPUOS = record
@@ -172,15 +180,15 @@ type
 
 const
   CpuStr : array[TCPU] of string=(
-    'i386','x86_64','arm','aarch64','powerpc','powerpc64', 'mips', 'mipsel','avr','jvm','i8086'
+    'i386','x86_64','arm','aarch64','powerpc','powerpc64', 'mips', 'mipsel','avr','jvm','i8086','sparc'
   );
 
   ppcSuffix : array[TCPU] of string=(
-    '386','x64','arm','a64','ppc','ppc64', 'mips', 'mipsel','avr','jvm','8086'
+    '386','x64','arm','a64','ppc','ppc64', 'mips', 'mipsel','avr','jvm','8086','sparc'
   );
 
   OSStr : array[TOS] of string=(
-    'windows'{,'win32','win64'},'linux', 'android','darwin','freebsd','openbsd','aix','wince','iphonesim','embedded','java', 'msdos','haiku'
+    'windows'{,'win32','win64'},'linux', 'android','darwin','freebsd','openbsd','aix','wince','iphonesim','embedded','java', 'msdos','haiku','solaris','dragonfly','netbsd'
   );
 
   ARMArchFPCStr : array[TARMARCH] of string=(
@@ -483,7 +491,7 @@ begin
     {$IFDEF MSWINDOWS}
     FMake := IncludeTrailingPathDelimiter(FMakeDir) + 'make' + GetExeExt;
     {$ELSE}
-    {$IF defined(BSD) and not defined(DARWIN)}
+    {$IF (defined(BSD) and not defined(DARWIN)) or (defined(Solaris))}
     FMake := 'gmake'; //GNU make; assume in path
     //FMake := FindDefaultExecutablePath('gmake');
     {$else}
@@ -777,13 +785,15 @@ begin
       Output:='git32.zip';
         //aURL:='https://github.com/git-for-windows/git/releases/download/v2.17.1.windows.2/MinGit-2.17.1.2-32-bit.zip';
         //aURL:='https://github.com/git-for-windows/git/releases/download/v2.18.0.windows.1/MinGit-2.18.0-32-bit.zip';
-        aURL:='https://github.com/git-for-windows/git/releases/download/v2.19.0.windows.1/MinGit-2.19.0-32-bit.zip';
+          //aURL:='https://github.com/git-for-windows/git/releases/download/v2.19.0.windows.1/MinGit-2.19.0-32-bit.zip';
+          aURL:='https://github.com/git-for-windows/git/releases/download/v2.21.0.windows.1/MinGit-2.21.0-32-bit.zip';
       {$else}
       //Output:='git64.7z';
       Output:='git64.zip';
         //aURL:='https://github.com/git-for-windows/git/releases/download/v2.17.1.windows.2/MinGit-2.17.1.2-64-bit.zip';
         //aURL:='https://github.com/git-for-windows/git/releases/download/v2.18.0.windows.1/MinGit-2.18.0-64-bit.zip';
-        aURL:='https://github.com/git-for-windows/git/releases/download/v2.19.0.windows.1/MinGit-2.19.0-64-bit.zip';
+          //aURL:='https://github.com/git-for-windows/git/releases/download/v2.19.0.windows.1/MinGit-2.19.0-64-bit.zip';
+          aURL:='https://github.com/git-for-windows/git/releases/download/v2.21.0.windows.1/MinGit-2.21.0-64-bit.zip';
       {$endif}
       //aURL:=FPCUPGITREPO+'/releases/download/Git-2.13.2/'+Output;
       infoln(localinfotext+'GIT not found. Downloading it (may take time) from '+aURL,etInfo);
@@ -2475,8 +2485,10 @@ begin
             j:=Pos('_FPCUPPATCH',PatchFilePath);
 
       {$if defined(Darwin) and defined(LCLQT5)}
+      //disable big hack for now
+      if Pos('DARWINQT5HACK_LAZPATCH',PatchFilePath)>0 then j:=0;
       {$else}
-      if PatchFilePath='DARWINQT5HACK_LAZPATCH' then j:=0;
+      if Pos('DARWINQT5',PatchFilePath)>0 then j:=0;
       {$endif}
 
       // In general, only patch trunk !
