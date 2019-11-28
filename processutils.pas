@@ -166,9 +166,9 @@ implementation
 
 uses
   fpcuputil
-{$ifdef LCL}
+  {$ifdef LCL}
   ,Forms,Controls
-{$endif}
+  {$endif}
   ;
 { TProcessEx }
 
@@ -180,11 +180,11 @@ end;
 function TProcessEx.GetOutputStrings: TStringList;
 begin
   if (FOutputStrings.Count=0) and (FOutStream.Size>0) then
-    begin
+  begin
     FOutStream.Position := 0;
     FOutputStrings.LoadFromStream(FOutStream);
     FOutStream.Clear;
-    end;
+  end;
   result:=FOutputStrings;
 end;
 
@@ -289,9 +289,9 @@ begin
           if (Assigned(OnError) or Assigned(OnErrorM)) then
           begin
             if Assigned(OnError) then
-            OnError(Self,false)
-          else
-            OnErrorM(Self,false);
+              OnError(Self,false)
+            else
+              OnErrorM(Self,false);
           end;
           exit;
         end;
@@ -312,7 +312,15 @@ begin
           Sleep(10);
           if (i<100) then Inc(i);
           // process message queue after 50ms
-          if (i>5) then Application.ProcessMessages;
+          if ((i DIV 5)=0) then
+          begin
+            try
+              Application.ProcessMessages;
+            except
+              Application.HandleException(Application);
+            end;
+            if Application.Terminated then Break;
+          end;
           // set cursor after 1 second of execution time
           if (i=99) then Application.MainForm.Cursor:=crHourGlass;
           {$else}
@@ -325,7 +333,11 @@ begin
       if Application.MainForm.Cursor=crHourGlass then
       begin
         Application.MainForm.Cursor:=crDefault;
-        Application.ProcessMessages;
+        try
+          Application.ProcessMessages;
+        except
+          Application.HandleException(Application);
+        end;
       end;
       {$endif}
 
@@ -336,7 +348,7 @@ begin
       // Note also bug 22055 TProcess ExitStatus is zero when the called process Seg Faults
     end;
 
-    if (FExitStatus<>0) and (Assigned(OnError) or Assigned(OnErrorM))  then
+    if (FExitStatus<>0) and (Assigned(OnError) or Assigned(OnErrorM)) then
     begin
       if Assigned(OnError) then
         OnError(Self,false)
@@ -363,7 +375,7 @@ end;
 
 constructor TProcessEx.Create(AOwner : TComponent);
 begin
-  inherited;
+  inherited Create(AOwner);
   {$ifdef LCL}
   Self.ShowWindow:=swoHIDE;
   {$endif}
@@ -545,12 +557,12 @@ var
         If InLiteral then
           InLiteral:=Not (Commandline[Wend]=LastLiteral)
         else
-  begin
+          begin
           InLiteral:=True;
           LastLiteral:=Commandline[Wend];
           end;
        inc(wend);
-          end;
+       end;
 
      Result:=Copy(Commandline,WStart,WEnd-WStart);
 

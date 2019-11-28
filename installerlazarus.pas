@@ -53,12 +53,12 @@ const
     _EXECUTE+_CREATELAZARUSSCRIPT+_SEP +
     _END +
 
-    _DECLARE+'oldlazarus'+_SEP +
+    _DECLARE+_LAZARUSSIMPLE+_SEP +
     _CLEANMODULE+_LAZARUS+_SEP +
     _CHECKMODULE+_LAZARUS+_SEP +
     _GETMODULE+_LAZARUS+_SEP +
-    _BUILDMODULE+_LAZARUS+_SEP +
     _CONFIGMODULE+_LAZARUS+_SEP +
+    _BUILDMODULE+_LAZARUS+_SEP +
     _EXECUTE+_CREATELAZARUSSCRIPT+_SEP +
     _END +
 
@@ -98,7 +98,7 @@ const
 
     // Compile only LCL
     _DECLARE+_LCL+_SEP +
-    _CLEANMODULE+_LCL+_SEP+
+    _CLEANMODULE+_LCL+_SEP +
     _BUILDMODULE+_LCL+_SEP +
     _END +
 
@@ -161,6 +161,10 @@ const
     _RESETLCL+_SEP + //module code itself will select proper widgetset
     _CLEANMODULE+_LCLCROSS+_SEP+
     _BUILDMODULE+_LCLCROSS+_SEP +
+    _END+
+
+    _DECLARE+_MAKEFILECHECKLAZARUS+_SEP+
+    _BUILDMODULE+_MAKEFILECHECKLAZARUS+_SEP+
 
     _ENDFINAL;
 
@@ -183,14 +187,16 @@ const
     '      </Unit0>'+LineEnding+
     '    </Units>'+LineEnding+
     '  </ProjectOptions>'+LineEnding+
-  '</CONFIG>';
+    '</CONFIG>';
 
   DEFAULTLPR =
     'program project1;'+LineEnding+
     ''+LineEnding+
     'begin'+LineEnding+
     '  writeln(''Hello world from fpcupdeluxe !'');'+LineEnding+
-  'end.';
+    'end.';
+
+  LAZARUSCFG = 'lazarus.cfg'; //file to store primary config argument in
 
 
 type
@@ -282,7 +288,7 @@ uses
   updatelazconfig
   {$ifdef Darwin}
   {$ifdef LCLQT5}
-  , baseunix
+  ,baseunix
   ,LazFileUtils
   {$endif LCLQT5}
   {$endif Darwin}
@@ -306,6 +312,8 @@ begin
     // up from there.
     CrossInstaller.SetCrossOpt(CrossOPT); //pass on user-requested cross compile options
     CrossInstaller.SetSubArch(CrossOS_SubArch);
+    CrossInstaller.SolarisOI:=FSolarisOI;
+    CrossInstaller.MUSL:=FMUSL;
     if not CrossInstaller.GetBinUtils(FFPCInstallDir) then
       infoln(infotext+'Failed to get crossbinutils', etError)
     else if not CrossInstaller.GetLibs(FFPCInstallDir) then
@@ -339,11 +347,17 @@ begin
       begin
         // Use make for cross compiling
         Processor.Executable := Make;
-        Processor.CurrentDirectory := ExcludeTrailingPathDelimiter(FSourceDirectory);
         Processor.Parameters.Clear;
-        {$IFDEF lazarus_parallel_make}
-        if ((FCPUCount>1) AND (NOT FNoJobs)) then Processor.Parameters.Add('--jobs='+IntToStr(FCPUCount));
+        {$IFDEF MSWINDOWS}
+        if Length(Shell)>0 then Processor.Parameters.Add('SHELL='+Shell);
         {$ENDIF}
+        Processor.CurrentDirectory := ExcludeTrailingPathDelimiter(FSourceDirectory);
+        {
+        //Still not clear if jobs can be enabled for Lazarus make builds ... :-|
+        if (FNoJobs) then
+          Processor.Parameters.Add('--jobs=1')
+        else
+          Processor.Parameters.Add('--jobs='+IntToStr(FCPUCount));}
         Processor.Parameters.Add('FPC=' + FCompiler);
         Processor.Parameters.Add('PP=' + ExtractFilePath(FCompiler)+GetCompilerName(GetTargetCPU));
         Processor.Parameters.Add('USESVN2REVISIONINC=0');
@@ -364,7 +378,7 @@ begin
           Processor.Parameters.Add('CROSSBINDIR=' + ExcludeTrailingPathDelimiter(CrossInstaller.BinUtilsPath));
 
         {$ifdef Windows}
-        Processor.Parameters.Add('UPXPROG=echo'); //Don't use UPX
+        Processor.Parameters.Add('UPXPROG=echo');      //Don't use UPX
         Processor.Parameters.Add('COPYTREE=echo');     //fix for examples in Win svn, see build FAQ
         {$endif}
 
@@ -387,7 +401,7 @@ begin
         end;
         while Pos('  ',Options)>0 do
         begin
-          Options:=StringReplace(Options,'  ',' ',[]);
+          Options:=StringReplace(Options,'  ',' ',[rfReplaceAll]);
         end;
         Options:=Trim(Options);
         if Length(Options)>0 then Processor.Parameters.Add('OPT='+Options);
@@ -410,6 +424,10 @@ begin
         // Quiet:=ConsoleVerbosity<=-3;
         Processor.Parameters.Add('--quiet');
         {$ENDIF}
+        if (FNoJobs) then
+          Processor.Parameters.Add('--max-process-count=1')
+        else
+          Processor.Parameters.Add('--max-process-count='+InttoStr(GetLogicalCpuCount));
         Processor.Parameters.Add('--pcp=' + DoubleQuoteIfNeeded(FPrimaryConfigPath));
 
         // Apparently, the .compiled file, that are used to check for a rebuild, do not contain a cpu setting if cpu and cross-cpu do not differ !!
@@ -566,11 +584,17 @@ begin
     // distclean was already run; otherwise specify make clean all
     FErrorLog.Clear;
     Processor.Executable := Make;
-    Processor.CurrentDirectory := ExcludeTrailingPathDelimiter(FSourceDirectory);
     Processor.Parameters.Clear;
-    {$IFDEF lazarus_parallel_make}
-    if ((FCPUCount>1) AND (NOT FNoJobs)) then Processor.Parameters.Add('--jobs='+IntToStr(FCPUCount));
+    {$IFDEF MSWINDOWS}
+    if Length(Shell)>0 then Processor.Parameters.Add('SHELL='+Shell);
     {$ENDIF}
+    Processor.CurrentDirectory := ExcludeTrailingPathDelimiter(FSourceDirectory);
+    {
+    //Still not clear if jobs can be enabled for Lazarus make builds ... :-|
+    if (FNoJobs) then
+      Processor.Parameters.Add('--jobs=1')
+    else
+      Processor.Parameters.Add('--jobs='+IntToStr(FCPUCount));}
     Processor.Parameters.Add('FPC=' + FCompiler);
     Processor.Parameters.Add('PP=' + ExtractFilePath(FCompiler)+GetCompilerName(GetTargetCPU));
     Processor.Parameters.Add('USESVN2REVISIONINC=0');
@@ -591,19 +615,6 @@ begin
     if FCrossLCL_Platform <> '' then
       Processor.Parameters.Add('LCL_PLATFORM=' + FCrossLCL_Platform);
 
-    //Set config-file
-    s:=IncludeTrailingPathDelimiter(FPrimaryConfigPath)+DefaultIDEMakeOptionFilename;
-    if (ModuleName=_USERIDE) then
-    begin
-      Processor.Parameters.Add('CFGFILE=' + s);
-    end
-    else
-    begin
-      //To be investigated if necessary
-      //At the moment, this gives errors when building lazbuild, so do not enable.
-      //if FileExists(s) then Processor.Parameters.Add('CFGFILE=' + s);
-    end;
-
     //Set options
     s:=STANDARDCOMPILERVERBOSITYOPTIONS+' '+FCompilerOptions;
 
@@ -621,10 +632,12 @@ begin
       end;
     end;
 
+    // remove double spaces
     while Pos('  ',s)>0 do
     begin
-      s:=StringReplace(s,'  ',' ',[]);
+      s:=StringReplace(s,'  ',' ',[rfReplaceAll]);
     end;
+
     s:=Trim(s);
 
     if Length(s)>0 then Processor.Parameters.Add('OPT='+s);
@@ -632,23 +645,42 @@ begin
     case ModuleName of
       _USERIDE:
       begin
-        Processor.Parameters.Add('useride');
-        infoln(infotext+'Running make useride', etInfo);
+        s:=IncludeTrailingPathDelimiter(FPrimaryConfigPath)+DefaultIDEMakeOptionFilename;
+        if FileExists(s) then
+        begin
+          //Set config-file
+          Processor.Parameters.Add('LAZBUILDJOBS='+IntToStr(FCPUCount));
+          Processor.Parameters.Add('CFGFILE=' + s);
+          Processor.Parameters.Add('useride');
+          infoln(infotext+'Running: make useride', etInfo);
+        end
+        else
+        begin
+          // sometimes, we get an error 217 when buidling lazarus for the first time.
+          // the below tries to prevent this by not using lazbuild on a fresh install.
+          Processor.Parameters.Add('registration');
+          Processor.Parameters.Add('lazutils');
+          Processor.Parameters.Add('lcl');
+          Processor.Parameters.Add('basecomponents');
+          Processor.Parameters.Add('ide');
+          infoln(infotext+'Running: make registration lazutils lcl basecomponents ide', etInfo);
+        end;
       end;
       _IDE:
       begin
         Processor.Parameters.Add('idepkg');
-        infoln(infotext+'Running make idepkg', etInfo);
+        infoln(infotext+'Running: make idepkg', etInfo);
       end;
       _BIGIDE:
       begin
         Processor.Parameters.Add('idebig');
-        infoln(infotext+'Running make idebig', etInfo);
+        infoln(infotext+'Running: make idebig', etInfo);
       end;
       _LAZARUS:
       begin
         Processor.Parameters.Add('all');
-        infoln(infotext+'Running make all', etInfo);
+        //Processor.Parameters.Add('install');
+        infoln(infotext+'Running: make all', etInfo);
       end;
       _STARTLAZARUS:
       begin
@@ -660,7 +692,7 @@ begin
           exit;
         end;
         Processor.Parameters.Add('starter');
-        infoln(infotext+'Running make starter', etInfo);
+        infoln(infotext+'Running: make starter', etInfo);
       end;
       _LAZBUILD:
       begin
@@ -672,7 +704,7 @@ begin
           exit;
         end;
         Processor.Parameters.Add('lazbuild');
-        infoln(infotext+'Running make lazbuild', etInfo);
+        infoln(infotext+'Running: make lazbuild', etInfo);
       end;
       _LCL:
       begin
@@ -684,7 +716,7 @@ begin
         Processor.Parameters.Add('lcl');
         // always build standard LCL for native system ... other widgetsets to be done by LCLCROSS: see below
         //if FCrossLCL_Platform<>'' then Processor.Parameters.Add('LCL_PLATFORM=' + FCrossLCL_Platform);
-        infoln(infotext+'Running make registration lazutils lcl', etInfo);
+        infoln(infotext+'Running: make registration lazutils lcl', etInfo);
       end;
       _LCLCROSS:
       begin
@@ -695,16 +727,21 @@ begin
           Processor.Parameters.Add('-C lcl');
           Processor.Parameters.Add('intf');
           //Processor.Parameters.Add('LCL_PLATFORM=' + FCrossLCL_Platform);
-          infoln(infotext+'Running make -C lcl intf', etInfo);
+          infoln(infotext+'Running: make -C lcl intf', etInfo);
         end
         else
-          begin
+        begin
           // nothing to be done: exit graceously
           infoln(infotext+'No extra LCL_PLATFORM defined ... nothing to be done', etInfo);
           OperationSucceeded := true;
-            Result := true;
-            exit;
+          Result := true;
+          exit;
         end;
+      end;
+      _MAKEFILECHECKLAZARUS:
+      begin
+        Processor.Parameters.Add('fpc_baseinfo');
+        infoln(infotext+'Running: make fpc_baseinfo', etInfo);
       end
       else //raise error;
       begin
@@ -716,6 +753,7 @@ begin
       end;
       if FCrossLCL_Platform<>'' then Processor.Parameters.Add('LCL_PLATFORM=' + FCrossLCL_Platform);
     end;
+
     try
       WritelnLog(infotext+Processor.Executable+'. Params: '+Processor.Parameters.CommaText, true);
       Processor.Execute;
@@ -749,6 +787,7 @@ begin
   end
   else
   begin
+    // For building useride for Lazarus versions < 1.6.2
     // useride; using lazbuild. Note: in recent Lazarus we use make
     // Check for valid lazbuild.
     // Note: we don't check if we have a valid primary config path, but that will come out
@@ -777,6 +816,10 @@ begin
       // Quiet:=ConsoleVerbosity<=-3;
       Processor.Parameters.Add('--quiet');
       {$ENDIF}
+      if (FNoJobs) then
+        Processor.Parameters.Add('--max-process-count=1')
+      else
+        Processor.Parameters.Add('--max-process-count='+InttoStr(GetLogicalCpuCount));
       Processor.Parameters.Add('--pcp=' + DoubleQuoteIfNeeded(FPrimaryConfigPath));
       Processor.Parameters.Add('--cpu=' + GetTargetCPU);
       Processor.Parameters.Add('--os=' + GetTargetOS);
@@ -848,6 +891,10 @@ begin
           {$ELSE}
           Processor.Parameters.Add('--quiet');
           {$ENDIF}
+          if (FNoJobs) then
+            Processor.Parameters.Add('--max-process-count=1')
+          else
+            Processor.Parameters.Add('--max-process-count='+InttoStr(GetLogicalCpuCount));
           Processor.Parameters.Add('--pcp=' + DoubleQuoteIfNeeded(FPrimaryConfigPath));
           Processor.Parameters.Add('--cpu=' + GetTargetCPU);
           Processor.Parameters.Add('--os=' + GetTargetOS);
@@ -871,7 +918,7 @@ begin
             end;
           except
             on E: Exception do
-          begin
+            begin
               OperationSucceeded := false;
               WritelnLog(etError, infotext+'Exception running lazbuild to get startlazarus!' + LineEnding +
                 'Details: ' + E.Message, true);
@@ -880,9 +927,11 @@ begin
         end;
       end;
     end;
-          end;
+  end;
 
-  if (ModuleName=_USERIDE) then
+  if (ModuleName=_MAKEFILECHECKLAZARUS) then exit;
+
+  if (ModuleName=_USERIDE) OR (ModuleName=_LAZARUS) then
   begin
     if OperationSucceeded then
     begin
@@ -890,80 +939,82 @@ begin
       try
         {$ifdef LCLQT5}
         //Set default sizes and position
-          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/MainIDE/CustomPosition/Left', '10');
-          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/MainIDE/CustomPosition/Top', '30');
-          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/MainIDE/CustomPosition/Width', '900');
-          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/MainIDE/CustomPosition/Height', '60');
-          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/MainIDE/Visible/Value', 'True');
-          {$endif}
+        LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/MainIDE/CustomPosition/Left', '10');
+        LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/MainIDE/CustomPosition/Top', '30');
+        LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/MainIDE/CustomPosition/Width', '900');
+        LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/MainIDE/CustomPosition/Height', '60');
+        LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/MainIDE/Visible/Value', 'True');
+        {$endif}
 
-          // set default positions of object, source and message windows
-          {$ifdef Darwin}
-          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/ObjectInspectorDlg/CustomPosition/Left', '10');
-          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/ObjectInspectorDlg/CustomPosition/Top', '120');
-          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/ObjectInspectorDlg/CustomPosition/Width', '230');
-          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/ObjectInspectorDlg/CustomPosition/Height', '560');
-          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/ObjectInspectorDlg/Visible/Value', 'True');
+        // set default positions of object, source and message windows
+        {$ifdef Darwin}
+        LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/ObjectInspectorDlg/CustomPosition/Left', '10');
+        LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/ObjectInspectorDlg/CustomPosition/Top', '120');
+        LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/ObjectInspectorDlg/CustomPosition/Width', '230');
+        LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/ObjectInspectorDlg/CustomPosition/Height', '560');
+        LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/ObjectInspectorDlg/Visible/Value', 'True');
 
-          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/SourceNotebook/CustomPosition/Left', '250');
-          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/SourceNotebook/CustomPosition/Top', '120');
-          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/SourceNotebook/CustomPosition/Width', '600');
-          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/SourceNotebook/CustomPosition/Height', '440');
-          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/SourceNotebook/Visible/Value', 'True');
+        LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/SourceNotebook/CustomPosition/Left', '250');
+        LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/SourceNotebook/CustomPosition/Top', '120');
+        LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/SourceNotebook/CustomPosition/Width', '600');
+        LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/SourceNotebook/CustomPosition/Height', '440');
+        LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/SourceNotebook/Visible/Value', 'True');
 
-          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/MessagesView/CustomPosition/Left', '250');
-          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/MessagesView/CustomPosition/Top', '600');
-          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/MessagesView/CustomPosition/Width', '600');
-          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/MessagesView/CustomPosition/Height', '100');
-          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/MessagesView/Visible/Value', 'True');
-          {$endif}
+        LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/MessagesView/CustomPosition/Left', '250');
+        LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/MessagesView/CustomPosition/Top', '600');
+        LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/MessagesView/CustomPosition/Width', '600');
+        LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/MessagesView/CustomPosition/Height', '100');
+        LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/MessagesView/Visible/Value', 'True');
+        {$else}
+        LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/ObjectInspectorDlg/Visible/Value', 'True');
+        {$endif}
 
-          j:=LazarusConfig.GetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/Count',0);
-          if j=0 then
-          begin
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/Count', 2);
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/Width/Value', 260);
+        j:=LazarusConfig.GetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/Count',0);
+        if j=0 then
+        begin
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/Count', 2);
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/Width/Value', 260);
 
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Version', 1);
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Count', 12);
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Button1/Name', 'NewUnit');
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Button2/Name', 'NewForm');
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Button3/Name', '---------------');
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Button4/Name', 'Open');
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Button5/Name', 'Save');
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Button6/Name', 'SaveAll');
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Button7/Name', '---------------');
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Button8/Name', 'Toggle between Unit and Form');
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Button9/Name', '---------------');
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Button10/Name', 'Find in files');
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Button11/Name', 'General environment options');
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Button12/Name', 'View project options');
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Version', 1);
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Count', 12);
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Button1/Name', 'NewUnit');
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Button2/Name', 'NewForm');
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Button3/Name', '---------------');
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Button4/Name', 'Open');
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Button5/Name', 'Save');
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Button6/Name', 'SaveAll');
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Button7/Name', '---------------');
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Button8/Name', 'Toggle between Unit and Form');
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Button9/Name', '---------------');
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Button10/Name', 'Find in files');
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Button11/Name', 'General environment options');
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar1/Button12/Name', 'View project options');
 
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Version', 1);
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Count', 11);
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Break/Value', True);
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Button1/Name', 'View Units');
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Button2/Name', 'View Forms');
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Button3/Name', '---------------');
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Button4/Name', 'Change build mode');
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Button5/Name', 'Run without debugging');
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Button6/Name', 'Run program');
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Button7/Name', 'Pause program');
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Button8/Name', 'Stop program');
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Button9/Name', 'Step over');
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Button10/Name', 'Step into');
-            LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Button11/Name', 'Step out');
-          end;
-
-          // set defaults for pas2js
-          LazarusConfig.SetVariableIfNewFile(Pas2jsConfig, 'compiler/value', ExtractFilePath(FCompiler)+'pas2js'+GetExeExt);
-          LazarusConfig.SetVariableIfNewFile(Pas2jsConfig, 'webserver/value',  ExtractFilePath(FCompiler)+'compileserver'+GetExeExt);
-          //LazarusConfig.SetVariableIfNewFile(Pas2jsConfig, 'webserver/startatport/value', '8000');
-
-        finally
-          LazarusConfig.Free;
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Version', 1);
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Count', 11);
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Break/Value', True);
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Button1/Name', 'View Units');
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Button2/Name', 'View Forms');
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Button3/Name', '---------------');
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Button4/Name', 'Change build mode');
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Button5/Name', 'Run without debugging');
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Button6/Name', 'Run program');
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Button7/Name', 'Pause program');
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Button8/Name', 'Stop program');
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Button9/Name', 'Step over');
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Button10/Name', 'Step into');
+          LazarusConfig.SetVariable(EnvironmentConfig, 'Desktops/Desktop1/IDECoolBarOptions/ToolBar2/Button11/Name', 'Step out');
         end;
+
+        // set defaults for pas2js
+        LazarusConfig.SetVariableIfNewFile(Pas2jsConfig, 'compiler/value', ExtractFilePath(FCompiler)+'pas2js'+GetExeExt);
+        LazarusConfig.SetVariableIfNewFile(Pas2jsConfig, 'webserver/value',  ExtractFilePath(FCompiler)+'compileserver'+GetExeExt);
+        //LazarusConfig.SetVariableIfNewFile(Pas2jsConfig, 'webserver/startatport/value', '8000');
+
+      finally
+        LazarusConfig.Free;
       end;
+    end;
   end;
 
   Result := OperationSucceeded;
@@ -1292,6 +1343,14 @@ begin
   Result := inherited;
   Result := InitModule;
   if not Result then exit;
+
+  s:=IncludeTrailingPathDelimiter(FSourceDirectory) + MAKEFILENAME;
+  if (NOT FileExists(s)) then
+  begin
+    infoln(infotext+s+' not found. Severe error. Should not happen. Aborting.',etError);
+    exit(false);
+  end;
+
   CompilerVersion:=GetCompilerVersion(FCompiler);
   VersionSnippet:=GetLazarusVersionFromSource(FSourceDirectory);
   if VersionSnippet='0.0.0' then VersionSnippet:=GetLazarusVersionFromUrl(FURL);
@@ -1304,7 +1363,7 @@ begin
     FPatchVersion:=GetLazarusReleaseCandidateFromSource(FSourceDirectory);
 
     // only report once
-    if (ModuleName=_LAZBUILD) OR ((Self is TLazarusCrossInstaller) AND (ModuleName=_LCL)) then
+    if (ModuleName=_LAZBUILD) OR (ModuleName=_LAZARUS) OR ((Self is TLazarusCrossInstaller) AND (ModuleName=_LCL)) then
     begin
       if (Self is TLazarusCrossInstaller) then
       begin
@@ -1312,7 +1371,7 @@ begin
       end
       else
       begin
-        s:='Lazarus builder: ';
+        s:='Lazarus native builder: ';
       end;
       infoln(s+'Detected source version Lazarus: '+VersionSnippet, etInfo);
       infoln(s+'Using FPC compiler with version: '+CompilerVersion, etInfo);
@@ -1322,8 +1381,6 @@ begin
 end;
 
 function TLazarusInstaller.ConfigModule(ModuleName: string): boolean;
-const
-  LazarusCFG = 'lazarus.cfg'; //file to store primary config argument in
 var
   DebuggerPath,DebuggerType: string;
   VersionSnippet: string;
@@ -1335,33 +1392,42 @@ begin
   Result := inherited;
   Result := true;
 
+  if not DirectoryExists(FInstallDirectory) then
+  begin
+    infoln(infotext+'No Lazarus install directory.',etError);
+    exit;
+  end;
+
   //Set GDB as standard debugger
   DebuggerType:='TGDBMIDebugger';
 
   if DirectoryExists(FPrimaryConfigPath) = false then
   begin
-    if ForceDirectories(FPrimaryConfigPath) then
+    if ForceDirectoriesSafe(FPrimaryConfigPath) then
       infoln(infotext+'Created Lazarus primary config directory: ' + FPrimaryConfigPath, etInfo);
   end;
+
+  // Lazarus 1.2RC1+ and higher support specifying the primary-config-path that should be used
+  // inside the lazarus directory itself.
+  PCPSnippet := TStringList.Create;
+  try
+    // Martin Friebe mailing list January 2014: no quotes allowed, no trailing blanks
+    PCPSnippet.Add('--primary-config-path=' + Trim(ExcludeTrailingPathDelimiter(FPrimaryConfigPath)));
+    aFileName:=IncludeTrailingPathDelimiter(FInstallDirectory) + LAZARUSCFG;
+    if (NOT FileExists(aFileName)) then PCPSnippet.SaveToFile(aFileName);
+  finally
+    PCPSnippet.Free;
+  end;
+
   // Set up a minimal config so we can use LazBuild
   LazarusConfig := TUpdateLazConfig.Create(FPrimaryConfigPath, FMajorVersion, FMinorVersion, FReleaseVersion, FPatchVersion);
   try
     try
-      // Lazarus 1.2RC1+ and trunk support specifying the primary-config-path that should be used
-      // inside the lazarus directory itself.
-      PCPSnippet := TStringList.Create;
-      try
-        // Martin Friebe mailing list January 2014: no quotes allowed, no trailing blanks
-        PCPSnippet.Add('--primary-config-path=' + trim(ExcludeTrailingPathDelimiter(FPrimaryConfigPath)));
-        if not (FileExists(IncludeTrailingPathDelimiter(FInstallDirectory) + LazarusCFG)) then
-          PCPSnippet.SaveToFile(IncludeTrailingPathDelimiter(FInstallDirectory) + LazarusCFG);
-      finally
-        PCPSnippet.Free;
-      end;
       // Force English language
       LazarusConfig.SetVariableIfNewFile(EnvironmentConfig, 'EnvironmentOptions/Language/ID', 'en');
       // Set Lazarus directory
       LazarusConfig.SetVariable(EnvironmentConfig, 'EnvironmentOptions/LazarusDirectory/Value', FInstallDirectory);
+
       {$IFDEF MSWINDOWS}
       // FInstalledCompiler could be something like c:\bla\ppc386.exe, e.g.
       // the platform specific compiler. In order to be able to cross compile
@@ -1391,6 +1457,7 @@ begin
          then LazarusConfig.SetVariable(EnvironmentConfig, 'EnvironmentOptions/MakeFilename/Value', ExtractFilePath(FCompiler) + 'make' + GetExeExt)
          else LazarusConfig.SetVariable(EnvironmentConfig, 'EnvironmentOptions/MakeFilename/Value', IncludeTrailingPathDelimiter(FMakeDir) + 'make' + GetExeExt);
       {$ENDIF MSWINDOWS}
+
       {$IFDEF UNIX}
       // On Unix, FInstalledCompiler should be set to our fpc.sh proxy if installed
       LazarusConfig.SetVariable(EnvironmentConfig, 'EnvironmentOptions/CompilerFilename/Value', FCompiler);
@@ -1404,15 +1471,15 @@ begin
       {$IF (defined(Darwin))}
       if (NumericalVersion>=CalculateFullVersion(2,0,0)) then
       begin
-      if Length(DebuggerPath)=0 then
-      begin
+        if Length(DebuggerPath)=0 then
+        begin
           //Check for newest lldb debugger ... does work !!
-        DebuggerPath:='/Library/Developer/CommandLineTools/usr/bin/lldb';
-        if FileExists(DebuggerPath) then
-          DebuggerType:='TLldbDebugger'
-        else
-          DebuggerPath:='';
-      end;
+          DebuggerPath:='/Library/Developer/CommandLineTools/usr/bin/lldb';
+          if FileExists(DebuggerPath) then
+            DebuggerType:='TLldbDebugger'
+          else
+            DebuggerPath:='';
+        end;
       end;
       {$endif}
 
@@ -1505,8 +1572,9 @@ begin
 
       // add default projects path
       DebuggerPath := IncludeTrailingPathDelimiter(FBaseDirectory) + 'projects';
-      ForceDirectories(DebuggerPath);
+      ForceDirectoriesSafe(DebuggerPath);
       LazarusConfig.SetVariableIfNewFile(EnvironmentConfig, 'EnvironmentOptions/TestBuildDirectory/Value', IncludeTrailingPathDelimiter(DebuggerPath));
+
       // Set file history towards default project directory
       LazarusConfig.SetVariableIfNewFile(History, 'InputHistory/FileDialog/InitialDir', IncludeTrailingPathDelimiter(DebuggerPath));
 
@@ -1556,9 +1624,6 @@ begin
 end;
 
 function TLazarusInstaller.CleanModule(ModuleName: string): boolean;
-  // Make distclean is unreliable; at least for FPC.
-  // Running it twice apparently can fix a lot of problems; see FPC ML message
-  // by Jonas Maebe, 1 November 2012
 var
   {$ifdef MSWINDOWS}
   CrossWin: boolean;
@@ -1566,9 +1631,9 @@ var
   {$endif}
   oldlog: TErrorMethod;
   CleanCommand,CleanDirectory:string;
+  CrossCompiling: boolean;
   {
   DeleteList: TStringList;
-  CrossCompiling: boolean;
   CPUOS_Signature:string;
   }
 begin
@@ -1584,10 +1649,18 @@ begin
 
   if not Result then exit;
 
+  CrossCompiling:=(Self is TLazarusCrossInstaller);
+  //CrossCompiling:=Assigned(CrossInstaller);
+
   // If cleaning primary config:
-  if (FCrossLCL_Platform = '') and (CrossCPU_Target = '') then
-    infoln(infotext+'If your primary config path has changed, you may want to remove ' + IncludeTrailingPathDelimiter(
-      FInstallDirectory) + 'lazarus.cfg which points to the primary config path.', etInfo);
+  if ((NOT CrossCompiling) and (ModuleName=_LAZARUS)) then
+  begin
+    //infoln(infotext+'If your primary config path has changed, you may want to remove ' + IncludeTrailingPathDelimiter(
+    //  FInstallDirectory) + 'lazarus.cfg which points to the primary config path.', etInfo);
+    infoln(infotext+'Deleting Lazarus primary config file ('+LAZARUSCFG+').', etInfo);
+    DeleteFile(IncludeTrailingPathDelimiter(FInstallDirectory) + LAZARUSCFG);
+  end;
+
 
   {$ifdef MSWINDOWS}
   // If doing crosswin32-64 or crosswin64-32, make distclean will not only clean the LCL
@@ -1596,28 +1669,27 @@ begin
   LHelpTemp:='';
   CrossWin:=false;
 
-  if Assigned(CrossInstaller) then
+  if CrossCompiling then
   begin
-  {$ifdef win32}
-  if (CrossInstaller.TargetCPU = 'x86_64') and ((CrossInstaller.TargetOS = 'win64') or (CrossInstaller.TargetOS = 'win32')) then
-    CrossWin := true;
-  {$endif win32}
-  {$ifdef win64}
-  // if this is crosswin64-32, ignore error as it is optional
-  if (CrossInstaller.TargetCPU = 'i386') and (CrossInstaller.TargetOS = 'win32') then
-    CrossWin := true;
-  {$endif win64}
-  end;
-
-  if CrossWin then
-  begin
-    LHelpTemp:=GetTempFileName('','');
-    try
-      CopyFile(
-        IncludeTrailingPathDelimiter(FInstallDirectory)+'components'+DirectorySeparator+'chmhelp'+DirectorySeparator+'lhelp'+DirectorySeparator+'lhelp'+GetExeExt,
-        LHelpTemp,[cffOverWriteFile]);
-    except
-      infoln(infotext+'Non-fatal error copying lhelp to temp file '+LHelpTemp,etInfo);
+    {$ifdef win32}
+    if (CrossInstaller.TargetCPU = 'x86_64') and ((CrossInstaller.TargetOS = 'win64') or (CrossInstaller.TargetOS = 'win32')) then
+      CrossWin := true;
+    {$endif win32}
+    {$ifdef win64}
+    // if this is crosswin64-32, ignore error as it is optional
+    if (CrossInstaller.TargetCPU = 'i386') and (CrossInstaller.TargetOS = 'win32') then
+      CrossWin := true;
+    {$endif win64}
+    if CrossWin then
+    begin
+      LHelpTemp:=GetTempFileName('','');
+      try
+        CopyFile(
+          IncludeTrailingPathDelimiter(FInstallDirectory)+'components'+DirectorySeparator+'chmhelp'+DirectorySeparator+'lhelp'+DirectorySeparator+'lhelp'+GetExeExt,
+          LHelpTemp,[cffOverWriteFile]);
+      except
+        infoln(infotext+'Non-fatal error copying lhelp to temp file '+LHelpTemp,etInfo);
+      end;
     end;
   end;
   {$endif MSWINDOWS}
@@ -1627,23 +1699,30 @@ begin
   Processor.OnErrorM := nil;  //don't want to log errors in distclean
 
   Processor.Executable := Make;
-  Processor.CurrentDirectory := ExcludeTrailingPathDelimiter(FSourceDirectory);
   Processor.Parameters.Clear;
-  {$IFDEF lazarus_parallel_make}
-  if ((FCPUCount>1) AND (NOT FNoJobs)) then Processor.Parameters.Add('--jobs='+IntToStr(FCPUCount));
+  {$IFDEF MSWINDOWS}
+  if Length(Shell)>0 then Processor.Parameters.Add('SHELL='+Shell);
   {$ENDIF}
+  Processor.CurrentDirectory := ExcludeTrailingPathDelimiter(FSourceDirectory);
+  {
+  //Still not clear if jobs can be enabled for Lazarus make builds ... :-|
+  if (FNoJobs) then
+    Processor.Parameters.Add('--jobs=1')
+  else
+    Processor.Parameters.Add('--jobs='+IntToStr(FCPUCount));}
   Processor.Parameters.Add('FPC=' + FCompiler);
   Processor.Parameters.Add('PP=' + ExtractFilePath(FCompiler)+GetCompilerName(GetTargetCPU));
   Processor.Parameters.Add('INSTALL_PREFIX='+ExcludeTrailingPathDelimiter(FInstallDirectory));
   {$ifdef Windows}
-  Processor.Parameters.Add('UPXPROG=echo');  //Don't use UPX
-  Processor.Parameters.Add('COPYTREE=echo'); //fix for examples in Win svn, see build FAQ
+  Processor.Parameters.Add('UPXPROG=echo');      //Don't use UPX
+  Processor.Parameters.Add('COPYTREE=echo');     //fix for examples in Win svn, see build FAQ
   {$endif}
   Processor.Parameters.Add('OS_SOURCE=' + GetTargetOS);
   Processor.Parameters.Add('CPU_SOURCE=' + GetTargetCPU);
 
   CleanDirectory:='';
   CleanCommand:='';
+
   case ModuleName of
     _IDE:
     begin
@@ -1719,6 +1798,7 @@ begin
 
   Processor.Parameters.Add('--directory=' + CleanDirectory);
   Processor.Parameters.Add(CleanCommand);
+
   if (Self is TLazarusCrossInstaller) then
     infoln(infotext+'Running "make '+CleanCommand+'" twice inside '+CleanDirectory+' for OS_TARGET='+CrossOS_Target+' and CPU_TARGET='+CrossCPU_Target,etInfo)
   else
@@ -1840,18 +1920,34 @@ const
   ConstName = 'RevisionStr';
   RevisionIncFileName = 'revision.inc';
 
-  DARWINCHECKMAGIC='useride: ';
-  DARWINHACKMAGIC='./lazbuild$(SRCEXEEXT) --lazarusdir=. --build-ide= --ws=$(LCL_PLATFORM)';
+  LAZBUILDHACKMAGIC=
+    'useride: '+LineEnding+
+    'ifdef LAZBUILDJOBS'+LineEnding+
+    'ifdef LCL_PLATFORM'+LineEnding+
+    #9+'./lazbuild$(SRCEXEEXT) --max-process-count=$(LAZBUILDJOBS) --lazarusdir=. --build-ide= --ws=$(LCL_PLATFORM)'+LineEnding+
+    'else'+LineEnding+
+    #9+'./lazbuild$(SRCEXEEXT) --max-process-count=$(LAZBUILDJOBS) --lazarusdir=. --build-ide='+LineEnding+
+    'endif'+LineEnding+
+    'else'+LineEnding+
+    'ifdef LCL_PLATFORM'+LineEnding+
+    #9+'./lazbuild$(SRCEXEEXT) --lazarusdir=. --build-ide= --ws=$(LCL_PLATFORM)'+LineEnding+
+    'else'+LineEnding+
+    #9+'./lazbuild$(SRCEXEEXT) --lazarusdir=. --build-ide='+LineEnding+
+    'endif'+LineEnding+
+    'endif';
 
 var
   AfterRevision: string;
   BeforeRevision: string;
   UpdateWarnings: TStringList;
+  HackMagic:TStringList;
   RevisionIncText: Text;
   ConstStart: string;
   aRepoClient:TRepoClient;
   VersionSnippet:string;
-  aIndex:integer;
+  MakeFilePath:string;
+  aIndex,aHackIndex:integer;
+  s1,s2:string;
   {$ifdef BSD}
   FilePath:string;
   {$endif}
@@ -2026,43 +2122,56 @@ begin
     PatchModule(ModuleName);
   end;
 
+  //if false then
   if result then
   begin
-    VersionSnippet:=IncludeTrailingPathDelimiter(FSourceDirectory)+'Makefile';
-    if FileExists(VersionSnippet) then
+    MakeFilePath:=IncludeTrailingPathDelimiter(FSourceDirectory)+MAKEFILENAME;
+    if FileExists(MakeFilePath) then
     begin
       UpdateWarnings:=TStringList.Create;
       try
-        UpdateWarnings.LoadFromFile(VersionSnippet);
-        aIndex:=UpdateWarnings.IndexOf(#9+DARWINHACKMAGIC);
-        if aIndex=-1 then
+        UpdateWarnings.LoadFromFile(MakeFilePath);
+        aIndex:=(UpdateWarnings.Count-1);
+        while (aIndex>=0) do
         begin
-          // be very secure and sure about hacking the makefile: check extensively !!
-          aIndex:=(UpdateWarnings.Count-1);
-          while (aIndex>=0) do
+          s1:=ExtractWord(1,UpdateWarnings.Strings[aIndex],[' ']);
+          s1:=TrimRight(s1);
+          if s1='useride:' then
           begin
-            if Pos(DARWINHACKMAGIC,UpdateWarnings.Strings[aIndex])>0 then break;
-            Dec(aIndex);
+            //remove everything of the useride macro definition
+            while (aIndex<UpdateWarnings.Count) do
+            begin
+              UpdateWarnings.Delete(aIndex);
+              s1:=ExtractWord(1,UpdateWarnings.Strings[aIndex],[' ']);
+              s1:=TrimRight(s1);
+              //this will stop at the next macro definition [starter:]
+              if s1[Length(s1)]=':' then break;
+            end;
+            break;
           end;
+          Dec(aIndex);
         end;
-        if aIndex=-1 then
-        begin
-          aIndex:=UpdateWarnings.IndexOf(DARWINCHECKMAGIC);
-          if aIndex=-1 then aIndex:=UpdateWarnings.IndexOf(Trim(DARWINCHECKMAGIC));
-          if aIndex<>-1 then
+
+        aHackIndex:=aIndex;
+
+        //replace the useride macro with the new one
+        HackMagic:=TStringList.Create;
+        try
+          HackMagic.Text:=LAZBUILDHACKMAGIC;
+          for aIndex:=(HackMagic.Count-1) downto 0 do
           begin
-            Inc(aIndex);
-            UpdateWarnings.Insert(aIndex+1,'endif');
-            UpdateWarnings.Insert(aIndex,'else');
-            UpdateWarnings.Insert(aIndex,#9+DARWINHACKMAGIC);
-            UpdateWarnings.Insert(aIndex,'ifdef LCL_PLATFORM');
-            UpdateWarnings.SaveToFile(VersionSnippet);
-            infoln(infotext+ModuleName + 'Makefile lazbuild widgetset hack applied.',etInfo);
+            UpdateWarnings.Insert(aHackIndex,HackMagic.Strings[aIndex]);
           end;
+        finally
+          HackMagic.Free;
         end;
+
+        UpdateWarnings.SaveToFile(MakeFilePath);
+
       finally
         UpdateWarnings.Free;
       end;
+
     end;
   end;
 
@@ -2083,7 +2192,7 @@ begin
   if not Result then exit;
 
   //sanity check
-  if FileExists(IncludeTrailingPathDelimiter(FSourceDirectory) + 'Makefile') and DirectoryExists(
+  if FileExists(IncludeTrailingPathDelimiter(FSourceDirectory) + MAKEFILENAME) and DirectoryExists(
     IncludeTrailingPathDelimiter(FSourceDirectory) + 'ide') and DirectoryExists(IncludeTrailingPathDelimiter(FSourceDirectory) + 'lcl') and
     ParentDirectoryIsNotRoot(IncludeTrailingPathDelimiter(FSourceDirectory)) then
   begin

@@ -139,6 +139,7 @@ end;"/>
         <Item3 Mode="darwin64" Option="233755810855"/>
       </SessionEnabledMatrixOptions>
     </BuildModes>
+    <ManyBuildModesSelection Value="win32,win64,linuxi386,linux64,linuxaarch64,freebsdi386,freebsdx64,linuxppc64,linuxarmhf,darwin32,darwin64"/>
     <Units Count="46">
       <Unit0>
         <Filename Value="fpcup.lpr"/>
@@ -488,7 +489,7 @@ end;"/>
     </Units>
     <RunParams>
       <FormatVersion Value="2"/>
-      <Modes Count="0" ActiveMode="default"/>
+      <Modes ActiveMode="default"/>
     </RunParams>
   </ProjectSession>
 </CONFIG>

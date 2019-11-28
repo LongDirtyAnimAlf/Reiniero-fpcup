@@ -1,5 +1,6 @@
-unit m_any_to_solarisx64;
-{ Cross compiles from any platform (with supported crossbin utils0 to Solaris AMD 64 bit (x64)
+unit m_any_to_netbsdx64;
+
+{ Cross compiles from any platform (with supported crossbin utils0 to NetBSD x86_64
 Copyright (C) 2013 Reinier Olislagers
 
 This library is free software; you can redistribute it and/or modify it
@@ -43,12 +44,12 @@ implementation
 
 const
   ARCH='x86_64';
-  OS='solaris';
+  OS='netbsd';
 
 type
 
-{ TAny_Solarisx64 }
-TAny_Solarisx64 = class(TCrossInstaller)
+{ TAny_NetBSDx64 }
+  TAny_NetBSDx64 = class(TCrossInstaller)
 private
   FAlreadyWarned: boolean; //did we warn user about errors and fixes already?
 public
@@ -58,33 +59,21 @@ public
   destructor Destroy; override;
 end;
 
-{ TAny_Solarisx64 }
+{ TAny_NetBSDx64 }
 
-function TAny_Solarisx64.GetLibs(Basepath:string): boolean;
+function TAny_NetBSDx64.GetLibs(Basepath:string): boolean;
 const
-  NormalDirName=ARCH+'-'+OS;
-  OIDirName=ARCH+'-'+OS+'-oi';
-var
-  aDirName:string;
+  DirName=ARCH+'-'+OS;
 begin
   result:=FLibsFound;
   if result then exit;
-
-  if FSolarisOI then
-  begin
-    aDirName:=OIDirName;
-  end
-  else
-  begin
-    aDirName:=NormalDirName;
-  end;
 
   // begin simple: check presence of library file in basedir
   result:=SearchLibrary(Basepath,LIBCNAME);
 
   // search local paths based on libbraries provided for or adviced by fpc itself
   if not result then
-    result:=SimpleSearchLibrary(BasePath,aDirName,LIBCNAME);
+    result:=SimpleSearchLibrary(BasePath,DirName,LIBCNAME);
 
   if result then
   begin
@@ -92,39 +81,40 @@ begin
     AddFPCCFGSnippet('-Xd'); {buildfaq 3.4.1 do not pass parent /lib etc dir to linker}
     AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath)); {buildfaq 1.6.4/3.3.1: the directory to look for the target  libraries}
     //AddFPCCFGSnippet('-XR'+ExcludeTrailingPathDelimiter(FLibsPath)); {buildfaq 1.6.4/3.3.1: the directory to look for the target  libraries}
-    AddFPCCFGSnippet('-Xr/usr/lib'); {buildfaq 3.3.1: makes the linker create the binary so that it searches in the specified directory on the target system for libraries}
+    AddFPCCFGSnippet('-k"-rpath=/usr/X11R6/lib"');
+    AddFPCCFGSnippet('-k"-rpath=/usr/X11R7/lib"');
+    AddFPCCFGSnippet('-k"-rpath=/usr/pkg/lib"');
+    //AddFPCCFGSnippet('-Xr/usr/lib'); {buildfaq 3.3.1: makes the linker create the binary so that it searches in the specified directory on the target system for libraries}
     SearchLibraryInfo(result);
   end;
+  {
+  else
+  begin
+    //libs path is optional; it can be empty
+    ShowInfo('Libspath ignored; it is optional for this cross compiler.');
+    FLibsPath:='';
+    FLibsFound:=true;
+    result:=true;
+  end;
+  }
 end;
 
-function TAny_Solarisx64.GetBinUtils(Basepath:string): boolean;
+function TAny_NetBSDx64.GetBinUtils(Basepath:string): boolean;
 const
-  NormalDirName=ARCH+'-'+OS;
-  OIDirName=ARCH+'-'+OS+'-oi';
+  DirName=ARCH+'-'+OS;
 var
   AsFile: string;
   BinPrefixTry: string;
-  aDirName:string;
 begin
   result:=inherited;
   if result then exit;
-
-  if FSolarisOI then
-  begin
-    aDirName:=OIDirName;
-  end
-  else
-  begin
-    aDirName:=NormalDirName;
-  end;
-
 
   // Start with any names user may have given
   AsFile:=FBinUtilsPrefix+'as'+GetExeExt;
 
   result:=SearchBinUtil(BasePath,AsFile);
   if not result then
-    result:=SimpleSearchBinUtil(BasePath,aDirName,AsFile);
+    result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
 
   // Also allow for crossfpc naming
   if not result then
@@ -132,7 +122,7 @@ begin
     BinPrefixTry:=ARCH+'-'+OS+'-';
     AsFile:=BinPrefixTry+'as'+GetExeExt;
     result:=SearchBinUtil(BasePath,AsFile);
-    if not result then result:=SimpleSearchBinUtil(BasePath,aDirName,AsFile);
+    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
     if result then FBinUtilsPrefix:=BinPrefixTry;
   end;
 
@@ -142,7 +132,7 @@ begin
     BinPrefixTry:='';
     AsFile:=BinPrefixTry+'as'+GetExeExt;
     result:=SearchBinUtil(BasePath,AsFile);
-    if not result then result:=SimpleSearchBinUtil(BasePath,aDirName,AsFile);
+    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
     if result then FBinUtilsPrefix:=BinPrefixTry;
   end;
 
@@ -150,7 +140,7 @@ begin
 
   if not result then
   begin
-    ShowInfo('Suggestion for cross binutils: please check http://wiki.lazarus.freepascal.org/Solaris_Port.',etInfo);
+    ShowInfo('Suggestion for cross binutils: please check http://wiki.lazarus.freepascal.org/NetBSD.',etInfo);
     FAlreadyWarned:=true;
   end
   else
@@ -162,7 +152,7 @@ begin
   end;
 end;
 
-constructor TAny_Solarisx64.Create;
+constructor TAny_NetBSDx64.Create;
 begin
   inherited Create;
   FTargetCPU:=ARCH;
@@ -176,18 +166,20 @@ begin
   ShowInfo;
 end;
 
-destructor TAny_Solarisx64.Destroy;
+destructor TAny_NetBSDx64.Destroy;
 begin
   inherited Destroy;
 end;
 
 var
-  Any_Solarisx64:TAny_Solarisx64;
+  Any_NetBSDx64:TAny_NetBSDx64;
 
 initialization
-  Any_Solarisx64:=TAny_Solarisx64.Create;
-  RegisterExtension(Any_Solarisx64.TargetCPU+'-'+Any_Solarisx64.TargetOS,Any_Solarisx64);
+  Any_NetBSDx64:=TAny_NetBSDx64.Create;
+  RegisterExtension(Any_NetBSDx64.TargetCPU+'-'+Any_NetBSDx64.TargetOS,Any_NetBSDx64);
+
 finalization
-  Any_Solarisx64.Destroy;
+  Any_NetBSDx64.Destroy;
+
 end.
 

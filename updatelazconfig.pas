@@ -276,7 +276,7 @@ begin
   AttrName:='';
   Node:=Doc.FindNode('CONFIG');
   while assigned(Node) and (pos('/',APath)>0) do //walk in tree until no more /
-    begin
+  begin
     NodeName:=copy(APath,1,pos('/',APath)-1);
     Delete(APath,1,length(NodeName)+1);
     Parent:=Node;
@@ -286,12 +286,12 @@ begin
       Node:=Doc.CreateElement(NodeName);
       Parent.AppendChild(Node);
       end;
-    end;
+  end;
   if assigned(Node) then
-    begin
+  begin
     AttrName:=APath;
     result:=Node;
-    end;
+  end;
 end;
 
 function TConfig.GetValue(const APath, ADefault: String): String;
@@ -412,7 +412,7 @@ begin
   If bChanged then
   begin
     // Make sure path exists:
-    ForceDirectories(ExtractFilePath(FFilename));
+    ForceDirectoriesSafe(ExtractFilePath(FFilename));
     Save;
   end;
   Doc.Free;
@@ -515,11 +515,11 @@ begin
             else if FLazarusMajorVer=2 then
               case FLazarusMinor of
                 0 : NewConfig.SetValue('EnvironmentOptions/Version/Value', '110'); //for version 2.0
-              else
+                else
                   begin
-                  NewConfig.SetValue('EnvironmentOptions/Version/Value', TrunkVersionNewEnvironmentConfig);
-                  NewConfig.SetValue('EnvironmentOptions/Version/Lazarus', TrunkLazarusNewEnvironmentConfig);
-                end;
+                    NewConfig.SetValue('EnvironmentOptions/Version/Value', TrunkVersionNewEnvironmentConfig);
+                    NewConfig.SetValue('EnvironmentOptions/Version/Lazarus', TrunkLazarusNewEnvironmentConfig);
+                  end;
               end
             else { 3 or higher? keep latest known, we can leave lazarus version though }
             begin

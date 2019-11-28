@@ -58,17 +58,31 @@ end;
 
 function Tany_linux64.GetLibs(Basepath:string): boolean;
 const
-  DirName='x86_64-linux';
+  NormalDirName='x86_64-linux';
+  MUSLDirName='x86_64-musllinux';
+var
+  aDirName,aLibcName:string;
 begin
   result:=FLibsFound;
   if result then exit;
 
+  if FMUSL then
+  begin
+    aDirName:=MUSLDirName;
+    aLibcName:=MUSLLIBCNAME;
+  end
+  else
+  begin
+    aDirName:=NormalDirName;
+    aLibcName:=LIBCNAME;
+  end;
+
   // begin simple: check presence of library file in basedir
-  result:=SearchLibrary(Basepath,LIBCNAME);
+  result:=SearchLibrary(Basepath,aLibcName);
 
   // first search local paths based on libbraries provided for or adviced by fpc itself
   if not result then
-    result:=SimpleSearchLibrary(BasePath,DirName,LIBCNAME);
+    result:=SimpleSearchLibrary(BasePath,aDirName,aLibcName);
 
   if not result then
   begin
@@ -87,8 +101,11 @@ begin
   if result then
   begin
     FLibsFound:=True;
-    AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath));
+    AddFPCCFGSnippet('-Xd'); {buildfaq 3.4.1 do not pass parent /lib etc dir to linker}
+    AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath)); {buildfaq 1.6.4/3.3.1: the directory to look for the target  libraries}
+    //AddFPCCFGSnippet('-XR'+ExcludeTrailingPathDelimiter(FLibsPath)); {buildfaq 1.6.4/3.3.1: the directory to look for the target libraries ... just te be safe ...}
     AddFPCCFGSnippet('-Xr/usr/lib');
+    if FMUSL then AddFPCCFGSnippet('-FL/lib/ld-musl-x86_64.so.1');
   end;
 end;
 
@@ -102,20 +119,27 @@ end;
 
 function Tany_linux64.GetBinUtils(Basepath:string): boolean;
 const
-  DirName='x86_64-linux';
+  NormalDirName='x86_64-linux';
+  MUSLDirName='x86_64-musllinux';
 var
   AsFile: string;
   BinPrefixTry: string;
+  aDirName: string;
 begin
   result:=inherited;
   if result then exit;
+
+  if FMUSL then
+    aDirName:=MUSLDirName
+  else
+    aDirName:=NormalDirName;
 
   AsFile:=FBinUtilsPrefix+'as'+GetExeExt;
 
   result:=SearchBinUtil(BasePath,AsFile);
 
   if not result then
-    result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+    result:=SimpleSearchBinUtil(BasePath,aDirName,AsFile);
 
   // Also allow for (cross)binutils without prefix
   if not result then
@@ -123,7 +147,7 @@ begin
     BinPrefixTry:='';
     AsFile:=BinPrefixTry+'as'+GetExeExt;
     result:=SearchBinUtil(BasePath,AsFile);
-    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+    if not result then result:=SimpleSearchBinUtil(BasePath,aDirName,AsFile);
     if result then FBinUtilsPrefix:=BinPrefixTry;
   end;
 
@@ -161,6 +185,7 @@ var
 initialization
   any_linux64:=Tany_linux64.Create;
   RegisterExtension(any_linux64.TargetCPU+'-'+any_linux64.TargetOS,any_linux64);
+
 finalization
   any_linux64.Destroy;
 

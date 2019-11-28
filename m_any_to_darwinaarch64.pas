@@ -169,8 +169,6 @@ begin
     AddFPCCFGSnippet('-k-framework -kFoundation');
     AddFPCCFGSnippet('-k-framework -kCoreFoundation');
     AddFPCCFGSnippet('-XR'+s);
-
-    AddFPCCFGSnippet('-Xr/usr/lib');
   end;
 end;
 
@@ -227,6 +225,7 @@ begin
   if result then
   begin
     FBinsFound:=true;
+
     // Configuration snippet for FPC
     AddFPCCFGSnippet('-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath)); {search this directory for compiler utilities}
     AddFPCCFGSnippet('-XX');

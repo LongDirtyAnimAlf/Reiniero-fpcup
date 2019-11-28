@@ -23,7 +23,7 @@ Another solution would be to get the relevant binutils/libs from a working Linux
 interface
 
 uses
-  Classes, SysUtils, m_crossinstaller;
+  Classes, SysUtils, m_crossinstaller, fpcuputil;
 
 implementation
 type

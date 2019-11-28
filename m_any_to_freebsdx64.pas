@@ -36,6 +36,10 @@ interface
 uses
   Classes, SysUtils, m_crossinstaller, fileutil;
 
+const
+  MAXFREEBSDVERSION=13;
+  MINFREEBSDVERSION=6;
+
 implementation
 
 type
@@ -59,6 +63,8 @@ end;
 function Tany_freebsdx64.GetLibs(Basepath:string): boolean;
 const
   DirName='x86_64-freebsd';
+var
+  aVersion:integer;
 begin
   result:=FLibsFound;
   if result then exit;
@@ -69,6 +75,16 @@ begin
   // first search local paths based on libbraries provided for or adviced by fpc itself
   if not result then
     result:=SimpleSearchLibrary(BasePath,DirName,LIBCNAME);
+
+  if not result then
+  begin
+    // look for versioned libraries
+    for aVersion:=13 downto 7 do
+    begin
+      result:=SimpleSearchLibrary(BasePath,DirName+InttoStr(aVersion),LIBCNAME);
+      if result then break;
+    end;
+  end;
 
   if not result then
   begin
@@ -84,11 +100,10 @@ begin
   if result then
   begin
     FLibsFound:=True;
-    //todo: check if -XR is needed for fpc root dir Prepend <x> to all linker search paths
-    FFPCCFGSnippet:=FFPCCFGSnippet+LineEnding+
-    '-Fl'+IncludeTrailingPathDelimiter(FLibsPath)+LineEnding+ {buildfaq 1.6.4/3.3.1: the directory to look for the target  libraries}
-    '-Xr/usr/lib';//+LineEnding+ {buildfaq 3.3.1: makes the linker create the binary so that it searches in the specified directory on the target system for libraries}
-    //'-FL/usr/lib/ld-linux.so.2' {buildfaq 3.3.1: the name of the dynamic linker on the target};
+    AddFPCCFGSnippet('-Xd'); {buildfaq 3.4.1 do not pass parent /lib etc dir to linker}
+    AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath)); {buildfaq 1.6.4/3.3.1: the directory to look for the target  libraries}
+    //AddFPCCFGSnippet('-XR'+ExcludeTrailingPathDelimiter(FLibsPath)); {buildfaq 1.6.4/3.3.1: the directory to look for the target libraries ... just te be safe ...}
+    AddFPCCFGSnippet('-Xr/usr/lib');
   end;
 end;
 
@@ -105,6 +120,7 @@ const
   DirName='x86_64-freebsd';
 var
   AsFile: string;
+  AsDirectory: string;
   BinPrefixTry: string;
   i:integer;
 begin
@@ -120,8 +136,9 @@ begin
   if not result then
   begin
     // look for versioned binutils
-    BinPrefixTry:='x86_64-freebsd';
-    for i:=12 downto 7 do
+    BinPrefixTry:=FBinUtilsPrefix;
+    SetLength(BinPrefixTry,Length(BinPrefixTry)-1);
+    for i:=MAXFREEBSDVERSION downto MINFREEBSDVERSION do
     begin
       AsFile:=BinPrefixTry+InttoStr(i)+'-'+'as'+GetExeExt;
       result:=SearchBinUtil(BasePath,AsFile);
@@ -135,14 +152,27 @@ begin
     end;
   end;
 
-  // Also allow for (cross)binutils without prefix
   if not result then
   begin
-    BinPrefixTry:='';
-    AsFile:=BinPrefixTry+'as'+GetExeExt;
-    result:=SearchBinUtil(BasePath,AsFile);
-    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
-    if result then FBinUtilsPrefix:=BinPrefixTry;
+    // look for binutils in versioned directories
+    AsFile:=FBinUtilsPrefix+'as'+GetExeExt;
+    i:=MAXFREEBSDVERSION;
+    while (i>=MINFREEBSDVERSION) do
+    begin
+      if i=MINFREEBSDVERSION then
+        AsDirectory:=DirName
+      else
+        AsDirectory:=DirName+InttoStr(i);
+      result:=SimpleSearchBinUtil(BasePath,AsDirectory,AsFile);
+      if not result then
+      begin
+        // Also allow for (cross)binutils without prefix
+        result:=SimpleSearchBinUtil(BasePath,AsDirectory,'as'+GetExeExt);
+        if result then FBinUtilsPrefix:=''
+      end;
+      if result then break;
+      Dec(i);
+    end;
   end;
 
   SearchBinUtilsInfo(result);
@@ -151,9 +181,9 @@ begin
   begin
     FBinsFound:=true;
     // Configuration snippet for FPC
-    FFPCCFGSnippet:=FFPCCFGSnippet+LineEnding+
-    '-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath)+LineEnding+ {search this directory for compiler utilities}
-    '-XP'+FBinUtilsPrefix+LineEnding {Prepend the binutils names};
+    AddFPCCFGSnippet('-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath)); {search this directory for compiler utilities}
+    AddFPCCFGSnippet('-XP'+FBinUtilsPrefix); {Prepend the binutils names}
+    AddFPCCFGSnippet('-dFPC_USE_LIBC'); {Use libc to build all}
   end;
 end;
 

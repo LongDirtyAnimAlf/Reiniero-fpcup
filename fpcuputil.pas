@@ -265,6 +265,7 @@ procedure CreateHomeStartLink(Target, TargetArguments, ShortcutName: string);
 // Delete shortcut on desktop
 procedure DeleteDesktopShortcut(ShortcutName: string);
 {$ENDIF MSWINDOWS}
+function FindFileInDir(Filename, Path: String): String;
 // Copy a directory recursive
 function DirCopy(SourcePath, DestPath: String): Boolean;
 // Delete directory and children, even read-only. Equivalent to rm -rf <directory>:
@@ -330,10 +331,17 @@ function SaveInisFromResource(filename,resourcename:string):boolean;
 // Searches for SearchFor in the stringlist and returns the index if found; -1 if not
 // Search optionally starts from position SearchFor
 function StringListStartsWith(SearchIn:TStringList; SearchFor:string; StartIndex:integer=0; CS:boolean=false): integer;
+function GetTotalPhysicalMemory: DWord;
+function GetSwapFileSize: DWord;
 {$IFDEF UNIX}
 function XdgConfigHome: String;
-function GetGCCDirectory:string;
+function GetStartupObjects:string;
+{$IFDEF LINUX}
+function GetFreePhysicalMemory: DWord;
+function GetFreeSwapFileSize: DWord;
+{$ENDIF LINUX}
 {$ENDIF UNIX}
+function GetLogicalCpuCount: integer;
 {$ifdef Darwin}
 function GetSDKVersion(aSDK: string):string;
 {$endif}
@@ -343,6 +351,7 @@ function GetEnumNameSimple(aTypeInfo:PTypeInfo;const aEnum:integer):string;
 // Emulates/runs which to find executable in path. If not found, returns empty string
 function Which(Executable: string): string;
 function IsExecutable(Executable: string):boolean;
+function ForceDirectoriesSafe(Const Dir: RawByteString): Boolean;
 function CheckExecutable(Executable, Parameters, ExpectOutput: string): boolean;
 function GetJava: string;
 function CheckJava: boolean;
@@ -392,6 +401,9 @@ uses
     //Mostly for shortcut code
     ,windows, shlobj {for special folders}, ActiveX, ComObj, WinDirs
   {$ENDIF MSWINDOWS}
+  {$IFDEF LINUX}
+  ,linux
+  {$ENDIF}
   {$IFDEF UNIX}
   ,unix,baseunix
   {$ENDIF}
@@ -401,6 +413,7 @@ uses
   // for libc downloader
   ,fpcuplibcurl
   {$ENDIF ENABLEWGET}
+  ,NumCPULib  in './numcpulib/NumCPULib.pas'
   ,processutils
   ;
 
@@ -582,13 +595,20 @@ begin
  end;
  {$endif}
  if FileIsSymlink(StartPath) then
+ begin
+   try
     StartPath:=GetPhysicalFilename(StartPath,pfeException);
+   except
+   end;
+ end;
  result:=StartPath;
 end;
 
 function SafeGetApplicationPath: String;
+var
+  StartPath: String;
 begin
-  result:=ExtractFilePath(SafeGetApplicationName);
+  StartPath:=ExtractFileDir(SafeGetApplicationName);
 
   (*
  //StartPath:=IncludeTrailingPathDelimiter(ProgramDirectory);
@@ -612,9 +632,14 @@ begin
  result:=ExtractFilePath(StartPath);
  *)
 
- if DirectoryExists(result) then
-    result:=GetPhysicalFilename(result,pfeException);
- result:=IncludeTrailingPathDelimiter(result);
+ if DirectoryExists(StartPath) then
+ begin
+   try
+     StartPath:=GetPhysicalFilename(StartPath,pfeException);
+   except
+   end;
+ end;
+ result:=IncludeTrailingPathDelimiter(StartPath);
 end;
 
 function SaveFileFromResource(filename,resourcename:string):boolean;
@@ -807,7 +832,8 @@ begin
       infoln('CreateDesktopShortcut: xdg-desktop-icon failed to create shortcut to '+Target,etWarning);
       infoln('CreateDesktopShortcut: going to create shortcut manually',etWarning);
       aDirectory:='/usr/share/applications';
-      if DirectoryExists(aDirectory) then
+      if false then // skip global
+      //if DirectoryExists(aDirectory) then
       begin
         FileUtil.CopyFile(XdgDesktopFile,aDirectory+'/'+ExtractFileName(XdgDesktopFile));
       end
@@ -869,7 +895,7 @@ begin
   {$ENDIF MSWINDOWS}
   {$IFDEF UNIX}
   //create dir if it doesn't exist
-  ForceDirectories(ExtractFilePath(IncludeTrailingPathDelimiter(SafeExpandFileName('~'))+ShortcutName));
+  ForceDirectoriesSafe(ExtractFilePath(IncludeTrailingPathDelimiter(SafeExpandFileName('~'))+ShortcutName));
   ScriptText:=TStringList.Create;
   try
     // No quotes here, either, we're not in a shell, apparently...
@@ -1132,6 +1158,30 @@ begin
   SysUtils.DeleteFile(LinkName);
 end;
 {$ENDIF MSWINDOWS}
+
+function FindFileInDir(Filename, Path: String): String;
+var
+  DirList: TStringList;
+  ADirectory: String;
+  AFile: string;
+begin
+  Result := '';
+  DirList := FindAllDirectories(Path);
+  try
+    DirList.Insert(0,ExcludeTrailingPathDelimiter(Path));
+    for ADirectory in DirList do
+    begin
+      AFile:=IncludeTrailingPathDelimiter(ADirectory)+Filename;
+      if FileExists(AFile) then
+      begin
+        Result := AFile;
+        Break;
+      end;
+    end;
+  finally
+    DirList.Free;
+  end;
+end;
 
 function DirCopy(SourcePath, DestPath: String): Boolean;
 begin
@@ -1958,30 +2008,110 @@ begin
     result:=-1;
 end;
 
+function GetTotalPhysicalMemory: DWord;
+begin
+  result:=TNumCPULib.GetTotalPhysicalMemory();
+end;
+
+function GetSwapFileSize: DWord;
+begin
+  result:=TNumCPULib.GetTotalSwapMemory();
+end;
+
 {$IFDEF UNIX}
-function GetGCCDirectory:string;
+function GetStartupObjects:string;
+const
+  LINKFILE='crtbegin.o';
+  SEARCHDIRS : array [0..5] of string = (
+    '/usr/local/lib/',
+    '/usr/lib/',
+    '/usr/local/lib/gcc/',
+    '/usr/lib/gcc/',
+    '/lib/gcc/',
+    '/lib/'
+    );
+
 var
-  output,s1,s2:string;
+  LinkFiles     : TStringList;
+  Output,s1,s2  : string;
   i,j:integer;
   ReturnCode: integer;
+  FoundLinkFile : boolean;
 begin
-
-  {$IF (defined(BSD)) and (not defined(Darwin))}
-  result:='/usr/local/lib/gcc/';
-  {$else}
-  result:='/usr/lib/gcc/';
-  {$endif}
-  output:='';
+  FoundLinkFile:=false;
+  result:='';
 
   try
+    //start with a very simple filesearch.
+
+    for i:=Low(SEARCHDIRS) to High(SEARCHDIRS) do
+    begin
+      s1:=SEARCHDIRS[i];
+      if FileExists(s1+LINKFILE) then FoundLinkFile:=true;
+      if FoundLinkFile then
+      begin
+        result:=s1;
+        break;
+      end;
+    end;
+
+    if FoundLinkFile then exit;
+
+  try
+      Output:='';
+      ReturnCode:=ExecuteCommand('gcc -print-prog-name=cc1', Output, false);
+
+      if (ReturnCode=0) then
+      begin
+        s1:=Trim(Output);
+        if FileExists(s1) then
+        begin
+          s2:=ExtractFileDir(s1);
+          if FileExists(s2+DirectorySeparator+LINKFILE) then
+          begin
+            result:=s2;
+            FoundLinkFile:=true;
+          end;
+        end;
+      end;
+
+      if (NOT FoundLinkFile) then
+      begin
+
+        Output:='';
     ReturnCode:=ExecuteCommand('gcc -v', Output, false);
 
     if (ReturnCode=0) then
     begin
+
+          s1:='COLLECT_LTO_WRAPPER=';
+          i:=Ansipos(s1, Output);
+          if (i>0) then
+          begin
+            s2:=RightStr(Output,Length(Output)-(i+Length(s1)-1));
+            // find space as delimiter
+            i:=Ansipos(' ', s2);
+            // find lf as delimiter
+            j:=Ansipos(#10, s2);
+            if (j>0) AND (j<i) then i:=j;
+            // find cr as delimiter
+            j:=Ansipos(#13, s2);
+            if (j>0) AND (j<i) then i:=j;
+            if (i>0) then delete(s2,i,MaxInt);
+            s2:=ExtractFileDir(s2);
+            if FileExists(s2+DirectorySeparator+LINKFILE) then
+            begin
+              result:=s2;
+              FoundLinkFile:=true;
+            end;
+          end;
+
+          if (NOT FoundLinkFile) then
+          begin
     s1:=' --libdir=';
       //s1:=' --libexecdir=';
     i:=Ansipos(s1, Output);
-    if i > 0 then
+            if (i>0) then
     begin
       s2:=RightStr(Output,Length(Output)-(i+Length(s1)-1));
       // find space as delimiter
@@ -1992,7 +2122,7 @@ begin
       // find cr as delimiter
       j:=Ansipos(#13, s2);
       if (j>0) AND (j<i) then i:=j;
-      if i > 0 then delete(s2,i,MaxInt);
+              if (i>0) then delete(s2,i,MaxInt);
       result:=IncludeTrailingPathDelimiter(s2);
     end;
 
@@ -2006,7 +2136,7 @@ begin
         s1:=' --target=';
         i:=Ansipos(s1, Output);
       end;
-    if i > 0 then
+            if (i>0) then
     begin
       s2:=RightStr(Output,Length(Output)-(i+Length(s1)-1));
       // find space as delimiter
@@ -2017,12 +2147,12 @@ begin
       // find cr as delimiter
       j:=Ansipos(#13, s2);
       if (j>0) AND (j<i) then i:=j;
-      if i > 0 then delete(s2,i,MaxInt);
+              if (i>0) then delete(s2,i,MaxInt);
       result:=result+s2+DirectorySeparator;
     end;
     s1:='gcc version ';
     i:=Ansipos(s1, Output);
-    if i > 0 then
+            if (i>0) then
     begin
       s2:=RightStr(Output,Length(Output)-(i+Length(s1)-1));
       // find space as delimiter
@@ -2033,8 +2163,14 @@ begin
       // find cr as delimiter
       j:=Ansipos(#13, s2);
       if (j>0) AND (j<i) then i:=j;
-      if i > 0 then delete(s2,i,MaxInt);
+              if (i>0) then delete(s2,i,MaxInt);
       result:=result+s2;
+              if FileExists(result+DirectorySeparator+LINKFILE) then
+              begin
+                FoundLinkFile:=true;
+              end;
+            end;
+          end;
     end;
     end;
 
@@ -2042,30 +2178,100 @@ begin
     // ignore errors
   end;
 
-  //In case of errors, do a brute force search of gcc
-  if ((ReturnCode<>0) or (NOT DirectoryExists(result))) then
+    //In case of errors or failures, do a brute force search of gcc link file
+    if (NOT FoundLinkFile) then
   begin
     {$IF (defined(BSD)) and (not defined(Darwin))}
-    result:='/usr/local/lib/gcc/';
+      result:='/usr/local/lib/gcc';
     {$else}
-    result:='/usr/lib/gcc/';
+      result:='/usr/lib/gcc';
     {$endif}
-    for i:=9 downto 4 do
+
+      if DirectoryExists(result) then
     begin
-      output:=IncludeTrailingPathDelimiter(result)+GetTargetCPUOS+'-gnu'+DirectorySeparator+InttoStr(i);
-      if DirectoryExists(output) then
+        LinkFiles := TStringList.Create;
+        try
+          FindAllFiles(LinkFiles, result, '*.o', true);
+          for i:=0 to (LinkFiles.Count-1) do
       begin
-        if FileExists(output+DirectorySeparator+'crtbegin.o') then
+            if Pos(DirectorySeparator+LINKFILE,LinkFiles[i])>0 then
         begin
-          result:=output;
+              result:=ExtractFileDir(LinkFiles[i]);
+              FoundLinkFile:=true;
           break;
         end;
       end;
+        finally
+          LinkFiles.Free;
+        end;
     end;
   end;
 
+  finally
+    {$IF (not defined(Solaris)) and (not defined(Darwin))}
+    if (NOT FoundLinkFile) then
+    begin
+      infoln('GetStartupObjects: Could not find ' + LINKFILE + ' on system. Expect linking warnings/errors.',etWarning);
+    end;
+    {$ENDIF}
 end;
+
+end;
+
+{$IFDEF LINUX}
+function GetFreePhysicalMemory: DWord;
+var
+  SystemInf: TSysInfo;
+  mu:        cardinal;
+begin
+  FillChar({%H-}SystemInf,SizeOf(SystemInf),0);
+  SysInfo(@SystemInf);
+  mu := SystemInf.mem_unit;
+  result := (QWord(SystemInf.freeram*mu) shr 20);
+end;
+
+
+function GetFreeSwapFileSize: DWord;
+var
+  SystemInf: TSysInfo;
+  mu:        cardinal;
+begin
+  FillChar({%H-}SystemInf,SizeOf(SystemInf),0);
+  SysInfo(@SystemInf);
+  mu := SystemInf.mem_unit;
+  result := (QWord(SystemInf.freeswap*mu) shr 20);
+end;
+{$ENDIF LINUX}
 {$ENDIF UNIX}
+
+function GetLogicalCpuCount: integer;
+var
+  TotalMBMemory:DWord;
+begin
+  { Uses NumCPULib Library }
+  { Copyright (c) 2019 Ugochukwu Mmaduekwe }
+  { Github Repository https://github.com/Xor-el }
+  result:=TNumCPULib.GetLogicalCPUCount();
+
+  TotalMBMemory:=GetTotalPhysicalMemory+GetSwapFileSize;
+  if TotalMBMemory=0 then
+  begin
+    // no info : be safe
+    result:=1;
+    exit;
+  end;
+
+  // limit the amount of spawn processes in case of limited memory
+  if (TotalMBMemory<3000) then
+  begin
+    result:=(result DIV 2);
+  end;
+  // limit the amount to 1 process in case of very limited memory
+  if (TotalMBMemory<2000) then
+  begin
+    result:=1;
+  end;
+end;
 
 {$ifdef Darwin}
 function GetSDKVersion(aSDK: string):string;
@@ -2200,7 +2406,20 @@ var
   Output: string;
 begin
   result:=FindDefaultExecutablePath(Executable);
+
+  {$IFNDEF FREEBSD}
   if (NOT FileIsExecutable(result)) then result:='';
+  {$ENDIF}
+
+  {$IFDEF UNIX}
+  if (NOT FileExists(result)) then
+  begin
+    ExecuteCommand('which '+Executable,Output,false);
+    Output:=Trim(Output);
+    if ((Output<>'') and FileExists(Output)) then result:=Output;
+  end;
+  {$ENDIF}
+
 
   (*
   {$IFDEF UNIX}
@@ -2253,6 +2472,16 @@ begin
   end;
 end;
 
+function ForceDirectoriesSafe(Const Dir: RawByteString): Boolean;
+begin
+  result:=true;
+  if (NOT DirectoryExists(Dir)) then
+  begin
+    infoln('Non existing directory: '+Dir+'. Going to create it.', etInfo);
+    result:=ForceDirectories(Dir);
+    if (NOT result) then infoln('Could not create directory: '+Dir, etWarning);
+  end;
+end;
 
 {$IFDEF UNIX}
 //Adapted from sysutils; Unix/Linux only
@@ -3342,7 +3571,7 @@ begin
   //Show progress only every 5 seconds
   if GetUpTickCount>StoredTickCount+5000 then
   begin
-    infoln('Downloading '+aFileName+': '+KB(APos),etInfo);
+    infoln('Download progress '+aFileName+': '+KB(APos),etInfo);
     StoredTickCount:=GetUpTickCount;
   end;
 end;
