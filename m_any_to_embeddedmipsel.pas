@@ -72,7 +72,6 @@ end;
 
 function TAny_Embeddedmipsel.GetLibs(Basepath:string): boolean;
 const
-  DirName='mipsel-embedded';
   LibName='';
 begin
   // mipsel-embedded does not need libs by default, but user can add them.
@@ -109,8 +108,6 @@ end;
 {$endif}
 
 function TAny_Embeddedmipsel.GetBinUtils(Basepath:string): boolean;
-const
-  DirName='mipsel-embedded';
 var
   AsFile,aOption: string;
   BinPrefixTry: string;
@@ -165,6 +162,27 @@ begin
     if result then FBinUtilsPrefix:=BinPrefixTry;
   end;
 
+  // Now also allow for mips-sde-elf binutilsprefix
+  if not result then
+  begin
+    BinPrefixTry:='mips-sde-elf-';
+    AsFile:=BinPrefixTry+'as'+GetExeExt;
+    result:=SearchBinUtil(BasePath,AsFile);
+    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+    if result then FBinUtilsPrefix:=BinPrefixTry;
+  end;
+
+  // Now also allow for mipsel-sde-elf binutilsprefix
+  if not result then
+  begin
+    BinPrefixTry:='mipsel-sde-elf-';
+    AsFile:=BinPrefixTry+'as'+GetExeExt;
+    result:=SearchBinUtil(BasePath,AsFile);
+    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+    if result then FBinUtilsPrefix:=BinPrefixTry;
+  end;
+
+
   // Now also allow for empty binutilsprefix:
   if not result then
   begin
@@ -191,6 +209,7 @@ begin
     // Configuration snippet for FPC
     AddFPCCFGSnippet('-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath));
     AddFPCCFGSnippet('-XP'+FBinUtilsPrefix); {Prepend the binutils names};
+    AddFPCCFGSnippet('-a5'); // prevents the addition of .module nomips16 pseudo-op : not all assemblers can handle this
 
     i:=StringListStartsWith(FCrossOpts,'-Cp');
     if i=-1 then
@@ -209,12 +228,9 @@ end;
 constructor TAny_Embeddedmipsel.Create;
 begin
   inherited Create;
-  FBinUtilsPrefix:='mipsel-embedded-';
-  FBinUtilsPath:='';
-  FFPCCFGSnippet:=''; //will be filled in later
-  FLibsPath:='';
-  FTargetCPU:='mipsel';
-  FTargetOS:='embedded';
+  FTargetCPU:=TCPU.mipsel;
+  FTargetOS:=TOS.embedded;
+  Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
@@ -229,7 +245,8 @@ var
 
 initialization
   Any_Embeddedmipsel:=TAny_Embeddedmipsel.Create;
-  RegisterExtension(Any_Embeddedmipsel.TargetCPU+'-'+Any_Embeddedmipsel.TargetOS,Any_Embeddedmipsel);
+  RegisterCrossCompiler(Any_Embeddedmipsel.RegisterName,Any_Embeddedmipsel);
+
 finalization
   Any_Embeddedmipsel.Destroy;
 end.

@@ -159,13 +159,9 @@ constructor TLinux386_mipsel.Create;
 begin
   inherited Create;
   FCrossModuleName:='Linux386_mipsel';
-  FBinUtilsPrefix:='mipsel-linux-';
-  FBinUtilsPath:='';
-  FCrossModuleName:='TLinux386_mipsel'; //used in messages to user
-  FFPCCFGSnippet:='';
-  FLibsPath:='';
-  FTargetCPU:='mipsel';
-  FTargetOS:='linux';
+  FTargetCPU:=TCPU.mipsel;
+  FTargetOS:=TOS.linux;
+  Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
@@ -182,7 +178,7 @@ var
 // Even though it's officially for x86, x64 may work
 initialization
   Linux386_mipsel:=TLinux386_mipsel.Create;
-  RegisterExtension(Linux386_mipsel.TargetCPU+'-'+Linux386_mipsel.TargetOS,Linux386_mipsel);
+  RegisterCrossCompiler(Linux386_mipsel.TargetCPU+'-'+Linux386_mipsel.TargetOS,Linux386_mipsel);
 finalization
   Linux386_mipsel.Destroy;
 {$ENDIF}

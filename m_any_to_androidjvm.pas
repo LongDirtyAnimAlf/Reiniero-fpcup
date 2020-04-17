@@ -67,8 +67,12 @@ function Tany_androidjvm.GetLibs(Basepath:string): boolean;
 begin
   result:=FLibsFound;
   if result then exit;
+
+  FLibsPath:='';
+
   //FLibsPath:='where is jasmin.jar'
   //for now, jasmin.jar will be downloaded into normal bin-dir !!
+
   result:=True;
   FLibsFound:=True;
 end;
@@ -77,10 +81,14 @@ function Tany_androidjvm.GetBinUtils(Basepath:string): boolean;
 begin
   result:=inherited;
   if result then exit;
+
+  FBinUtilsPath:='';
+  FBinUtilsPrefix:='';
+
   result:=CheckJava;
   if result then
   begin
-  FBinsFound:=true;
+    FBinsFound:=true;
     // On Windows, Java often resides inside a directory with spaces; FPC does not like spaces, so use DOS-names.
     FBinUtilsPath:=ExtractShortPathNameUTF8(ExtractFilePath(GetJava));
     AddFPCCFGSnippet('-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath));
@@ -96,12 +104,9 @@ end;
 constructor Tany_androidjvm.Create;
 begin
   inherited Create;
-  FBinUtilsPrefix:='';
-  FBinUtilsPath:='';
-  FFPCCFGSnippet:='';
-  FLibsPath:='';
-  FTargetCPU:='jvm';
-  FTargetOS:='android';
+  FTargetCPU:=TCPU.jvm;
+  FTargetOS:=TOS.android;
+  Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
@@ -116,7 +121,8 @@ var
 
 initialization
   any_androidjvm:=Tany_androidjvm.Create;
-  RegisterExtension(any_androidjvm.TargetCPU+'-'+any_androidjvm.TargetOS,any_androidjvm);
+  RegisterCrossCompiler(any_androidjvm.RegisterName,any_androidjvm);
+
 finalization
   any_androidjvm.Destroy;
 

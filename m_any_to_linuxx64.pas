@@ -31,12 +31,17 @@ Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 {$mode objfpc}{$H+}
 
+{.$DEFINE MULTILIB}
+
 interface
 
 uses
   Classes, SysUtils, m_crossinstaller, fileutil;
 
 implementation
+
+uses
+  fpcuputil;
 
 type
 
@@ -58,10 +63,9 @@ end;
 
 function Tany_linux64.GetLibs(Basepath:string): boolean;
 const
-  NormalDirName='x86_64-linux';
   MUSLDirName='x86_64-musllinux';
 var
-  aDirName,aLibcName:string;
+  aDirName,aLibName,s:string;
 begin
   result:=FLibsFound;
   if result then exit;
@@ -69,44 +73,80 @@ begin
   if FMUSL then
   begin
     aDirName:=MUSLDirName;
-    aLibcName:=MUSLLIBCNAME;
+    aLibName:='libc.musl-'+GetCPU(TargetCPU)+'.so.1';
   end
   else
   begin
-    aDirName:=NormalDirName;
-    aLibcName:=LIBCNAME;
+    aDirName:=DirName;
+    aLibName:=LIBCNAME;
   end;
 
   // begin simple: check presence of library file in basedir
-  result:=SearchLibrary(Basepath,aLibcName);
+  result:=SearchLibrary(Basepath,aLibName);
 
   // first search local paths based on libbraries provided for or adviced by fpc itself
   if not result then
-    result:=SimpleSearchLibrary(BasePath,aDirName,aLibcName);
-
-  if not result then
-  begin
-    {$IFDEF UNIX}
-    {$IFDEF MULTILIB}
-    FLibsPath:='/usr/lib/x86_64-linux-gnu'; //debian Jessie+ convention
-    result:=DirectoryExists(FLibsPath);
-    if not result then
-    ShowInfo('Searched but not found libspath '+FLibsPath);
-    {$ENDIF}
-    {$ENDIF}
-  end;
-
-  SearchLibraryInfo(result);
+    result:=SimpleSearchLibrary(BasePath,aDirName,aLibName);
 
   if result then
   begin
     FLibsFound:=True;
     AddFPCCFGSnippet('-Xd'); {buildfaq 3.4.1 do not pass parent /lib etc dir to linker}
     AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath)); {buildfaq 1.6.4/3.3.1: the directory to look for the target  libraries}
-    //AddFPCCFGSnippet('-XR'+ExcludeTrailingPathDelimiter(FLibsPath)); {buildfaq 1.6.4/3.3.1: the directory to look for the target libraries ... just te be safe ...}
+    //Remember: -XR sets the sysroot path used for linking
+    //AddFPCCFGSnippet('-XR'+IncludeTrailingPathDelimiter(FLibsPath)+'lib64'); {buildfaq 1.6.4/3.3.1: the directory to look for the target libraries ... just te be safe ...}
+    //Remember: -Xr adds a  rlink path to the linker
     AddFPCCFGSnippet('-Xr/usr/lib');
-    if FMUSL then AddFPCCFGSnippet('-FL/lib/ld-musl-x86_64.so.1');
+
+    if FMUSL then
+    begin
+      aLibName:='ld-musl-'+GetCPU(TargetCPU)+'.so.1';
+      AddFPCCFGSnippet('-FL/lib/'+aLibName);
+    end;
   end;
+
+  if not result then
+  begin
+    {$IFDEF LINUX}
+    {$IFDEF MULTILIB}
+    FLibsPath:='/usr/lib/x86_64-linux-gnu'; //debian (multilib) Jessie+ convention
+    result:=DirectoryExists(FLibsPath);
+    if result then
+    begin
+      FLibsFound:=True;
+      AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath));
+      {$ifdef CPU32}
+
+      s:='/lib64';
+      if DirectoryExists(s) then
+      begin
+        s:=s+DirectorySeparator;
+        AddFPCCFGSnippet('-Fl'+s);
+      end;
+
+      s:='/usr/lib64';
+      if DirectoryExists(s) then
+      s:=s+DirectorySeparator;
+      AddFPCCFGSnippet('-Fl'+s);
+
+      s:='/lib/x86_64-linux-gnu';
+      if DirectoryExists(s) then
+      s:=s+DirectorySeparator;
+      AddFPCCFGSnippet('-Fl'+s);
+
+      // gcc 64bit multilib
+      s:=IncludeTrailingPathDelimiter(GetStartupObjects)+'64';
+      if DirectoryExists(s) then
+      begin
+        AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(s));
+      end;
+      {$endif}
+    end else ShowInfo('Searched but not found (multilib) libspath '+FLibsPath);
+    {$ENDIF MULTILIB}
+    {$ENDIF LINUX}
+  end;
+
+  SearchLibraryInfo(result);
 end;
 
 {$ifndef FPCONLY}
@@ -164,12 +204,9 @@ end;
 constructor Tany_linux64.Create;
 begin
   inherited Create;
-  FBinUtilsPrefix:='x86_64-linux-';
-  FBinUtilsPath:='';
-  FFPCCFGSnippet:='';
-  FLibsPath:='';
-  FTargetCPU:='x86_64';
-  FTargetOS:='linux';
+  FTargetCPU:=TCPU.x86_64;
+  FTargetOS:=TOS.linux;
+  Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
@@ -184,7 +221,7 @@ var
 
 initialization
   any_linux64:=Tany_linux64.Create;
-  RegisterExtension(any_linux64.TargetCPU+'-'+any_linux64.TargetOS,any_linux64);
+  RegisterCrossCompiler(any_linux64.RegisterName,any_linux64);
 
 finalization
   any_linux64.Destroy;

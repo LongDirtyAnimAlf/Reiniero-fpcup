@@ -67,8 +67,6 @@ end;
 { TAny_Android386 }
 
 function TAny_Android386.GetLibs(Basepath:string): boolean;
-const
-  DirName=ARCH+'-'+OS;
   // we presume, libc.so has to be present in a cross-library for arm
   // we presume, libandroid.so has to be present in a cross-library for arm
   //LibName='libandroid.so';
@@ -95,8 +93,7 @@ begin
         PresetLibPath:=LeftStr(FBinUtilsPath,ndkversion);
         for platform:=High(PLATFORMVERSIONSNUMBERS) downto Low(PLATFORMVERSIONSNUMBERS) do
         begin
-          FLibsPath := IncludeTrailingPathDelimiter(PresetLibPath)+'platforms'+DirectorySeparator+
-                       PLATFORMVERSIONBASENAME + InttoStr(PLATFORMVERSIONSNUMBERS[platform])+DirectorySeparator+NDKARCHDIRNAME+DirectorySeparator+'usr'+DirectorySeparator+'lib';
+          FLibsPath := ConcatPaths([PresetLibPath,'platforms',PLATFORMVERSIONBASENAME + InttoStr(PLATFORMVERSIONSNUMBERS[platform]),NDKARCHDIRNAME,'usr','lib']);
           result:=DirectoryExists(FLibsPath);
           if not result
              then ShowInfo('Searched but not found: libspath '+FLibsPath,etDebug)
@@ -123,24 +120,22 @@ begin
         for platform:=High(PLATFORMVERSIONSNUMBERS) downto Low(PLATFORMVERSIONSNUMBERS) do
         begin
           // check libs in userdir\
-          FLibsPath := IncludeTrailingPathDelimiter(GetUserDir)+NDKVERSIONBASENAME+NDKVERSIONNAMES[ndkversion]+DirectorySeparator+'platforms'+DirectorySeparator+
-                       PLATFORMVERSIONBASENAME + InttoStr(PLATFORMVERSIONSNUMBERS[platform])+DirectorySeparator+NDKARCHDIRNAME+DirectorySeparator+'usr'+DirectorySeparator+'lib';
+
+          FLibsPath := ConcatPaths([GetUserDir,NDKVERSIONBASENAME+NDKVERSIONNAMES[ndkversion],'platforms',PLATFORMVERSIONBASENAME + InttoStr(PLATFORMVERSIONSNUMBERS[platform]),NDKARCHDIRNAME,'usr','lib']);
           result:=DirectoryExists(FLibsPath);
           if not result then
           begin
             ShowInfo('Searched but not found libspath '+FLibsPath,etDebug)
           end else break;
           // check libs in userdir\Andoid
-          FLibsPath := IncludeTrailingPathDelimiter(GetUserDir)+UppercaseFirstChar(OS)+DirectorySeparator+NDKVERSIONBASENAME+NDKVERSIONNAMES[ndkversion]+DirectorySeparator+'platforms'+DirectorySeparator+
-                       PLATFORMVERSIONBASENAME + InttoStr(PLATFORMVERSIONSNUMBERS[platform])+DirectorySeparator+NDKARCHDIRNAME+DirectorySeparator+'usr'+DirectorySeparator+'lib';
+          FLibsPath := ConcatPaths([GetUserDir,UppercaseFirstChar(OS),NDKVERSIONBASENAME+NDKVERSIONNAMES[ndkversion],'platforms',PLATFORMVERSIONBASENAME + InttoStr(PLATFORMVERSIONSNUMBERS[platform]),NDKARCHDIRNAME,'usr','lib']);
           result:=DirectoryExists(FLibsPath);
           if not result then
           begin
             ShowInfo('Searched but not found libspath '+FLibsPath,etDebug)
           end else break;
           // check libs in userdir\AppData\Local\Andoid
-          FLibsPath := IncludeTrailingPathDelimiter(GetUserDir)+'AppData\Local\'+UppercaseFirstChar(OS)+DirectorySeparator+NDKVERSIONBASENAME+NDKVERSIONNAMES[ndkversion]+DirectorySeparator+'platforms'+DirectorySeparator+
-                       PLATFORMVERSIONBASENAME + InttoStr(PLATFORMVERSIONSNUMBERS[platform])+DirectorySeparator+NDKARCHDIRNAME+DirectorySeparator+'usr'+DirectorySeparator+'lib';
+          FLibsPath := ConcatPaths([GetUserDir,'AppData','Local',UppercaseFirstChar(OS),NDKVERSIONBASENAME+NDKVERSIONNAMES[ndkversion],'platforms',PLATFORMVERSIONBASENAME + InttoStr(PLATFORMVERSIONSNUMBERS[platform]),NDKARCHDIRNAME,'usr','lib']);
           result:=DirectoryExists(FLibsPath);
           if not result then
           begin
@@ -210,8 +205,6 @@ begin
 end;
 
 function TAny_Android386.GetBinUtils(Basepath:string): boolean;
-const
-  DirName=ARCH+'-'+OS;
 var
   AsFile: string;
   PresetBinPath:string;
@@ -219,6 +212,8 @@ var
 begin
   result:=inherited;
   if result then exit;
+
+  FBinUtilsPrefix:='i686-linux-'+GetOS(TargetOS)+'-';//standard eg in Android NDK 9
 
   AsFile:=FBinUtilsPrefix+'as'+GetExeExt;
 
@@ -392,13 +387,9 @@ end;
 constructor TAny_Android386.Create;
 begin
   inherited Create;
-  FTargetCPU:=ARCH;
-  FTargetOS:=OS;
-  // This prefix is HARDCODED into the compiler so should match (or be empty, actually)
-  FBinUtilsPrefix:='i686-linux-'+OS+'-';//standard eg in Android NDK 9
-  FBinUtilsPath:='';
-  FFPCCFGSnippet:='';
-  FLibsPath:='';
+  FTargetCPU:=TCPU.i386;
+  FTargetOS:=TOS.android;
+  Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
@@ -413,7 +404,8 @@ var
 
 initialization
   Any_Android386:=TAny_Android386.Create;
-  RegisterExtension(Any_Android386.TargetCPU+'-'+Any_Android386.TargetOS,Any_Android386);
+  RegisterCrossCompiler(Any_Android386.RegisterName,Any_Android386);
+
 finalization
   Any_Android386.Destroy;
 end.

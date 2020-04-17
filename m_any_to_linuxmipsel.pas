@@ -100,8 +100,6 @@ end;
 { Twin32_linuxmipsel }
 
 function Tany_linuxmipsel.GetLibs(Basepath:string): boolean;
-const
-  DirName='mipsel-linux';
 begin
   result:=FLibsFound;
   if result then exit;
@@ -143,10 +141,7 @@ end;
 function Tany_linuxmipsel.GetBinUtils(Basepath:string): boolean;
 // You can copy the files from Android NDK, e.g.
 // android-ndk-r9c\toolchains\mipsel-linux-android-4.8\prebuilt\windows-x86_64\bin\mipsel-linux-android-as.exe
-
 // Also has support for codesourcery binutils
-const
-  DirName='mipsel-linux';
 var
   AsFile: string;
   BinPrefixTry:string;
@@ -171,6 +166,16 @@ begin
   {$ENDIF}
 
   if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+
+  // Now also allow for mipsel-linux-gnu
+  if not result then
+  begin
+    BinPrefixTry:='mipsel-linux-gnu-';
+    AsFile:=BinPrefixTry+'as'+GetExeExt;
+    result:=SearchBinUtil(BasePath,AsFile);
+    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+    if result then FBinUtilsPrefix:=BinPrefixTry;
+  end;
 
   // Now also allow for mips-linux-gnu- binutilsprefix (e.g. codesourcery)
   if not result then
@@ -238,16 +243,9 @@ end;
 constructor Tany_linuxmipsel.Create;
 begin
   inherited Create;
-  // binutilsprefix can be modified later in GetBinUtils
-  FBinUtilsPrefix:='mipsel-linux-';
-  FBinUtilsPath:='';
-  { Use current trunk compiler to build, not stable bootstrap, e.g. in light of bug
-   http://bugs.freepascal.org/view.php?id=25399
-  }
-  FFPCCFGSnippet:='';
-  FLibsPath:='';
-  FTargetCPU:='mipsel';
-  FTargetOS:='linux';
+  FTargetCPU:=TCPU.mipsel;
+  FTargetOS:=TOS.linux;
+  Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
@@ -262,7 +260,8 @@ var
 
 initialization
   Any_linuxmipsel:=Tany_linuxmipsel.Create;
-  RegisterExtension(Any_linuxmipsel.TargetCPU+'-'+Any_linuxmipsel.TargetOS,Any_linuxmipsel);
+  RegisterCrossCompiler(Any_linuxmipsel.RegisterName,Any_linuxmipsel);
+
 finalization
   Any_linuxmipsel.Destroy;
 end.

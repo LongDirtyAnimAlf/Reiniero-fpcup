@@ -41,10 +41,6 @@ uses
 
 implementation
 
-const
-  ARCH='i8086';
-  OS='msdos';
-
 type
 
 { TAny_msdosi8086 }
@@ -86,7 +82,6 @@ end;
 
 function TAny_msdosi8086.GetLibs(Basepath:string): boolean;
 const
-  DirName=ARCH+'-'+OS;
   LibName='';
 begin
   // DOS8086 does not need libs by default, but user can add them.
@@ -124,14 +119,14 @@ end;
 {$endif}
 
 function TAny_msdosi8086.GetBinUtils(Basepath:string): boolean;
-const
-  DirName=ARCH+'-'+OS;
 var
   AsFile: string;
   BinPrefixTry: string;
 begin
   result:=inherited;
   if result then exit;
+
+  FBinUtilsPrefix:='';
 
   AsFile:=FBinUtilsPrefix+'nasm'+GetExeExt;
 
@@ -142,7 +137,7 @@ begin
   // Also allow for outdated naming
   if (not result) then
   begin
-    BinPrefixTry:=OS+'-';
+    BinPrefixTry:=GetOS(TargetOS)+'-';
     AsFile:=BinPrefixTry+'nasm'+GetExeExt;
     result:=SearchBinUtil(BasePath,AsFile);
     if not result then
@@ -200,16 +195,10 @@ end;
 constructor TAny_msdosi8086.Create;
 begin
   inherited Create;
-  FTargetCPU:=ARCH;
-  FTargetOS:=OS;
-  FBinUtilsPrefix:='';
-  FBinUtilsPath:='';
-  {Add binutils directory to path when cross compiling.
-  Works around faulty makefile in some versions of fpc that call nasm without
-  specifying the directory it is in}
+  FTargetCPU:=TCPU.i8086;
+  FTargetOS:=TOS.msdos;
+  Reset;
   FBinutilsPathInPath:=true;
-  FFPCCFGSnippet:=''; //will be filled in later
-  FLibsPath:='';
   FAlreadyWarned:=false;
   ShowInfo;
 end;
@@ -224,7 +213,8 @@ var
 
 initialization
   Any_msdosi8086:=TAny_msdosi8086.Create;
-  RegisterExtension(Any_msdosi8086.TargetCPU+'-'+Any_msdosi8086.TargetOS,Any_msdosi8086);
+  RegisterCrossCompiler(Any_msdosi8086.RegisterName,Any_msdosi8086);
+
 finalization
   Any_msdosi8086.Destroy;
 end.

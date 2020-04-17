@@ -56,18 +56,17 @@ implementation
 
 const
   ARCH='arm';
-  ARCHSHORT='arm';
   OS='android';
   NDKVERSIONBASENAME=OS+'-ndk-r';
   NDKTOOLCHAINVERSIONS:array[0..3] of string = (ARCH+'-linux-'+OS+'eabi-4.4.7',ARCH+'-linux-'+OS+'eabi-4.6',ARCH+'-linux-'+OS+'eabi-4.8',ARCH+'-linux-'+OS+'eabi-4.9');
-  NDKARCHDIRNAME='arch-'+ARCHSHORT;
+  NDKARCHDIRNAME='arch-'+ARCH;
   PLATFORMVERSIONBASENAME=OS+'-';
 
 
 type
 
-{ TAny_ARMAndroid }
-TAny_ARMAndroid = class(TCrossInstaller)
+{ TAny_AndroidARM }
+TAny_AndroidARM = class(TCrossInstaller)
 private
   FAlreadyWarned: boolean; //did we warn user about errors and fixes already?
 public
@@ -77,11 +76,9 @@ public
   destructor Destroy; override;
 end;
 
-{ TAny_ARMAndroid }
+{ TAny_AndroidARM }
 
-function TAny_ARMAndroid.GetLibs(Basepath:string): boolean;
-const
-  DirName=ARCH+'-'+OS;
+function TAny_AndroidARM.GetLibs(Basepath:string): boolean;
   // we presume, libc.so has to be present in a cross-library for arm
   // we presume, libandroid.so has to be present in a cross-library for arm
   //LibName='libandroid.so';
@@ -196,19 +193,9 @@ begin
   if result then
   begin
     FLibsFound:=true;
-    FFPCCFGSnippet:=FFPCCFGSnippet+LineEnding+
-    '-Xd'+LineEnding+ {buildfaq 3.4.1 do not pass parent /lib etc dir to linker}
-    '-Fl'+IncludeTrailingPathDelimiter(FLibsPath)+LineEnding+ {buildfaq 1.6.4/3.3.1: the directory to look for the target  libraries}
-    //'-XR'+IncludeTrailingPathDelimiter(FLibsPath)+LineEnding+
-    '-FLlibdl.so'; {buildfaq 3.3.1: the name of the dynamic linker on the target}
-    //'-FLlibandroid.so'; {buildfaq 3.3.1: the name of the dynamic linker on the target}
-
-    {
-    //todo: check if -XR is needed for fpc root dir Prepend <x> to all linker search paths
-    '-XR'+IncludeTrailingPathDelimiter(FLibsPath);
-    }
-    //todo: possibly adapt for android:
-    //'-Xr/usr/lib'+LineEnding+ //buildfaq 3.3.1: makes the linker create the binary so that it searches in the specified directory on the target system for libraries
+    AddFPCCFGSnippet('-Xd'); {buildfaq 3.4.1 do not pass parent /lib etc dir to linker}
+    AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath)); {buildfaq 1.6.4/3.3.1: the directory to look for the target  libraries}
+    AddFPCCFGSnippet('-FLlibdl.so'); {buildfaq 3.3.1: the name of the dynamic linker on the target}
   end
   else
   begin
@@ -219,9 +206,7 @@ begin
   end;
 end;
 
-function TAny_ARMAndroid.GetBinUtils(Basepath:string): boolean;
-const
-  DirName=ARCH+'-'+OS;
+function TAny_AndroidARM.GetBinUtils(Basepath:string): boolean;
 var
   AsFile,aOption: string;
   PresetBinPath:string;
@@ -233,6 +218,8 @@ var
 begin
   result:=inherited;
   if result then exit;
+
+  FBinUtilsPrefix:=TargetCPUName+'-linux-'+TargetOSName+'eabi-'; //standard eg in Android NDK 9
 
   AsFile:=FBinUtilsPrefix+'as'+GetExeExt;
 
@@ -407,9 +394,20 @@ begin
     begin
       aOption:='-Cp'+DEFAULTARMCPU;
       FCrossOpts.Add(aOption+' ');
-      ShowInfo('Did not find any -Cp architecture parameter; using '+aOption+'.');
+      ShowInfo('Did not find any [-Cp] architecture parameter; using '+aOption+'.');
     end else aOption:=Trim(FCrossOpts[i]);
     AddFPCCFGSnippet(aOption);
+
+    {
+    i:=StringListStartsWith(FCrossOpts,'-Cf');
+    if i=-1 then
+    begin
+      aOption:='-CfVFPV3_D16';
+      FCrossOpts.Add(aOption+' ');
+      ShowInfo('Did not find any [-Cf] FPU instruction set setting; using '+aOption+'.');
+    end else aOption:=Trim(FCrossOpts[i]);
+    AddFPCCFGSnippet(aOption);
+    }
 
   end
   else
@@ -418,31 +416,29 @@ begin
   end;
 end;
 
-constructor TAny_ARMAndroid.Create;
+constructor TAny_AndroidARM.Create;
 begin
   inherited Create;
-  FTargetCPU:=ARCH;
-  FTargetOS:=OS;
-  FBinUtilsPrefix:=ARCH+'-linux-'+OS+'eabi-';//standard eg in Android NDK 9
-  FBinUtilsPath:='';
-  FFPCCFGSnippet:='';
-  FLibsPath:='';
+  FTargetCPU:=TCPU.arm;
+  FTargetOS:=TOS.android;
+  Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
 
-destructor TAny_ARMAndroid.Destroy;
+destructor TAny_AndroidARM.Destroy;
 begin
   inherited Destroy;
 end;
 
 var
-  Any_ARMAndroid:TAny_ARMAndroid;
+  Any_AndroidARM:TAny_AndroidARM;
 
 initialization
-  Any_ARMAndroid:=TAny_ARMAndroid.Create;
-  RegisterExtension(Any_ARMAndroid.TargetCPU+'-'+Any_ARMAndroid.TargetOS,Any_ARMAndroid);
+  Any_AndroidARM:=TAny_AndroidARM.Create;
+  RegisterCrossCompiler(Any_AndroidARM.RegisterName,Any_AndroidARM);
+
 finalization
-  Any_ARMAndroid.Destroy;
+  Any_AndroidARM.Destroy;
 end.
 

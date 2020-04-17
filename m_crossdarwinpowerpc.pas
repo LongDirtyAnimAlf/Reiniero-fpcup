@@ -47,8 +47,10 @@ var
 begin
   result:=inherited;
   if result then exit;
+
   FBinUtilsPath:='';
   FBinUtilsPrefix:=''; // we have the "native" names, no prefix
+
   result:=true;
   FBinsFound:=true;
   aOption:=GetSDKVersion('macosx');
@@ -59,10 +61,10 @@ constructor TDarwinpowerpc.Create;
 begin
   inherited Create;
   FCrossModuleNamePrefix:='TDarwin32';
-  FTargetCPU:='powerpc';
-  FTargetOS:='darwin';
+  FTargetCPU:=TCPU.powerpc;
+  FTargetOS:=TOS.darwin;
+  Reset;
   FAlreadyWarned:=false;
-  FFPCCFGSnippet:='';
   ShowInfo;
 end;
 
@@ -72,14 +74,15 @@ begin
 end;
 
 {$IFDEF Darwin}
-{$IFDEF CPUi386}
+{$IFDEF CPUX86}
 
 var
   Darwinpowerpc:TDarwinpowerpc;
 
 initialization
   Darwinpowerpc:=TDarwinpowerpc.Create;
-  RegisterExtension(Darwinpowerpc.TargetCPU+'-'+Darwinpowerpc.TargetOS,Darwinpowerpc);
+  RegisterCrossCompiler(Darwinpowerpc.RegisterName,Darwinpowerpc);
+
 finalization
   Darwinpowerpc.Destroy;
 {$ENDIF}

@@ -1,7 +1,7 @@
-unit m_any_to_haikux64;
+unit m_any_to_openbsdx64;
 
-{ Cross compiles from e.g. Linux 64 bit (or any other OS with relevant binutils/libs) to Haiku 64 bit
-Copyright (C) 2014 Reinier Olislagers
+{ Cross compiles from any platform with correct binutils to openbsd ix64
+Copyright (C) 2013 Reinier Olislagers
 
 This library is free software; you can redistribute it and/or modify it
 under the terms of the GNU Library General Public License as published by
@@ -29,13 +29,6 @@ along with this library; if not, write to the Free Software Foundation,
 Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 }
 
-{
-Debian: adding i386 libs/architecture support on e.g. x64 system
-dpkg --add-architecture i386
-
-Adapt (add) for other setups
-}
-
 {$mode objfpc}{$H+}
 
 interface
@@ -47,9 +40,8 @@ implementation
 
 type
 
-{ Tany_haikux64 }
-
-Tany_haikux64 = class(TCrossInstaller)
+{ TAny_OpenBSDx64 }
+TAny_OpenBSDx64 = class(TCrossInstaller)
 private
   FAlreadyWarned: boolean; //did we warn user about errors and fixes already?
 public
@@ -62,10 +54,13 @@ public
   destructor Destroy; override;
 end;
 
-function Tany_haikux64.GetLibs(Basepath:string): boolean;
+{ TAny_OpenBSDx64 }
+
+function TAny_OpenBSDx64.GetLibs(Basepath:string): boolean;
 const
-  LibName='libroot.so';
+  LibName='libc.so.95.0';
 begin
+
   result:=FLibsFound;
   if result then exit;
 
@@ -77,27 +72,30 @@ begin
     result:=SimpleSearchLibrary(BasePath,DirName,LibName);
 
   SearchLibraryInfo(result);
-
   if result then
   begin
-    FLibsFound:=True;
+    FLibsFound:=true;
+    //todo: check if -XR is needed for fpc root dir Prepend <x> to all linker search paths
+    //todo: implement -Xr for other platforms if this setup works
     AddFPCCFGSnippet('-Xd'); {buildfaq 3.4.1 do not pass parent /lib etc dir to linker}
     AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath)); {buildfaq 1.6.4/3.3.1: the directory to look for the target  libraries}
-    //AddFPCCFGSnippet('-XR'+ExcludeTrailingPathDelimiter(FLibsPath)); {buildfaq 1.6.4/3.3.1: the directory to look for the target libraries ... just te be safe ...}
-    AddFPCCFGSnippet('-Xr/boot/system/develop/lib');
+      //AddFPCCFGSnippet('-XR'+IncludeTrailingPathDelimiter(FLibsPath));
+    AddFPCCFGSnippet('-k--allow-shlib-undefined');
+    AddFPCCFGSnippet('-k--allow-multiple-definition');
+    AddFPCCFGSnippet('-Xr/usr/lib'); {buildfaq 3.3.1: makes the linker create the binary so that it searches in the specified directory on the target system for libraries}
   end;
-
 end;
 
 {$ifndef FPCONLY}
-function Tany_haikux64.GetLibsLCL(LCL_Platform: string; Basepath: string): boolean;
+function TAny_OpenBSDx64.GetLibsLCL(LCL_Platform: string; Basepath: string): boolean;
 begin
-  // todo: get gtk at least
+  // todo: get gtk at least, add to FFPCCFGSnippet
+  ShowInfo('Implement lcl libs path from basepath '+BasePath+' for platform '+LCL_Platform,etDebug);
   result:=inherited;
 end;
 {$endif}
 
-function Tany_haikux64.GetBinUtils(Basepath:string): boolean;
+function TAny_OpenBSDx64.GetBinUtils(Basepath:string): boolean;
 var
   AsFile: string;
   BinPrefixTry: string;
@@ -105,23 +103,14 @@ begin
   result:=inherited;
   if result then exit;
 
+  // Start with any names user may have given
   AsFile:=FBinUtilsPrefix+'as'+GetExeExt;
 
   result:=SearchBinUtil(BasePath,AsFile);
   if not result then
     result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
 
-  // Also allow for (cross)binutils without prefix
-  if not result then
-  begin
-    BinPrefixTry:='x86_64-unknown-haiku-';
-    AsFile:=BinPrefixTry+'as'+GetExeExt;
-    result:=SearchBinUtil(BasePath,AsFile);
-    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
-    if result then FBinUtilsPrefix:=BinPrefixTry;
-  end;
-
-  // Also allow for (cross)binutils without prefix
+  // Also allow for crossbinutils without prefix
   if not result then
   begin
     BinPrefixTry:='';
@@ -137,35 +126,34 @@ begin
   begin
     FBinsFound:=true;
     // Configuration snippet for FPC
-    AddFPCCFGSnippet('-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath));
-    AddFPCCFGSnippet('-XP'+FBinUtilsPrefix);
+    AddFPCCFGSnippet('-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath)); {search this directory for compiler utilities}
+    AddFPCCFGSnippet('-XP'+FBinUtilsPrefix); {Prepend the binutils names}
   end;
 end;
 
-constructor Tany_haikux64.Create;
+constructor TAny_OpenBSDx64.Create;
 begin
   inherited Create;
   FTargetCPU:=TCPU.x86_64;
-  FTargetOS:=TOS.haiku;
+  FTargetOS:=TOS.openbsd;
   Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
 
-destructor Tany_haikux64.Destroy;
+destructor TAny_OpenBSDx64.Destroy;
 begin
   inherited Destroy;
 end;
 
 var
-  any_haikux64:Tany_haikux64;
+  Any_OpenBSDx64:TAny_OpenBSDx64;
 
 initialization
-  any_haikux64:=Tany_haikux64.Create;
-  RegisterCrossCompiler(any_haikux64.RegisterName,any_haikux64);
+  Any_OpenBSDx64:=TAny_OpenBSDx64.Create;
+  RegisterCrossCompiler(Any_OpenBSDx64.RegisterName,Any_OpenBSDx64);
 
 finalization
-  any_haikux64.Destroy;
-
+  Any_OpenBSDx64.Destroy;
 end.
 

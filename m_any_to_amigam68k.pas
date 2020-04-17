@@ -1,6 +1,6 @@
-unit m_any_to_haikux64;
+unit m_any_to_amigam68k;
 
-{ Cross compiles from e.g. Linux 64 bit (or any other OS with relevant binutils/libs) to Haiku 64 bit
+{ Cross compiles from any (or any other OS with relevant binutils/libs) to Linux 64 bit
 Copyright (C) 2014 Reinier Olislagers
 
 This library is free software; you can redistribute it and/or modify it
@@ -29,27 +29,19 @@ along with this library; if not, write to the Free Software Foundation,
 Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 }
 
-{
-Debian: adding i386 libs/architecture support on e.g. x64 system
-dpkg --add-architecture i386
-
-Adapt (add) for other setups
-}
-
 {$mode objfpc}{$H+}
 
 interface
 
 uses
-  Classes, SysUtils, m_crossinstaller, fileutil;
+  Classes, SysUtils, m_crossinstaller, fileutil, fpcuputil;
 
 implementation
 
 type
 
-{ Tany_haikux64 }
-
-Tany_haikux64 = class(TCrossInstaller)
+{ Tany_Amigam68k }
+Tany_Amigam68k = class(TCrossInstaller)
 private
   FAlreadyWarned: boolean; //did we warn user about errors and fixes already?
 public
@@ -62,42 +54,47 @@ public
   destructor Destroy; override;
 end;
 
-function Tany_haikux64.GetLibs(Basepath:string): boolean;
-const
-  LibName='libroot.so';
+{ Tany_Amigam68k }
+
+function Tany_Amigam68k.GetLibs(Basepath:string): boolean;
 begin
   result:=FLibsFound;
   if result then exit;
 
   // begin simple: check presence of library file in basedir
-  result:=SearchLibrary(Basepath,LibName);
+  result:=SearchLibrary(Basepath,LIBCNAME);
 
   // first search local paths based on libbraries provided for or adviced by fpc itself
   if not result then
-    result:=SimpleSearchLibrary(BasePath,DirName,LibName);
+    result:=SimpleSearchLibrary(BasePath,DirName,LIBCNAME);
 
   SearchLibraryInfo(result);
 
   if result then
   begin
     FLibsFound:=True;
-    AddFPCCFGSnippet('-Xd'); {buildfaq 3.4.1 do not pass parent /lib etc dir to linker}
-    AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath)); {buildfaq 1.6.4/3.3.1: the directory to look for the target  libraries}
-    //AddFPCCFGSnippet('-XR'+ExcludeTrailingPathDelimiter(FLibsPath)); {buildfaq 1.6.4/3.3.1: the directory to look for the target libraries ... just te be safe ...}
-    AddFPCCFGSnippet('-Xr/boot/system/develop/lib');
+    AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath));
+    AddFPCCFGSnippet('-Xr/usr/lib');
   end;
 
+  if not result then
+  begin
+    //no libs yet: go on without them
+    ShowInfo('Libspath ignored; it is optional for this cross compiler.',etInfo);
+    FLibsPath:='';
+    result:=true;
+  end;
 end;
 
 {$ifndef FPCONLY}
-function Tany_haikux64.GetLibsLCL(LCL_Platform: string; Basepath: string): boolean;
+function Tany_Amigam68k.GetLibsLCL(LCL_Platform: string; Basepath: string): boolean;
 begin
   // todo: get gtk at least
   result:=inherited;
 end;
 {$endif}
 
-function Tany_haikux64.GetBinUtils(Basepath:string): boolean;
+function Tany_Amigam68k.GetBinUtils(Basepath:string): boolean;
 var
   AsFile: string;
   BinPrefixTry: string;
@@ -108,18 +105,9 @@ begin
   AsFile:=FBinUtilsPrefix+'as'+GetExeExt;
 
   result:=SearchBinUtil(BasePath,AsFile);
+
   if not result then
     result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
-
-  // Also allow for (cross)binutils without prefix
-  if not result then
-  begin
-    BinPrefixTry:='x86_64-unknown-haiku-';
-    AsFile:=BinPrefixTry+'as'+GetExeExt;
-    result:=SearchBinUtil(BasePath,AsFile);
-    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
-    if result then FBinUtilsPrefix:=BinPrefixTry;
-  end;
 
   // Also allow for (cross)binutils without prefix
   if not result then
@@ -136,36 +124,35 @@ begin
   if result then
   begin
     FBinsFound:=true;
-    // Configuration snippet for FPC
     AddFPCCFGSnippet('-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath));
     AddFPCCFGSnippet('-XP'+FBinUtilsPrefix);
   end;
 end;
 
-constructor Tany_haikux64.Create;
+constructor Tany_Amigam68k.Create;
 begin
   inherited Create;
-  FTargetCPU:=TCPU.x86_64;
-  FTargetOS:=TOS.haiku;
+  FTargetCPU:=TCPU.m68k;
+  FTargetOS:=TOS.amiga;
   Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
 
-destructor Tany_haikux64.Destroy;
+destructor Tany_Amigam68k.Destroy;
 begin
   inherited Destroy;
 end;
 
 var
-  any_haikux64:Tany_haikux64;
+  any_Amigam68k:Tany_Amigam68k;
 
 initialization
-  any_haikux64:=Tany_haikux64.Create;
-  RegisterCrossCompiler(any_haikux64.RegisterName,any_haikux64);
+  any_Amigam68k:=Tany_Amigam68k.Create;
+  RegisterCrossCompiler(any_Amigam68k.RegisterName,any_Amigam68k);
 
 finalization
-  any_haikux64.Destroy;
+  any_Amigam68k.Destroy;
 
 end.
 

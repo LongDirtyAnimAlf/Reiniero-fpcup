@@ -38,10 +38,6 @@ uses
 
 implementation
 
-const
-  ARCH='i386';
-  OS='openbsd';
-
 type
 
 { TAny_OpenBSD386 }
@@ -62,7 +58,6 @@ end;
 
 function TAny_OpenBSD386.GetLibs(Basepath:string): boolean;
 const
-  DirName=ARCH+'-'+OS;
   LibName='libc.so.88.0';
 begin
 
@@ -89,12 +84,7 @@ begin
       '-k--allow-shlib-undefined'+LineEnding+
       '-k--allow-multiple-definition'+LineEnding+
       '-Xr/usr/lib'; {buildfaq 3.3.1: makes the linker create the binary so that it searches in the specified directory on the target system for libraries}
-  end
-  else
-  begin
-    ShowInfo('For simple programs that do not call (C) libraries, this is not necessary. However, you MAY want to copy your /usr/lib from your AIX machine to your cross lib directory.');
   end;
-  result:=true; //this step is optional at least for simple hello world programs
 end;
 
 {$ifndef FPCONLY}
@@ -107,8 +97,6 @@ end;
 {$endif}
 
 function TAny_OpenBSD386.GetBinUtils(Basepath:string): boolean;
-const
-  DirName=ARCH+'-'+OS;
 var
   AsFile: string;
   BinPrefixTry: string;
@@ -122,16 +110,6 @@ begin
   result:=SearchBinUtil(BasePath,AsFile);
   if not result then
     result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
-
-  // Also allow for crossfpc naming
-  if not result then
-  begin
-    BinPrefixTry:=ARCH+'-'+OS+'-';
-    AsFile:=BinPrefixTry+'as'+GetExeExt;
-    result:=SearchBinUtil(BasePath,AsFile);
-    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
-    if result then FBinUtilsPrefix:=BinPrefixTry;
-  end;
 
   // Also allow for crossbinutils without prefix
   if not result then
@@ -163,12 +141,9 @@ end;
 constructor TAny_OpenBSD386.Create;
 begin
   inherited Create;
-  FTargetCPU:=ARCH;
-  FTargetOS:=OS;
-  FBinUtilsPrefix:=ARCH+'-'+OS+'-';
-  FBinUtilsPath:='';
-  FFPCCFGSnippet:=''; //will be filled in later
-  FLibsPath:='';
+  FTargetCPU:=TCPU.i386;
+  FTargetOS:=TOS.openbsd;
+  Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
@@ -183,7 +158,8 @@ var
 
 initialization
   Any_OpenBSD386:=TAny_OpenBSD386.Create;
-  RegisterExtension(Any_OpenBSD386.TargetCPU+'-'+Any_OpenBSD386.TargetOS,Any_OpenBSD386);
+  RegisterCrossCompiler(Any_OpenBSD386.RegisterName,Any_OpenBSD386);
+
 finalization
   Any_OpenBSD386.Destroy;
 end.

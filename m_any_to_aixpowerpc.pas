@@ -31,7 +31,7 @@ Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 {
 Setup: currently aimed at using the crossfpc supplied binaries/libs
 See
-http://wiki.lazarus.freepascal.org/FPC_AIX_Port
+https://wiki.lazarus.freepascal.org/FPC_AIX_Port
 - Get Windows binutils from ftp://ftp.freepascal.org/pub/fpc/contrib/aix/fpc-2.7.1.powerpc-aix-win32.zip
 powerpc-aix-ar.exe
 powerpc-aix-as.exe
@@ -50,10 +50,6 @@ uses
   Classes, SysUtils, m_crossinstaller, fileutil;
 
 implementation
-
-const
-  ARCH='powerpc';
-  OS='aix';
 
 type
 
@@ -75,7 +71,6 @@ end;
 
 function TAny_AIXPowerPC.GetLibs(Basepath:string): boolean;
 const
-  DirName=ARCH+'-'+OS;
   StaticLibName='libc.a';
 begin
 
@@ -124,8 +119,6 @@ end;
 {$endif}
 
 function TAny_AIXPowerPC.GetBinUtils(Basepath:string): boolean;
-const
-  DirName=ARCH+'-'+OS;
 var
   AsFile: string;
   BinPrefixTry: string;
@@ -140,16 +133,6 @@ begin
   if not result then
     result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
 
-  // Also allow for crossfpc naming
-  if not result then
-  begin
-    BinPrefixTry:=ARCH+'-'+OS+'-';
-    AsFile:=BinPrefixTry+'as'+GetExeExt;
-    result:=SearchBinUtil(BasePath,AsFile);
-    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
-    if result then FBinUtilsPrefix:=BinPrefixTry;
-  end;
-
   // Also allow for crossbinutils without prefix
   if not result then
   begin
@@ -162,7 +145,7 @@ begin
 
   SearchBinUtilsInfo(result);
 
-  if not result then
+  if (not result) then
   begin
     ShowInfo('Suggestion for cross binutils: please check http://wiki.lazarus.freepascal.org/FPC_AIX_Port.',etInfo);
     FAlreadyWarned:=true;
@@ -179,12 +162,9 @@ end;
 constructor TAny_AIXPowerPC.Create;
 begin
   inherited Create;
-  FTargetCPU:=ARCH;
-  FTargetOS:=OS;
-  FBinUtilsPrefix:=ARCH+'-'+OS+'-';
-  FBinUtilsPath:='';
-  FFPCCFGSnippet:=''; //will be filled in later
-  FLibsPath:='';
+  FTargetCPU:=TCPU.powerpc;
+  FTargetOS:=TOS.aix;
+  Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
@@ -199,7 +179,7 @@ var
 
 initialization
   Any_AIXPowerPC:=TAny_AIXPowerPC.Create;
-  RegisterExtension(Any_AIXPowerPC.TargetCPU+'-'+Any_AIXPowerPC.TargetOS,Any_AIXPowerPC);
+  RegisterCrossCompiler(Any_AIXPowerPC.RegisterName,Any_AIXPowerPC);
 finalization
   Any_AIXPowerPC.Destroy;
 end.

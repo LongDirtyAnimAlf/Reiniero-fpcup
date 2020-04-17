@@ -72,6 +72,7 @@ type
     procedure ParseFileList(const CommandOutput: string; var FileList: TStringList; const FilterCodes: array of string); override;
     procedure Revert; override;
     procedure Update; override;
+    function GetSVNRevision: string;
     constructor Create;
     destructor Destroy; override;
   end;
@@ -289,6 +290,9 @@ begin
   FReturnCode := 0;
   if ExportOnly then exit;
   if NOT ValidClient then exit;
+
+  infoln('Getting diff between current sources and online sources of ' + LocalRepository,etInfo);
+
   //FReturnCode := ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + ' diff --git ', LocalRepository, Result, Verbose);
   FReturnCode := ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + ' diff --no-prefix -p ', LocalRepository, Result, Verbose);
 end;
@@ -341,6 +345,8 @@ begin
   if (FReturnCode = 0){ and (Length(FDesiredRevision)>0) and (uppercase(trim(FDesiredRevision)) <> 'HEAD')}
   then
   begin
+    //SSL Certificate problem
+    //git config --system http.sslCAPath /absolute/path/to/git/certificates
     // always reset hard towards desired revision
     Command := ' reset --hard ' + FDesiredRevision;
     FReturnCode := ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + command, FLocalRepository, Verbose);
@@ -506,6 +512,7 @@ begin
   if FHTTPProxyHost<>'' then
   begin
     s:=FHTTPProxyHost;
+    if Pos('http',s)<>1 then s:='https://'+s;
     if FHTTPProxyPort<>0 then s:=s+':'+IntToStr(FHTTPProxyPort);
     if FHTTPProxyUser<>'' then
     begin
@@ -513,7 +520,7 @@ begin
       if FHTTPProxyPassword<>'' then s:=':'+FHTTPProxyPassword+s;
       s:=FHTTPProxyUser+s;
     end;
-    result:=' config --local --add http.proxy http://'+s;
+    result:=' config --local --add http.proxy '+s;
   end
   else
   begin
@@ -548,6 +555,47 @@ begin
     end;
   end;
   Result := FLocalRevision;
+end;
+
+function TGitClient.GetSVNRevision: string;
+var
+  Output:string;
+  OutputSL:TStringList;
+  i,j:integer;
+begin
+  result:='';
+  if ExportOnly then exit;
+  if NOT ValidClient then exit;
+  if NOT DirectoryExists(FLocalRepository) then exit;
+  i:=ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + ' log -n 1 --grep=^git-svn-id:',FLocalRepository, Output, FVerbose);
+  if (i=0) then
+  begin
+    OutputSL:=TStringList.Create;
+    try
+      OutputSL.Text:=Output;
+      for i:=0 to (OutputSL.Count-1) do
+      begin
+        Output:=Trim(OutputSL.Strings[i]);
+        if Pos('git-svn-id:',Output)>0 then
+        begin
+          j:=Pos('@',Output);
+          if (j>0) then
+          begin
+            Delete(Output,1,j);
+            j:=Pos(' ',Output);
+            if (j>0) then
+            begin
+              Delete(Output,j,MaxInt);
+              result:=Trim(Output);
+            end;
+          end;
+          break;
+        end;
+      end;
+    finally
+      OutputSL.Free;
+    end;
+  end;
 end;
 
 constructor TGitClient.Create;

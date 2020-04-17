@@ -48,10 +48,6 @@ implementation
 uses
   FileUtil, fpcuputil;
 
-const
-  ARCH='jvm';
-  OS='java';
-
 type
 
 { Tany_javajvm }
@@ -75,10 +71,11 @@ begin
   result:=FLibsFound;
   if result then exit;
 
+  FLibsPath:='';
+
   //FLibsPath:='where is jasmin.jar'
   //for now, jasmin.jar will be downloaded into normal bin-dir !!
   ShowInfo('Libspath ignored; jasmin.jar will be downloaded into normal bin-dir.');
-  FLibsPath:='';
   result:=True;
   FLibsFound:=True;
 end;
@@ -95,6 +92,10 @@ function Tany_javajvm.GetBinUtils(Basepath:string): boolean;
 begin
   result:=inherited;
   if result then exit;
+
+  FBinUtilsPrefix:='';
+  FBinUtilsPath:='';
+
   result:=CheckJava;
   if result then
   begin
@@ -114,12 +115,9 @@ end;
 constructor Tany_javajvm.Create;
 begin
   inherited Create;
-  FTargetCPU:=ARCH;
-  FTargetOS:=OS;
-  FBinUtilsPrefix:='';
-  FBinUtilsPath:='';
-  FFPCCFGSnippet:='';
-  FLibsPath:='';
+  FTargetCPU:=TCPU.jvm;
+  FTargetOS:=TOS.java;
+  Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
@@ -134,7 +132,7 @@ var
 
 initialization
   any_javajvm:=Tany_javajvm.Create;
-  RegisterExtension(any_javajvm.TargetCPU+'-'+any_javajvm.TargetOS,any_javajvm);
+  RegisterCrossCompiler(any_javajvm.RegisterName,any_javajvm);
 finalization
   any_javajvm.Destroy;
 

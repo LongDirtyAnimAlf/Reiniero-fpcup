@@ -61,8 +61,6 @@ end;
 { Tany_freebsdx64 }
 
 function Tany_freebsdx64.GetLibs(Basepath:string): boolean;
-const
-  DirName='x86_64-freebsd';
 var
   aVersion:integer;
 begin
@@ -116,8 +114,6 @@ end;
 {$endif}
 
 function Tany_freebsdx64.GetBinUtils(Basepath:string): boolean;
-const
-  DirName='x86_64-freebsd';
 var
   AsFile: string;
   AsDirectory: string;
@@ -190,12 +186,9 @@ end;
 constructor Tany_freebsdx64.Create;
 begin
   inherited Create;
-  FBinUtilsPrefix:='x86_64-freebsd-';
-  FBinUtilsPath:='';
-  FFPCCFGSnippet:='';
-  FLibsPath:='';
-  FTargetCPU:='x86_64';
-  FTargetOS:='freebsd';
+  FTargetCPU:=TCPU.x86_64;
+  FTargetOS:=TOS.freebsd;
+  Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
@@ -210,7 +203,8 @@ var
 
 initialization
   any_freebsdx64:=Tany_freebsdx64.Create;
-  RegisterExtension(any_freebsdx64.TargetCPU+'-'+any_freebsdx64.TargetOS,any_freebsdx64);
+  RegisterCrossCompiler(any_freebsdx64.RegisterName,any_freebsdx64);
+
 finalization
   any_freebsdx64.Destroy;
 

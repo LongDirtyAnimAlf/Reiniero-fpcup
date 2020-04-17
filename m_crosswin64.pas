@@ -75,9 +75,9 @@ constructor TWin64.Create;
 begin
   inherited Create;
   FCrossModuleNamePrefix:='TWin32';
-  FTargetCPU:='x86_64';
-  FTargetOS:='win64';
-  FFPCCFGSnippet:=''; //no need to change fpc.cfg
+  FTargetCPU:=TCPU.x86_64;
+  FTargetOS:=TOS.win64;
+  Reset;
   ShowInfo;
 end;
 
@@ -92,7 +92,8 @@ var
 
 initialization
   Win64:=TWin64.Create;
-  RegisterExtension(Win64.TargetCPU+'-'+Win64.TargetOS,Win64);
+  RegisterCrossCompiler(Win64.RegisterName,Win64);
+
 finalization
   Win64.Destroy;
 {$ENDIF WIN32}

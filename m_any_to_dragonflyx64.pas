@@ -1,6 +1,6 @@
-unit m_any_to_haikux64;
+unit m_any_to_dragonflyx64;
 
-{ Cross compiles from e.g. Linux 64 bit (or any other OS with relevant binutils/libs) to Haiku 64 bit
+{ Cross compiles from e.g. Linux 64 bit (or any other OS with relevant binutils/libs) to FreeBSD x86_64
 Copyright (C) 2014 Reinier Olislagers
 
 This library is free software; you can redistribute it and/or modify it
@@ -29,13 +29,6 @@ along with this library; if not, write to the Free Software Foundation,
 Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 }
 
-{
-Debian: adding i386 libs/architecture support on e.g. x64 system
-dpkg --add-architecture i386
-
-Adapt (add) for other setups
-}
-
 {$mode objfpc}{$H+}
 
 interface
@@ -47,9 +40,8 @@ implementation
 
 type
 
-{ Tany_haikux64 }
-
-Tany_haikux64 = class(TCrossInstaller)
+{ Tany_dragonflyx64 }
+Tany_dragonflyx64 = class(TCrossInstaller)
 private
   FAlreadyWarned: boolean; //did we warn user about errors and fixes already?
 public
@@ -62,48 +54,62 @@ public
   destructor Destroy; override;
 end;
 
-function Tany_haikux64.GetLibs(Basepath:string): boolean;
-const
-  LibName='libroot.so';
+{ Tany_dragonflyx64 }
+
+function Tany_dragonflyx64.GetLibs(Basepath:string): boolean;
 begin
   result:=FLibsFound;
   if result then exit;
 
   // begin simple: check presence of library file in basedir
-  result:=SearchLibrary(Basepath,LibName);
+  result:=SearchLibrary(Basepath,LIBCNAME);
 
   // first search local paths based on libbraries provided for or adviced by fpc itself
   if not result then
-    result:=SimpleSearchLibrary(BasePath,DirName,LibName);
+    result:=SimpleSearchLibrary(BasePath,DirName,LIBCNAME);
+
+  if not result then
+  begin
+    {$IFDEF UNIX}
+    FLibsPath:='/usr/lib/x86_64-dragonfly-gnu'; //debian Jessie+ convention
+    result:=DirectoryExists(FLibsPath);
+    if not result then
+    ShowInfo('Searched but not found libspath '+FLibsPath);
+    {$ENDIF}
+  end;
 
   SearchLibraryInfo(result);
-
   if result then
   begin
     FLibsFound:=True;
     AddFPCCFGSnippet('-Xd'); {buildfaq 3.4.1 do not pass parent /lib etc dir to linker}
     AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath)); {buildfaq 1.6.4/3.3.1: the directory to look for the target  libraries}
     //AddFPCCFGSnippet('-XR'+ExcludeTrailingPathDelimiter(FLibsPath)); {buildfaq 1.6.4/3.3.1: the directory to look for the target libraries ... just te be safe ...}
-    AddFPCCFGSnippet('-Xr/boot/system/develop/lib');
+    AddFPCCFGSnippet('-Xr/usr/lib');
+  end
+  else
+  begin
+    //FLibsFound:=True;
+    //result:=true;
   end;
-
 end;
 
 {$ifndef FPCONLY}
-function Tany_haikux64.GetLibsLCL(LCL_Platform: string; Basepath: string): boolean;
+function Tany_dragonflyx64.GetLibsLCL(LCL_Platform: string; Basepath: string): boolean;
 begin
   // todo: get gtk at least
   result:=inherited;
 end;
 {$endif}
 
-function Tany_haikux64.GetBinUtils(Basepath:string): boolean;
+function Tany_dragonflyx64.GetBinUtils(Basepath:string): boolean;
 var
   AsFile: string;
-  BinPrefixTry: string;
 begin
   result:=inherited;
   if result then exit;
+
+  FBinUtilsPrefix:=GetCPU(TargetCPU)+'-unknown-'+GetOS(TargetOS)+'-';
 
   AsFile:=FBinUtilsPrefix+'as'+GetExeExt;
 
@@ -111,61 +117,42 @@ begin
   if not result then
     result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
 
-  // Also allow for (cross)binutils without prefix
-  if not result then
-  begin
-    BinPrefixTry:='x86_64-unknown-haiku-';
-    AsFile:=BinPrefixTry+'as'+GetExeExt;
-    result:=SearchBinUtil(BasePath,AsFile);
-    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
-    if result then FBinUtilsPrefix:=BinPrefixTry;
-  end;
-
-  // Also allow for (cross)binutils without prefix
-  if not result then
-  begin
-    BinPrefixTry:='';
-    AsFile:=BinPrefixTry+'as'+GetExeExt;
-    result:=SearchBinUtil(BasePath,AsFile);
-    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
-    if result then FBinUtilsPrefix:=BinPrefixTry;
-  end;
-
   SearchBinUtilsInfo(result);
 
   if result then
   begin
     FBinsFound:=true;
     // Configuration snippet for FPC
-    AddFPCCFGSnippet('-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath));
-    AddFPCCFGSnippet('-XP'+FBinUtilsPrefix);
+    AddFPCCFGSnippet('-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath)); {search this directory for compiler utilities}
+    AddFPCCFGSnippet('-XP'+FBinUtilsPrefix); {Prepend the binutils names}
+    AddFPCCFGSnippet('-dFPC_USE_LIBC'); {Use libc to build all}
   end;
 end;
 
-constructor Tany_haikux64.Create;
+constructor Tany_dragonflyx64.Create;
 begin
   inherited Create;
   FTargetCPU:=TCPU.x86_64;
-  FTargetOS:=TOS.haiku;
+  FTargetOS:=TOS.dragonfly;
   Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
 
-destructor Tany_haikux64.Destroy;
+destructor Tany_dragonflyx64.Destroy;
 begin
   inherited Destroy;
 end;
 
 var
-  any_haikux64:Tany_haikux64;
+  any_dragonflyx64:Tany_dragonflyx64;
 
 initialization
-  any_haikux64:=Tany_haikux64.Create;
-  RegisterCrossCompiler(any_haikux64.RegisterName,any_haikux64);
+  any_dragonflyx64:=Tany_dragonflyx64.Create;
+  RegisterCrossCompiler(any_dragonflyx64.RegisterName,any_dragonflyx64);
 
 finalization
-  any_haikux64.Destroy;
+  any_dragonflyx64.Destroy;
 
 end.
 

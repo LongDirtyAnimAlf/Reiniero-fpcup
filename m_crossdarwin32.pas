@@ -51,18 +51,27 @@ begin
   FBinUtilsPrefix:=''; // we have the "native" names, no prefix
   result:=true;
   FBinsFound:=true;
+
   aOption:=GetSDKVersion('macosx');
-  if Length(aOption)>0 then AddFPCCFGSnippet('-WM'+aOption);
+  if Length(aOption)>0 then
+  begin
+    if CompareVersionStrings(aOption,'10.8')>=0 then
+    begin
+      aOption:='10.8';
+    end;
+    AddFPCCFGSnippet('-WM'+aOption);
+  end;
+
 end;
 
 constructor TDarwin32.Create;
 begin
   inherited Create;
   FCrossModuleNamePrefix:='TDarwin64';
-  FTargetCPU:='i386';
-  FTargetOS:='darwin';
+  FTargetCPU:=TCPU.i386;
+  FTargetOS:=TOS.darwin;
+  Reset;
   FAlreadyWarned:=false;
-  FFPCCFGSnippet:='';
   ShowInfo;
 end;
 
@@ -79,7 +88,8 @@ var
 
 initialization
   Darwin32:=TDarwin32.Create;
-  RegisterExtension(Darwin32.TargetCPU+'-'+Darwin32.TargetOS,Darwin32);
+  RegisterCrossCompiler(Darwin32.RegisterName,Darwin32);
+
 finalization
   Darwin32.Destroy;
 {$ENDIF}

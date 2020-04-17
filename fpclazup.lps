@@ -3,7 +3,7 @@
   <ProjectSession>
     <PathDelim Value="\"/>
     <Version Value="12"/>
-    <BuildModes Count="3" Active="win32">
+    <BuildModes Count="3" Active="Debug">
       <Item1 Name="linuxarmhf">
         <MacroValues Count="1">
           <Macro1 Name="LCLWidgetType" Value="nogui"/>
@@ -141,9 +141,8 @@ end;"/>
       <Unit0>
         <Filename Value="fpclazup.lpr"/>
         <IsPartOfProject Value="True"/>
-        <IsVisibleTab Value="True"/>
-        <TopLine Value="107"/>
-        <CursorPos X="3" Y="124"/>
+        <TopLine Value="69"/>
+        <CursorPos X="3" Y="86"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
       </Unit0>
@@ -182,10 +181,12 @@ end;"/>
         <Filename Value="installerfpc.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerFpc"/>
-        <EditorIndex Value="-1"/>
-        <TopLine Value="2903"/>
-        <CursorPos X="28" Y="2913"/>
+        <IsVisibleTab Value="True"/>
+        <EditorIndex Value="1"/>
+        <TopLine Value="2070"/>
+        <CursorPos Y="2079"/>
         <UsageCount Value="200"/>
+        <Loaded Value="True"/>
       </Unit5>
       <Unit6>
         <Filename Value="installerlazarus.pas"/>
@@ -216,8 +217,6 @@ end;"/>
         <Filename Value="fpcup.ini"/>
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="2"/>
-        <TopLine Value="136"/>
-        <CursorPos Y="154"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
         <DefaultSyntaxHighlighter Value="Ini"/>
@@ -493,11 +492,10 @@ end;"/>
       <Unit45>
         <Filename Value="fpcuputil.pas"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="1"/>
+        <EditorIndex Value="-1"/>
         <TopLine Value="399"/>
         <CursorPos X="4" Y="416"/>
         <UsageCount Value="165"/>
-        <Loaded Value="True"/>
       </Unit45>
       <Unit46>
         <Filename Value="m_any_to_linuxaarch64.pas"/>
@@ -512,5 +510,26 @@ end;"/>
       <FormatVersion Value="2"/>
       <Modes ActiveMode="default"/>
     </RunParams>
+    <HistoryLists Count="3">
+      <List0 Name="WorkingDirectory" Type="File" Count="1"/>
+      <List1 Name="LaunchingApplication" Type="File" Count="1">
+        <Item1 Value="C:\WINDOWS\system32\cmd.exe /C ${TargetCmdLine}"/>
+      </List1>
+      <List2 Name="CommandLineParameters" Count="2">
+        <Item1 Value="--verbose"/>
+        <Item2 Value="--verbose --fpcURL=&quot;newpascal&quot; --lazURL=&quot;newpascal&quot; --ostarget=&quot;darwin&quot; --cputarget=&quot;i386&quot; --only=&quot;FPCCleanOnly,FPCBuildOnly&quot; --installdir=&quot;c:\NewPascal\&quot;"/>
+      </List2>
+    </HistoryLists>
   </ProjectSession>
+  <Debugging>
+    <BreakPoints>
+      <Item>
+        <Kind Value="bpkSource"/>
+        <WatchScope Value="wpsLocal"/>
+        <WatchKind Value="wpkWrite"/>
+        <Source Value="installerfpc.pas"/>
+        <Line Value="2079"/>
+      </Item>
+    </BreakPoints>
+  </Debugging>
 </CONFIG>

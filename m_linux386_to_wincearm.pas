@@ -57,8 +57,6 @@ end;
 { TLinux386_wincearm }
 
 function TLinux386_wincearm.GetLibs(Basepath:string): boolean;
-const
-  DirName='arm-wince';
 begin
   result:=FLibsFound;
   if result then exit;
@@ -95,8 +93,6 @@ end;
 {$endif}
 
 function TLinux386_wincearm.GetBinUtils(Basepath:string): boolean;
-const
-  DirName='arm-wince';
 var
   AsFile: string;
   BinPrefixTry: string;
@@ -164,12 +160,9 @@ constructor TLinux386_wincearm.Create;
 begin
   inherited Create;
   FCrossModuleNamePrefix:='TLinux386';
-  FBinUtilsPrefix:='arm-wince-'; //search algorithm may modify this
-  FBinUtilsPath:='';
-  FFPCCFGSnippet:=''; //will be filled in later
-  FLibsPath:='';
-  FTargetCPU:='arm';
-  FTargetOS:='wince';
+  FTargetCPU:=TCPU.arm;
+  FTargetOS:=TOS.wince;
+  Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
@@ -186,7 +179,8 @@ var
 
 initialization
   Linux386_wincearm:=TLinux386_wincearm.Create;
-  RegisterExtension(Linux386_wincearm.TargetCPU+'-'+Linux386_wincearm.TargetOS,Linux386_wincearm);
+  RegisterCrossCompiler(Linux386_wincearm.RegisterName,Linux386_wincearm);
+
 finalization
   Linux386_wincearm.Destroy;
 //{$ENDIF}

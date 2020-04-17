@@ -51,11 +51,6 @@ uses
 
 implementation
 
-const
-  ARCH='powerpc64';
-  ARCHUNIVERSAL='powerpc';
-  OS='aix';
-
 type
 
 { TAny_AIXPowerPC64 }
@@ -76,7 +71,6 @@ end;
 
 function TAny_AIXPowerPC64.GetLibs(Basepath:string): boolean;
 const
-  DirName=ARCH+'-'+OS;
   StaticLibName='libc.a';
 begin
 
@@ -100,13 +94,13 @@ begin
   result:=SearchLibrary(Basepath,LIBCNAME);
   // search local paths based on libbraries provided for or adviced by fpc itself
   if not result then
-    result:=SimpleSearchLibrary(BasePath,ARCHUNIVERSAL+'-'+OS,LIBCNAME);
+    result:=SimpleSearchLibrary(BasePath,'powerpc-'+GetOS(TargetOS),LIBCNAME);
 
   //  universal libs: do the same as above, but look for a static lib
   result:=SearchLibrary(Basepath,StaticLibName);
   // search local paths based on libbraries provided for or adviced by fpc itself
   if not result then
-    result:=SimpleSearchLibrary(BasePath,ARCHUNIVERSAL+'-'+OS,StaticLibName);
+    result:=SimpleSearchLibrary(BasePath,'power-'+GetOS(TargetOS),StaticLibName);
 
   if result then
   begin
@@ -138,8 +132,6 @@ end;
 {$endif}
 
 function TAny_AIXPowerPC64.GetBinUtils(Basepath:string): boolean;
-const
-  DirName=ARCH+'-'+OS;
 var
   AsFile: string;
   BinPrefixTry: string;
@@ -154,24 +146,14 @@ begin
   if not result then
     result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
 
-  // Also allow for crossfpc naming
-  if not result then
-  begin
-    BinPrefixTry:=ARCH+'-'+OS+'-';
-    AsFile:=BinPrefixTry+'as'+GetExeExt;
-    result:=SearchBinUtil(BasePath,AsFile);
-    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
-    if result then FBinUtilsPrefix:=BinPrefixTry;
-  end;
-
   // Also allow for universal crossfpc bins
   if not result then
   begin
-    BinPrefixTry:=ARCHUNIVERSAL+'-'+OS+'-';
+    BinPrefixTry:='powerpc-'+GetOS(TargetOS)+'-';
     AsFile:=BinPrefixTry+'as'+GetExeExt;
     result:=SearchBinUtil(BasePath,AsFile);
     if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
-    if not result then result:=SimpleSearchBinUtil(BasePath,ARCHUNIVERSAL+'-'+OS,AsFile);
+    if not result then result:=SimpleSearchBinUtil(BasePath,'powerpc-'+GetOS(TargetOS),AsFile);
     if result then FBinUtilsPrefix:=BinPrefixTry;
   end;
 
@@ -182,7 +164,7 @@ begin
     AsFile:=BinPrefixTry+'as'+GetExeExt;
     result:=SearchBinUtil(BasePath,AsFile);
     if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
-    if not result then result:=SimpleSearchBinUtil(BasePath,ARCHUNIVERSAL+'-'+OS,AsFile);
+    if not result then result:=SimpleSearchBinUtil(BasePath,'powerpc-'+GetOS(TargetOS),AsFile);
     if result then FBinUtilsPrefix:=BinPrefixTry;
   end;
 
@@ -205,12 +187,9 @@ end;
 constructor TAny_AIXPowerPC64.Create;
 begin
   inherited Create;
-  FTargetCPU:=ARCH;
-  FTargetOS:=OS;
-  FBinUtilsPrefix:=ARCH+'-'+OS+'-';
-  FBinUtilsPath:='';
-  FFPCCFGSnippet:=''; //will be filled in later
-  FLibsPath:='';
+  FTargetCPU:=TCPU.powerpc64;
+  FTargetOS:=TOS.aix;
+  Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
@@ -225,7 +204,7 @@ var
 
 initialization
   Any_AIXPowerPC64:=TAny_AIXPowerPC64.Create;
-  RegisterExtension(Any_AIXPowerPC64.TargetCPU+'-'+Any_AIXPowerPC64.TargetOS,Any_AIXPowerPC64);
+  RegisterCrossCompiler(Any_AIXPowerPC64.RegisterName,Any_AIXPowerPC64);
 
 finalization
   Any_AIXPowerPC64.Destroy;

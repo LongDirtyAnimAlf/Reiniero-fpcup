@@ -34,6 +34,7 @@ unit fpcuputil;
 {$mode objfpc}{$H+}
 
 {$define ENABLEWGET}
+{$define ENABLECURL}
 {$define ENABLENATIVE}
 
 {$ifdef Haiku}
@@ -44,6 +45,13 @@ unit fpcuputil;
 // synaser does not work under OpenBSD
 {$undef ENABLENATIVE}
 {$endif}
+{$IF DEFINED(MORPHOS) OR DEFINED(AROS)}
+// libcurl does not work under AROS and Morphos
+{$undef ENABLECURL}
+// synaser does not work under AROS and Morphos
+{$undef ENABLENATIVE}
+{$ENDIF}
+
 {$ifdef Darwin}
 // Do not use wget and family under Darwin
 {$undef ENABLEWGET}
@@ -67,15 +75,17 @@ uses
   {$ifdef darwin}
   ns_url_request,
   {$endif}
+  {$IF NOT DEFINED(MORPHOS) AND NOT DEFINED(AROS)}
   {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30000)}
   fpopenssl,
   {$ENDIF}
   openssl,
+  {$ENDIF}
   //fpftpclient,
   eventlog;
 
 Const
-  MAXCONNECTIONRETRIES=5;
+  MAXCONNECTIONRETRIES=2;
   {$ifdef LCL}
   BeginSnippet='fpcupdeluxe:'; //helps identify messages as coming from fpcupdeluxe instead of make etc
   {$else}
@@ -122,7 +132,7 @@ type
   public
     constructor Create;
     destructor Destroy; override;
-    procedure DoUnZip(const ASrcFile, ADstDir: String; Files:array of string);
+    function DoUnZip(const ASrcFile, ADstDir: String; Files:array of string):boolean;
   published
     property OnZipProgress: TOnZipProgress read FOnZipProgress write FOnZipProgress;
     property OnZipFile: TOnZipFile read FOnZipFile write FOnZipFile;
@@ -160,20 +170,29 @@ type
     destructor Destroy; override;
   end;
 
-  TBasicDownLoader = Class(TComponent)
+  TBasicDownLoader = Class(TObject)
   private
-    FVerbose:boolean;
+    FHTTPProxyPort: integer;
     FMaxRetries:byte;
+    FVerbose:boolean;
+    FUserAgent: string;
+    FContentType: string;
     FUsername: string;
     FPassword: string;
     FHTTPProxyHost: string;
-    FHTTPProxyPort: integer;
     FHTTPProxyUser: string;
     FHTTPProxyPassword: string;
+    StoredTickCount:QWord;
+    aFilename:string;
     procedure parseFTPHTMLListing(F:TStream;filelist:TStringList);
+    procedure DoOnWriteStream(Sender: TObject; APos: Int64);
+    procedure SetUserAgent(AValue:string);virtual;abstract;
+    procedure SetContentType(AValue:string);virtual;abstract;
   protected
     procedure SetVerbose(aValue:boolean);virtual;
     property MaxRetries : Byte Read FMaxRetries Write FMaxRetries;
+    property  UserAgent: string write SetUserAgent;
+    property  ContentType: string write SetContentType;
     property Username: string read FUsername;
     property Password: string read FPassword;
     property HTTPProxyHost: string read FHTTPProxyHost;
@@ -183,40 +202,40 @@ type
     property Verbose: boolean write SetVerbose;
   public
     constructor Create;virtual;
-    constructor Create(AOwner: TComponent);override;
     destructor Destroy;override;
     procedure setCredentials(user,pass:string);virtual;
     procedure setProxy(host:string;port:integer;user,pass:string);virtual;
     function getFile(const URL,filename:string):boolean;virtual;abstract;
+    function getStream(const URL:string; DataStream:TStream):boolean;virtual;abstract;
     function getFTPFileList(const URL:string; filelist:TStringList):boolean;virtual;abstract;
     function checkURL(const URL:string):boolean;virtual;abstract;
   end;
 
   {$ifdef ENABLENATIVE}
   TUseNativeDownLoader = Class(TBasicDownLoader)
-  private
+  strict private
     {$ifdef Darwin}
     aFPHTTPClient:TNSHTTPSendAndReceive;
     {$else}
     aFPHTTPClient:TFPHTTPClient;
     {$endif}
-    StoredTickCount:QWord;
-    aFilename:string;
     procedure DoProgress(Sender: TObject; Const ContentLength, CurrentPos : Int64);
-    procedure DoOnWriteStream(Sender: TObject; APos: Int64);
     procedure DoHeaders(Sender : TObject);
     procedure DoPassword(Sender: TObject; var {%H-}RepeatRequest: Boolean);
     procedure ShowRedirect({%H-}ASender : TObject; Const ASrc : String; Var ADest : String);
-    function Download(const URL: String; filename:string):boolean;
-    function FTPDownload(Const URL : String; filename:string):boolean;
-    function HTTPDownload(Const URL : String; filename:string):boolean;
+    function Download(const URL: String; DataStream:TStream):boolean;
+    function FTPDownload(Const URL: String; DataStream:TStream):boolean;
+    function HTTPDownload(Const URL : String; DataStream:TStream):boolean;
   protected
+    procedure SetContentType(AValue:string);override;
+    procedure SetUserAgent(AValue:string);override;
     procedure SetVerbose(aValue:boolean);override;
   public
     constructor Create;override;
     destructor Destroy; override;
     procedure setProxy(host:string;port:integer;user,pass:string);override;
     function getFile(const URL,filename:string):boolean;override;
+    function getStream(const URL:string; DataStream:TStream):boolean;override;
     function getFTPFileList(const URL:string; filelist:TStringList):boolean;override;
     function checkURL(const URL:string):boolean;override;
   end;
@@ -224,23 +243,30 @@ type
 
   {$ifdef ENABLEWGET}
   TUseWGetDownloader = Class(TBasicDownLoader)
-  private
+  strict private
     FCURLOk:boolean;
     FWGETOk:boolean;
     //WGETBinary:string;
-    function WGetDownload(Const URL : String; Dest : TStream):boolean;
-    function LibCurlDownload(Const URL : String; Dest : TStream):boolean;
+    procedure AddHeader(const aHeader,aValue:String);
+    function  WGetDownload(Const URL : String; DataStream : TStream):boolean;
+    {$ifdef ENABLECURL}
+    function  LibCurlDownload(Const URL : String; DataStream : TStream):boolean;
+    function  LibCurlFTPFileList(const URL:string; filelist:TStringList):boolean;
+    {$endif}
     function WGetFTPFileList(const URL:string; filelist:TStringList):boolean;
-    function LibCurlFTPFileList(const URL:string; filelist:TStringList):boolean;
-    function Download(const URL: String; Dest: TStream):boolean;
-    function FTPDownload(Const URL : String; Dest : TStream):boolean;
-    function HTTPDownload(Const URL : String; Dest : TStream):boolean;
+    function  Download(const URL: String; DataStream: TStream):boolean;
+    function  FTPDownload(Const URL : String; DataStream : TStream):boolean;
+    function  HTTPDownload(Const URL : String; DataStream : TStream):boolean;
+  protected
+    procedure SetContentType(AValue:string);override;
+    procedure SetUserAgent(AValue:string);override;
   public
     class var
         WGETBinary:string;
     constructor Create;override;
     constructor Create(aWGETBinary:string);
     function getFile(const URL,filename:string):boolean;override;
+    function getStream(const URL:string; DataStream:TStream):boolean;override;
     function getFTPFileList(const URL:string; filelist:TStringList):boolean;override;
     function checkURL(const URL:string):boolean;override;
   end;
@@ -266,8 +292,10 @@ procedure CreateHomeStartLink(Target, TargetArguments, ShortcutName: string);
 procedure DeleteDesktopShortcut(ShortcutName: string);
 {$ENDIF MSWINDOWS}
 function FindFileInDir(Filename, Path: String): String;
+function FindFileInDirWildCard(Filename, Path: String): String;
 // Copy a directory recursive
 function DirCopy(SourcePath, DestPath: String): Boolean;
+function CheckDirectory(DirectoryName: string):boolean;
 // Delete directory and children, even read-only. Equivalent to rm -rf <directory>:
 function DeleteDirectoryEx(DirectoryName: string): boolean;
 // Recursively delete files with specified name(s), only if path contains specfied directory name somewhere (or no directory name specified):
@@ -277,23 +305,23 @@ function DeleteFilesSubDirs(const DirectoryName: string; const Names:TStringList
 function DeleteFilesExtensionsSubdirs(const DirectoryName: string; const Extensions:TstringList; const OnlyIfPathHas: string): boolean;
 // only if filename contains specfied part somewhere
 function DeleteFilesNameSubdirs(const DirectoryName: string; const OnlyIfNameHas: string): boolean;
-function GetFileNameFromURL(URL:string):string;
+function FileNameFromURL(URL:string):string;
 function StripUrl(URL:string): string;
-function GetCompilerVersion(CompilerPath: string): string;
-function GetLazbuildVersion(LazbuildPath: string): string;
-procedure GetVersionFromString(const VersionSnippet:string;var Major,Minor,Build: Integer);
+function CompilerVersion(CompilerPath: string): string;
+function CompilerRevision(CompilerPath: string): integer;
+procedure VersionFromString(const VersionSnippet:string;out Major,Minor,Build: Integer);
 function CalculateFullVersion(Major,Minor,Release:integer):dword;
-function GetNumericalVersion(VersionSnippet: string): word;
-function GetVersionFromUrl(URL:string): string;
-function GetReleaseCandidateFromUrl(aURL:string): integer;
+function CalculateNumericalVersion(VersionSnippet: string): word;
+function VersionFromUrl(URL:string): string;
+function ReleaseCandidateFromUrl(aURL:string): integer;
 // Download from HTTP (includes Sourceforge redirection support) or FTP
 // HTTP download can work with http proxy
-function Download(UseWget:boolean; URL, TargetFile: string; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''): boolean;
+function Download(UseWget:boolean; URL, TargetFile: string; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''): boolean;overload;
+function Download(UseWget:boolean; URL: string; DataStream:TStream; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''): boolean;overload;
 function GetGitHubFileList(aURL:string;fileurllist:TStringList; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''):boolean;
+function GetSVNFileList(aURL:string;fileurllist:TStringList; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''):boolean;
 {$IFDEF MSWINDOWS}
 function CheckFileSignature(aFilePath: string): boolean;
-function DownloadByBitsAdmin(URL, TargetFile: string): boolean;
-function DownloadByPowerShell(URL, TargetFile: string): boolean;
 // Get Windows major and minor version number (e.g. 5.0=Windows 2000)
 function GetWin32Version(out Major,Minor,Build : Integer): Boolean;
 function CheckWin32Version(aMajor,aMinor: Integer): Boolean;
@@ -308,10 +336,6 @@ function ParentDirectoryIsNotRoot(Dir:string):boolean;
 procedure infoln(Message: string; const Level: TEventType=etInfo);
 // Moves file if it exists, overwriting destination file
 function MoveFile(const SrcFilename, DestFilename: string): boolean;
-//Get a temp file
-Function GetTempFileNameExt(Const Dir,Prefix,Ext : String) : String;
-//Get a temp directory
-Function GetTempDirName(Const Dir,Prefix : String) : String;
 // Correct line-endings
 function FileCorrectLineEndings(const SrcFilename, DestFilename: string): boolean;
 // Correct directory separators
@@ -324,21 +348,26 @@ function SafeExpandFileName (Const FileName : String): String;
 function SafeGetApplicationName: String;
 // Get application path
 function SafeGetApplicationPath: String;
+// Get config path
+function SafeGetApplicationConfigPath(Global:boolean=false): String;
 function SaveFileFromResource(filename,resourcename:string):boolean;
 // Copies specified resource (e.g. fpcup.ini, settings.ini)
 // to application directory
 function SaveInisFromResource(filename,resourcename:string):boolean;
 // Searches for SearchFor in the stringlist and returns the index if found; -1 if not
 // Search optionally starts from position SearchFor
+function StringsStartsWith(const SearchIn:array of string; SearchFor:string; StartIndex:integer; CS:boolean): integer;
 function StringListStartsWith(SearchIn:TStringList; SearchFor:string; StartIndex:integer=0; CS:boolean=false): integer;
+function StringListContains(SearchIn:TStringList; SearchFor:string; StartIndex:integer=0; CS:boolean=false): integer;
 function GetTotalPhysicalMemory: DWord;
 function GetSwapFileSize: DWord;
-{$IFDEF UNIX}
 function XdgConfigHome: String;
+{$IFDEF UNIX}
 function GetStartupObjects:string;
 {$IFDEF LINUX}
 function GetFreePhysicalMemory: DWord;
 function GetFreeSwapFileSize: DWord;
+function IsLinuxMUSL:boolean;
 {$ENDIF LINUX}
 {$ENDIF UNIX}
 function GetLogicalCpuCount: integer;
@@ -348,12 +377,16 @@ function GetSDKVersion(aSDK: string):string;
 function CompareVersionStrings(s1,s2: string): longint;
 function ExistWordInString(aString:pchar; aSearchString:string; aSearchOptions: TStringSearchOptions): Boolean;
 function GetEnumNameSimple(aTypeInfo:PTypeInfo;const aEnum:integer):string;
+function GetEnumValueSimple(aTypeInfo:PTypeInfo;const aEnum:string):integer;
+//Find a library, if any
+function LibWhich(aLibrary: string): boolean;
 // Emulates/runs which to find executable in path. If not found, returns empty string
-function Which(Executable: string): string;
+function Which(const Executable: string): string;
 function IsExecutable(Executable: string):boolean;
 function ForceDirectoriesSafe(Const Dir: RawByteString): Boolean;
 function CheckExecutable(Executable, Parameters, ExpectOutput: string): boolean;
 function GetJava: string;
+function GetJavac: string;
 function CheckJava: boolean;
 function ExtractFileNameOnly(const AFilename: string): string;
 function DoubleQuoteIfNeeded(s: string): string;
@@ -363,7 +396,6 @@ function DirectoryIsEmpty(Directory: string): Boolean;
 function GetTargetCPU:string;
 function GetTargetOS:string;
 function GetTargetCPUOS:string;
-function GetFPCTargetCPUOS(const aCPU,aOS:string;const Native:boolean=true): string;
 function GetDistro:string;
 function GetFreeBSDVersion:byte;
 function checkGithubRelease(const aURL:string):string;
@@ -373,8 +405,7 @@ Function Pos(Const Substr : string; Const Source : string; Offset : Sizeint = 1)
 {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION < 30000)}
 Function CharInSet(Ch:AnsiChar;Const CSet : TSysCharSet) : Boolean; inline;
 {$ENDIF}
-var
-  resourcefiles:TStringList;
+
 
 implementation
 
@@ -382,12 +413,19 @@ uses
   {$ifdef LCL}
   Forms,Controls,
   {$endif}
+  {$ifdef Darwin}
+  MacTypes,
+  Folders,
+  Files,
+  {$endif}
   IniFiles,
   DOM,DOM_HTML,SAX_HTML,
   {$ifdef ENABLENATIVE}
   ftpsend,
   {$else}
+  {$IF NOT DEFINED(MORPHOS) AND NOT DEFINED(AROS)}
   ftplist,
+  {$ENDIF}
   {$endif}
   FileUtil,
   LazFileUtils,
@@ -395,11 +433,10 @@ uses
   fpwebclient,
   fphttpwebclient,
   {$ENDIF}
-  fpjson, jsonparser,
-  uriparser
+  fpjson, jsonparser ,uriparser
   {$IFDEF MSWINDOWS}
     //Mostly for shortcut code
-    ,windows, shlobj {for special folders}, ActiveX, ComObj, WinDirs
+    ,windows, shlobj {for special folders}, ActiveX, ComObj, WinDirs, WinINet
   {$ENDIF MSWINDOWS}
   {$IFDEF LINUX}
   ,linux
@@ -411,37 +448,49 @@ uses
   // for wget downloader
   ,process
   // for libc downloader
+  {$IF NOT DEFINED(MORPHOS) AND NOT DEFINED(AROS)}
   ,fpcuplibcurl
+  {$ENDIF}
   {$ENDIF ENABLEWGET}
   ,NumCPULib  in './numcpulib/NumCPULib.pas'
   ,processutils
   ;
 
 const
-  USERAGENT = 'curl/7.50.1 (i686-pc-linux-gnu) libcurl/7.50.1 OpenSSL/1.0.1t zlib/1.2.8 libidn/1.29 libssh2/1.4.3 librtmp/2.3';
-  //USERAGENT = 'Mozilla/5.0 (compatible; fpweb)';
-  //USERAGENT = 'Mozilla/4.0 (compatible; MSIE 5.01; Windows NT 5.0)';
-  CURLUSERAGENT='curl/7.51.0';
+  NORMALUSERAGENT = 'curl/7.50.1 (i686-pc-linux-gnu) libcurl/7.50.1 OpenSSL/1.0.1t zlib/1.2.8 libidn/1.29 libssh2/1.4.3 librtmp/2.3';
+  //NORMALUSERAGENT = 'Mozilla/5.0 (compatible; fpweb)';
+  FPCUPUSERAGENT = 'fpcupdeluxe';
+  {$IFDEF ENABLEWGET}
+  CURLUSERAGENT='curl/7.50.1';
+  //CURLUSERAGENT='curl/7.51.0';
+  {$ENDIF}
+  {$IFDEF MSWINDOWS}
+  WININETUSERAGENT = 'Mozilla/4.0 (compatible; MSIE 5.01; Windows NT 5.0; WinInet)';
+  {$ENDIF MSWINDOWS}
 
 {$i revision.inc}
 
 type
   TOnWriteStream = procedure(Sender: TObject; APos: Int64) of object;
 
-  TDownloadStream = class(TStream)
+  TDownloadStream = class(TFileStream)
   private
     FOnWriteStream: TOnWriteStream;
-    FStream: TStream;
   public
-    constructor Create(AStream: TStream);
-    destructor Destroy; override;
-    function Read(var Buffer; Count: LongInt): LongInt; override;
     function Write(const Buffer; Count: LongInt): LongInt; override;
-    function Seek(Offset: LongInt; Origin: Word): LongInt; override;
     procedure DoProgress;
   published
     property OnWriteStream: TOnWriteStream read FOnWriteStream write FOnWriteStream;
   end;
+
+  //PTGitHubStore = ^TGitHubStore;
+  TGitHubStore = record
+    URL:string;
+    FileList:TStringList;
+  end;
+
+var
+  GitHubFileListCache:array of TGitHubStore;
 
 
 function GetStringFromBuffer(const field:PChar):string;
@@ -454,6 +503,8 @@ begin
     SetLength(result,strlen(field));
   end else result:='';
 end;
+
+(*
 
 function ResNameProc({%H-}ModuleHandle : TFPResourceHMODULE; {%H-}ResourceType, ResourceName : PChar; {%H-}lParam : PtrInt) : LongBool; stdcall;
 var
@@ -488,6 +539,59 @@ procedure DoEnumResources;
 begin
   EnumResourceTypes(HINSTANCE,@ResTypeProc,0);
 end;
+*)
+
+procedure FTPHTMLListingParser(F:TStream;filelist:TStringList);
+var
+  ADoc: THTMLDocument;
+  HTMFiles : TDOMNodeList;
+  FilenameValid:boolean;
+  i,j:integer;
+  s:string;
+  FPCSVNList,LAZARUSSVNList:boolean;
+begin
+  FPCSVNList:=False;
+  LAZARUSSVNList:=False;
+  F.Position:=0;
+  try
+    ReadHTMLFile(ADoc,F);
+    // a bit rough, but it works
+    HTMFiles:=ADoc.GetElementsByTagName('title');
+    if HTMFiles.Count>0 then
+    begin
+      s:=HTMFiles[0].TextContent;
+      FPCSVNList:=(Pos('[fpc]',s)=1);
+      LAZARUSSVNList:=(Pos('[lazarus]',s)=1);
+    end;
+    HTMFiles:=ADoc.GetElementsByTagName('a');
+    for i:=0 to Pred(HTMFiles.Count) do
+    begin
+      s:=TDOMElement(HTMFiles[i]).GetAttribute('name');
+      if Length(s)>0 then
+      begin
+        // validate filename (also rough)
+        FilenameValid:=True;
+        for j:=1 to Length(s) do
+        begin
+          FilenameValid := (NOT CharInSet(s[j], [';', '=', '+', '<', '>', '|','"', '[', ']', '\', '/', '''']));
+          if (NOT FilenameValid) then break;
+        end;
+        if FilenameValid then
+        begin
+          FilenameValid:=False;
+          FilenameValid:=FilenameValid OR ((LowerCase(ExtractFileExt(s))='.zip') OR (LowerCase(ExtractFileExt(s))='.bz2'));
+          FilenameValid:=FilenameValid OR ((Pos('lazarus_',s)=1) AND (LAZARUSSVNList));
+          FilenameValid:=FilenameValid OR ((Pos('release_',s)=1) AND (FPCSVNList));
+          // finally, add filename if all is ok !!
+          if FilenameValid then filelist.Add(s);
+        end;
+      end;
+    end;
+  finally
+    aDoc.Free;
+  end;
+end;
+
 
 {$ifdef mswindows}
 function GetWin32Version(out Major,Minor,Build : Integer): Boolean;
@@ -642,6 +746,120 @@ begin
  result:=IncludeTrailingPathDelimiter(StartPath);
 end;
 
+function SafeGetApplicationConfigPath(Global:boolean=false): String;
+{$IFDEF DARWIN}
+const
+  kMaxPath = 1024;
+var
+  theError: OSErr;
+  theRef: FSRef;
+  pathBuffer: PChar;
+{$ENDIF}
+begin
+  result:='';
+  {$IFDEF DARWIN}
+  theRef := Default(FSRef); // init
+  try
+    pathBuffer := Allocmem(kMaxPath);
+  except on exception
+    do exit;
+  end;
+  try
+    Fillchar(pathBuffer^, kMaxPath, #0);
+    Fillchar(theRef, Sizeof(theRef), #0);
+    if Global then // kLocalDomain
+      theError := FSFindFolder(kLocalDomain, kPreferencesFolderType, kDontCreateFolder, theRef)
+    else // kUserDomain
+      theError := FSFindFolder(kUserDomain , kPreferencesFolderType, kDontCreateFolder, theRef);
+    if (pathBuffer <> nil) and (theError = noErr) then
+    begin
+      theError := FSRefMakePath(theRef, pathBuffer, kMaxPath);
+      if theError = noErr then
+        result := UTF8ToAnsi(StrPas(pathBuffer));
+    end;
+  finally
+    Freemem(pathBuffer);
+  end;
+  {$ELSE}
+  {$IFDEF MSWINDOWS}
+  if Global then
+    result:=GetWindowsSpecialDir(CSIDL_COMMON_APPDATA)
+  else
+    result:=GetWindowsSpecialDir(CSIDL_LOCAL_APPDATA);
+  {$ELSE}
+  if Global then
+    result:=SysConfigDir
+  else
+  begin
+    result:=GetEnvironmentVariable('HOME');
+    if (result='') then
+      result:=SafeExpandFileName('~/.config')
+    else
+      result:=IncludeTrailingPathDelimiter(result) + '.config';
+  end;
+  {$ENDIF}
+  {$ENDIF}
+  result:=IncludeTrailingPathDelimiter(result);
+end;
+
+
+function SafeGetApplicationTempPath(Global:boolean=false): String;
+{$IFDEF DARWIN}
+const
+  kMaxPath = 1024;
+var
+  theError: OSErr;
+  theRef: FSRef;
+  pathBuffer: PChar;
+{$ENDIF}
+begin
+  result:='';
+  {$IFDEF DARWIN}
+  theRef := Default(FSRef); // init
+  try
+    pathBuffer := Allocmem(kMaxPath);
+  except on exception
+    do exit;
+  end;
+  try
+    Fillchar(pathBuffer^, kMaxPath, #0);
+    Fillchar(theRef, Sizeof(theRef), #0);
+    if Global then // kLocalDomain
+      theError := FSFindFolder(kLocalDomain, kTemporaryFolderType, kDontCreateFolder, theRef)
+    else // kUserDomain
+      theError := FSFindFolder(kUserDomain , kTemporaryFolderType, kDontCreateFolder, theRef);
+    if (pathBuffer <> nil) and (theError = noErr) then
+    begin
+      theError := FSRefMakePath(theRef, pathBuffer, kMaxPath);
+      if theError = noErr then
+        result := UTF8ToAnsi(StrPas(pathBuffer));
+    end;
+  finally
+    Freemem(pathBuffer);
+  end;
+  {$ELSE}
+  {$IFDEF MSWINDOWS}
+  if Global then
+    result:=GetWindowsSpecialDir(CSIDL_COMMON_APPDATA)
+  else
+    result:=GetWindowsSpecialDir(CSIDL_LOCAL_APPDATA);
+  {$ELSE}
+  if Global then
+    result:=SysConfigDir
+  else
+  begin
+    result:=GetEnvironmentVariable('HOME');
+    if (result='') then
+      result:=SafeExpandFileName('~/.cache')
+    else
+      result:=IncludeTrailingPathDelimiter(result) + '.cache';
+  end;
+  {$ENDIF}
+  {$ENDIF}
+  result:=IncludeTrailingPathDelimiter(result);
+end;
+
+
 function SaveFileFromResource(filename,resourcename:string):boolean;
 var
   fs:Tfilestream;
@@ -787,10 +1005,33 @@ begin
   { Create the link }
   IPFile.Save(PWChar(LinkName), false);
 end;
-{$ENDIF MSWINDOWS}
+{$ELSE}
+{$IFDEF DARWIN}
+procedure CreateDesktopShortCut(Target, TargetArguments, ShortcutName: string);
+begin
+  // Create shortcut on Desktop and in Applications
+  fpSystem(
+    '/usr/bin/osascript << EOF'+#10+
+    'tell application "Finder"'+#10+
+      'set myLazApp to POSIX file "'+IncludeLeadingPathDelimiter(Target)+'.app" as alias'+#10+
+      'try'+#10+
+          'set myLazDeskShort to (path to desktop folder as string) & "'+ShortcutName+'" as alias'+#10+
+          'on error'+#10+
+             'make new alias to myLazApp at (path to desktop folder as text)'+#10+
+             'set name of result to "'+ShortcutName+'"'+#10+
+      'end try'+#10+
+      'try'+#10+
+          'set myLazAppShort to (path to applications folder as string) & "'+ShortcutName+'" as alias'+#10+
+          'on error'+#10+
+             'make new alias to myLazApp at (path to applications folder as text)'+#10+
+             'set name of result to "'+ShortcutName+'"'+#10+
+      'end try'+#10+
 
+    'end tell'+#10+
+    'EOF');
+end;
+{$ELSE}
 {$IFDEF UNIX}
-{$IFNDEF DARWIN}
 procedure CreateDesktopShortCut(Target, TargetArguments, ShortcutName: string);
 var
   OperationSucceeded: boolean;
@@ -809,7 +1050,12 @@ begin
     XdgDesktopContent.Add('Encoding=UTF-8');
     XdgDesktopContent.Add('Type=Application');
     XdgDesktopContent.Add('Icon='+ExtractFilePath(Target)+'images/icons/lazarus.ico');
+    {$ifdef LCLQT5}
+    XdgDesktopContent.Add('Path='+ExtractFilePath(Target));
+    XdgDesktopContent.Add('Exec=./'+ExtractFileName(Target)+' '+TargetArguments+' %f');
+    {$else}
     XdgDesktopContent.Add('Exec='+Target+' '+TargetArguments+' %f');
+    {$endif}
     XdgDesktopContent.Add('Name='+ShortcutName);
     XdgDesktopContent.Add('GenericName=Lazarus IDE with Free Pascal Compiler');
     XdgDesktopContent.Add('Category=Application;IDE;Development;GUIDesigner;');
@@ -857,32 +1103,14 @@ begin
     XdgDesktopContent.Free;
   end;
 end;
-{$ELSE DARWIN}
+{$ELSE}
 procedure CreateDesktopShortCut(Target, TargetArguments, ShortcutName: string);
 begin
-  // Create shortcut on Desktop and in Applications
-  fpSystem(
-    '/usr/bin/osascript << EOF'+#10+
-    'tell application "Finder"'+#10+
-      'set myLazApp to POSIX file "'+IncludeLeadingPathDelimiter(Target)+'.app" as alias'+#10+
-      'try'+#10+
-          'set myLazDeskShort to (path to desktop folder as string) & "'+ShortcutName+'" as alias'+#10+
-          'on error'+#10+
-             'make new alias to myLazApp at (path to desktop folder as text)'+#10+
-             'set name of result to "'+ShortcutName+'"'+#10+
-      'end try'+#10+
-      'try'+#10+
-          'set myLazAppShort to (path to applications folder as string) & "'+ShortcutName+'" as alias'+#10+
-          'on error'+#10+
-             'make new alias to myLazApp at (path to applications folder as text)'+#10+
-             'set name of result to "'+ShortcutName+'"'+#10+
-      'end try'+#10+
-
-    'end tell'+#10+
-    'EOF');
+  infoln('Not creating desktop shortcut: don''t know how to do this.');
 end;
-{$ENDIF DARWIN}
 {$ENDIF UNIX}
+{$ENDIF DARWIN}
+{$ENDIF MSWINDOWS}
 
 procedure CreateHomeStartLink(Target, TargetArguments,
   ShortcutName: string);
@@ -917,7 +1145,7 @@ begin
   {$ENDIF UNIX}
 end;
 
-function GetFileNameFromURL(URL:string):string;
+function FileNameFromURL(URL:string):string;
 const
   URLMAGIC='/download';
 var
@@ -938,7 +1166,7 @@ begin
   result:=URI.Host+URI.Path;
     end;
 
-function GetCompilerVersion(CompilerPath: string): string;
+function CompilerVersion(CompilerPath: string): string;
 var
   Output: string;
     begin
@@ -951,37 +1179,34 @@ var
     //-iVSPTPSOTO
     begin
       Output:=TrimRight(Output);
-      if Length(Output)>0 then Result:=Output;
+      if Length(Output)>0 then
+      begin
+        Result:=Output;
+      end;
       end;
   except
   end;
 end;
 
-function GetLazbuildVersion(LazbuildPath: string): string;
+function CompilerRevision(CompilerPath: string): integer;
 var
   Output: string;
-  OutputLines:TStringList;
+  i:integer;
 begin
-  Result:='0.0.0';
-  if ((LazbuildPath='') OR (NOT FileExists(LazbuildPath))) then exit;
+  Result:=0;
+  if ((CompilerPath='') OR (NOT FileExists(CompilerPath))) then exit;
   try
     Output:='';
-    // -iW does not work on older compilers : use -iV
-    if (ExecuteCommand(LazbuildPath+ ' --version', Output, false)=0) then
+    if (ExecuteCommand(CompilerPath+ ' -iW', Output, false)=0) then
     begin
       Output:=TrimRight(Output);
       if Length(Output)>0 then
       begin
-        OutputLines:=TStringList.Create;
-        try
-          OutputLines.Text:=Output;
-          if OutputLines.Count>0 then
+        i:=Pos('-r',Output);
+        if (i>0) then
           begin
-            // lazbuild outputs version info as last line
-            result:=OutputLines.Strings[OutputLines.Count-1];
-          end;
-        finally
-          OutputLines.Free;
+          Delete(Output,1,i+1);
+          TryStrToInt(Output,Result);
         end;
       end;
     end;
@@ -989,7 +1214,7 @@ begin
   end;
 end;
 
-procedure GetVersionFromString(const VersionSnippet:string;var Major,Minor,Build: Integer);
+procedure VersionFromString(const VersionSnippet:string;out Major,Minor,Build: Integer);
 var
   i,j:integer;
   found:boolean;
@@ -1042,21 +1267,24 @@ end;
 
 function CalculateFullVersion(Major,Minor,Release:integer):dword;
 begin
-  result:=(Major *  100 + Minor) * 100 + Release;
+  if (Major>=0) AND (Major<=6) AND (Minor>=0) AND (Release>=0) then
+    result:=((Major *  100 + Minor) * 100 + Release)
+  else
+    result:=0;
 end;
 
-function GetNumericalVersion(VersionSnippet: string): word;
+function CalculateNumericalVersion(VersionSnippet: string): word;
 var
   Major,Minor,Build: Integer;
 begin
   Major:=0;
   Minor:=0;
   Build:=0;
-  GetVersionFromString(VersionSnippet,Major,Minor,Build);
+  VersionFromString(VersionSnippet,Major,Minor,Build);
   result:=CalculateFullVersion(Major,Minor,Build);
 end;
 
-function GetVersionFromUrl(URL:string): string;
+function VersionFromUrl(URL:string): string;
 var
   VersionSnippet:string;
   i:integer;
@@ -1084,17 +1312,19 @@ begin
     while (i > 0) and (not CharInSet(VersionSnippet[i],['\','/'])) do Dec(i);
     VersionSnippet := Copy(VersionSnippet, i + 1, MaxInt);
 
-    // find first occurence of _ and delete everything before it
-    // if url contains a version, this version always starts with first _
-    i := Pos('_',VersionSnippet);
-    if i>0 then
-    begin
+    // find first occurence of _# and delete everything before it
+    // if url contains a version, this version always starts with first _#
+
+    i:=0;
+    repeat
+      Inc(i);
+    until (i>=(Length(VersionSnippet)-1)) OR ((VersionSnippet[i]='_') AND (CharInSet(VersionSnippet[i+1],['0'..'9'])));
+
       Delete(VersionSnippet,1,i);
       // ignore release candidate numbering
       i := Pos('_RC',VersionSnippet);
-      if i>0 then Delete(VersionSnippet,i,200);
+    if i>0 then Delete(VersionSnippet,i,MaxInt);
       VersionSnippet:=StringReplace(VersionSnippet,'_',',',[rfReplaceAll]);
-    end;
 
     if Length(VersionSnippet)>0 then
     begin
@@ -1114,7 +1344,7 @@ begin
   end;
 end;
 
-function GetReleaseCandidateFromUrl(aURL:string): integer;
+function ReleaseCandidateFromUrl(aURL:string): integer;
 const
   RC_MAGIC='_RC';
 var
@@ -1183,9 +1413,59 @@ begin
   end;
 end;
 
+function FindFileInDirWildCard(Filename, Path: String): String;
+var
+  FilesFound: TStringList;
+  AFile: string;
+begin
+  Result := '';
+  FilesFound := FindAllFiles(Path, Filename, true);
+  try
+    if FilesFound.Count>0 then
+    begin
+      for AFile in FilesFound do
+      begin
+        if (NOT FileIsSymlink(AFile)) then
+        begin
+          result:=AFile;
+          break;
+        end;
+      end;
+    end;
+  finally
+    FilesFound.Free;
+  end;
+end;
+
 function DirCopy(SourcePath, DestPath: String): Boolean;
 begin
   result:=FileUtil.CopyDirTree(SourcePath, DestPath,[cffOverwriteFile,cffCreateDestDirectory]);
+end;
+
+function CheckDirectory(DirectoryName: string):boolean;
+var
+  s,aDirectory:string;
+
+begin
+  result:=true;
+  aDirectory:=LowerCase(DirectoryName);
+  if aDirectory='' then exit;
+  if aDirectory=DirectorySeparator then exit;
+  {$ifndef Windows}
+  s:=LowerCase(IncludeTrailingPathDelimiter(GetEnvironmentVariable('HOME')));
+  if s=aDirectory then exit;
+  s:=IncludeTrailingPathDelimiter(s);
+  if s=aDirectory then exit;
+  if (Pos(DirectorySeparator+'lib',aDirectory)=1) then exit;
+  if (Pos(DirectorySeparator+'lib32',aDirectory)=1) then exit;
+  if (Pos(DirectorySeparator+'lib64',aDirectory)=1) then exit;
+  if (Pos(DirectorySeparator+'sbin',aDirectory)=1) then exit;
+  {$else}
+  if Length(aDirectory)<=3 then exit;
+  if Pos('\windows',aDirectory)>0 then exit;
+  {$endif}
+  if (NOT ParentDirectoryIsNotRoot(aDirectory)) then exit;
+  result:=false;
 end;
 
 function DeleteDirectoryEx(DirectoryName: string): boolean;
@@ -1204,8 +1484,11 @@ var
   CurFilename: String;
 begin
   Result:=false;
+
+  if CheckDirectory(DirectoryName) then exit;
+
   CurSrcDir:=CleanAndExpandDirectory(DirectoryName);
-  if SysUtils.FindFirst(CurSrcDir+GetAllFilesMask,faAnyFile{$ifdef unix} or faSymLink {$endif unix},FileInfo)=0 then
+  if SysUtils.FindFirst(CurSrcDir+GetAllFilesMask,faAnyFile{$ifdef unix} or {%H-}faSymLink {$endif unix},FileInfo)=0 then
   begin
     repeat
       // Ignore directories and files without name:
@@ -1216,7 +1499,7 @@ begin
         // Remove read-only file attribute so we can delete it:
         if (FileInfo.Attr and faReadOnly)>0 then
           FileSetAttr(CurFilename, FileInfo.Attr-faReadOnly);
-        if ((FileInfo.Attr and faDirectory)>0) {$ifdef unix} and ((FileInfo.Attr and faSymLink)=0) {$endif unix} then
+        if ((FileInfo.Attr and faDirectory)>0) {$ifdef unix} and ((FileInfo.Attr and {%H-}faSymLink)=0) {$endif unix} then
         begin
           // Directory; exit with failure on error
           if not DeleteDirectoryEx(CurFilename) then
@@ -1262,9 +1545,12 @@ var
   CurFilename: String;
 begin
   Result:=false;
+
+  if CheckDirectory(DirectoryName) then exit;
+
   AllFiles:=(Names.Count=0);
   CurSrcDir:=CleanAndExpandDirectory(DirectoryName);
-  if SysUtils.FindFirst(CurSrcDir+GetAllFilesMask,faAnyFile{$ifdef unix} or faSymLink {$endif unix},FileInfo)=0 then
+  if SysUtils.FindFirst(CurSrcDir+GetAllFilesMask,faAnyFile{$ifdef unix} or {%H-}faSymLink {$endif unix},FileInfo)=0 then
   begin
     repeat
       // Ignore directories and files without name:
@@ -1272,7 +1558,7 @@ begin
       begin
         // Look at all files and directories in this directory:
         CurFilename:=CurSrcDir+FileInfo.Name;
-        if ((FileInfo.Attr and faDirectory)>0) {$ifdef unix} and ((FileInfo.Attr and faSymLink)=0) {$endif unix} then
+        if ((FileInfo.Attr and faDirectory)>0) {$ifdef unix} and ((FileInfo.Attr and {%H-}faSymLink)=0) {$endif unix} then
         begin
           // Directory; call recursively exit with failure on error
           if not DeleteFilesSubDirs(CurFilename,Names,OnlyIfPathHas) then
@@ -1331,6 +1617,9 @@ var
   i: integer;
 begin
   Result:=false;
+
+  if CheckDirectory(DirectoryName) then exit;
+
   // Make sure we can compare extensions using ExtractFileExt
   for i:=0 to Extensions.Count-1 do
   begin
@@ -1338,7 +1627,7 @@ begin
   end;
   AllFiles:=(Extensions.Count=0) or (Extensions.IndexOf('.*')>=0);
   CurSrcDir:=CleanAndExpandDirectory(DirectoryName);
-  if SysUtils.FindFirst(CurSrcDir+GetAllFilesMask,faAnyFile{$ifdef unix} or faSymLink {$endif unix},FileInfo)=0 then
+  if SysUtils.FindFirst(CurSrcDir+GetAllFilesMask,faAnyFile{$ifdef unix} or {%H-}faSymLink {$endif unix},FileInfo)=0 then
   begin
     repeat
       // Ignore directories and files without name:
@@ -1346,7 +1635,7 @@ begin
       begin
         // Look at all files and directories in this directory:
         CurFilename:=CurSrcDir+FileInfo.Name;
-        if ((FileInfo.Attr and faDirectory)>0) {$ifdef unix} and ((FileInfo.Attr and faSymLink)=0) {$endif unix} then
+        if ((FileInfo.Attr and faDirectory)>0) {$ifdef unix} and ((FileInfo.Attr and {%H-}faSymLink)=0) {$endif unix} then
         begin
           // Directory; call recursively exit with failure on error
           if not DeleteFilesExtensionsSubdirs(CurFilename, Extensions,OnlyIfPathHas) then
@@ -1397,16 +1686,18 @@ var
   AllFiles: boolean;
   CurSrcDir: String;
   CurFilename: String;
-  i: integer;
 begin
   Result:=false;
+
+  if CheckDirectory(DirectoryName) then exit;
+
   AllFiles:=(Length(OnlyIfNameHas)=0);
 
   // for now, exit when no filename data is given ... use DeleteDirectoryEx
   if AllFiles then exit;
 
   CurSrcDir:=CleanAndExpandDirectory(DirectoryName);
-  if SysUtils.FindFirst(CurSrcDir+GetAllFilesMask,faAnyFile{$ifdef unix} or faSymLink {$endif unix},FileInfo)=0 then
+  if SysUtils.FindFirst(CurSrcDir+GetAllFilesMask,faAnyFile{$ifdef unix} or {%H-}faSymLink {$endif unix},FileInfo)=0 then
   begin
     repeat
       // Ignore directories and files without name:
@@ -1414,7 +1705,7 @@ begin
       begin
         // Look at all files and directories in this directory:
         CurFilename:=CurSrcDir+FileInfo.Name;
-        if ((FileInfo.Attr and faDirectory)>0) {$ifdef unix} and ((FileInfo.Attr and faSymLink)=0) {$endif unix} then
+        if ((FileInfo.Attr and faDirectory)>0) {$ifdef unix} and ((FileInfo.Attr and {%H-}faSymLink)=0) {$endif unix} then
         begin
           // Directory; call recursively exit with failure on error
           if not DeleteFilesNameSubdirs(CurFilename, OnlyIfNameHas) then
@@ -1444,16 +1735,302 @@ begin
   Result:=true;
 end;
 
-function DownloadBase(aDownLoader:TBasicDownloader;URL, TargetFile: string; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''): boolean;
+function DownloadBase(aDownLoader:TBasicDownloader;URL: string; DataStream:TStream; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''): boolean;
 begin
   result:=false;
+
+  {$ifdef mswindows}
+  if (Pos('/openssl',URL)>0) AND (Pos('.zip',URL)>0) then
+  begin
+    // Skip native download of ssl libraries : will not work without these libraries
+    if aDownLoader.InheritsFrom(TNativeDownLoader) then exit;
+  end;
+  {$endif}
+
   if Length(HTTPProxyHost)>0 then aDownLoader.setProxy(HTTPProxyHost,HTTPProxyPort,HTTPProxyUser,HTTPProxyPassword);
-  result:=aDownLoader.getFile(URL,TargetFile);
+  result:=aDownLoader.getStream(URL,DataStream);
   if (NOT result) then
   begin
-    infoln('Error while trying to download '+URL+'. Trying again.',etDebug);
-    SysUtils.DeleteFile(TargetFile); // delete stale targetfile
+    infoln('Error while trying to stream download '+URL,etDebug);
   end;
+end;
+
+function DownloadBase(aDownLoader:TBasicDownloader;URL, TargetFile: string; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''): boolean;
+var
+  aFile:TDownloadStream;
+begin
+  result:=false;
+  aFile:=TDownloadStream.Create(TargetFile,fmCreate);
+  try
+    if (Pos('api.github.com',URL)>0) AND (Pos('fpcupdeluxe',URL)>0) then
+    begin
+      aDownLoader.UserAgent:=FPCUPUSERAGENT;
+      aDownLoader.ContentType:='application/json';
+    end
+    else
+    begin
+      aDownLoader.UserAgent:=NORMALUSERAGENT;
+      aDownLoader.ContentType:='';
+    end;
+    result:=DownloadBase(aDownLoader,URL,aFile,HTTPProxyHost,HTTPProxyPort,HTTPProxyUser,HTTPProxyPassword);
+  finally
+    aFile.Destroy;
+  end;
+  if (NOT result) then
+  begin
+    infoln('Error while trying to file download '+URL,etDebug);
+    if FileExists(TargetFile) then SysUtils.DeleteFile(TargetFile); // delete stale targetfile
+  end;
+end;
+
+
+{$ifdef MSWindows}
+function DownloadByWinINet(URL: string; DataStream: TSTream): boolean;
+const
+  URLMAGIC='/download';
+var
+  URI    : TURI;
+  aURL,P : String;
+  NetHandle: HINTERNET;
+  UrlHandle: HINTERNET;
+  Buffer: array[0..1023] of Byte;
+  Error,BytesRead: DWord;
+  dummy: DWORD;
+  s:string;
+begin
+  result:=false;
+
+  aURL:=URL;
+  if AnsiEndsStr(URLMAGIC,URL) then SetLength(aURL,Length(URL)-Length(URLMAGIC));
+  URI:=ParseURI(aURL);
+  P:=URI.Protocol;
+
+  //do not use WinINet for FTP
+  if CompareText(P,'ftp')=0 then exit;
+
+  //do not use WinINet for sourceforge : redirect is not working !
+  //if CompareText(URI.Host,'downloads.sourceforge.net')=0 then exit;
+  // a bit tricky: we know where sourceforge redirects, so go there ... ;-)
+  if CompareText(URI.Host,'downloads.sourceforge.net')=0 then
+  begin
+    URI.Host:='netix.dl.sourceforge.net';
+    aURL:=P+'://'+URI.Host+URI.Path+URI.Document
+  end else aURL:=URL;
+
+  infoln('WinINet downloader: Getting ' + URI.Document + ' from '+P+'://'+URI.Host+URI.Path,etDebug);
+
+  if (Pos('api.github.com',URL)>0) AND (Pos('fpcupdeluxe',URL)>0) then
+    NetHandle := InternetOpen(FPCUPUSERAGENT, INTERNET_OPEN_TYPE_PRECONFIG, nil, nil, 0)
+  else
+    NetHandle := InternetOpen(WININETUSERAGENT, INTERNET_OPEN_TYPE_PRECONFIG, nil, nil, 0);
+
+  // NetHandle valid?
+  if Assigned(NetHandle) then
+  try
+    UrlHandle := InternetOpenUrl(NetHandle, PChar(aURL), nil, 0, INTERNET_FLAG_NO_UI or INTERNET_FLAG_RELOAD, 0);
+
+    {
+    Error:=GetLastError;
+    if Error>0 then
+    begin
+      WinInetErrorMsg(Error);
+    end;
+    }
+
+    // UrlHandle valid?
+    if Assigned(UrlHandle) then
+    try
+      DeleteUrlCacheEntry(PChar(aURL));
+
+      FillChar({%H-}Buffer, SizeOf(Buffer), #0);
+      dummy := 0;
+      BytesRead := SizeOf(Buffer);
+      if HttpQueryInfo(UrlHandle,HTTP_QUERY_STATUS_CODE,@Buffer[0],BytesRead,dummy) then
+      begin
+        s:=GetStringFromBuffer(PChar(@Buffer));
+        if s='200' then
+        begin
+          //All ok : get file.
+          SetLastError(0);
+          FillChar({%H-}Buffer, SizeOf(Buffer), #0);
+          while true do
+          begin
+            if InternetReadFile(UrlHandle, @Buffer, SizeOf(Buffer)-1, {%H-}BytesRead) then
+            begin
+              if (BytesRead = 0) then Break;
+              DataStream.Write(Buffer, BytesRead);
+            end
+            else
+            if InternetQueryDataAvailable(UrlHandle, {%H-}BytesRead, 0, 0) then
+            begin
+              if (BytesRead = 0) then Break;
+            end
+            else break;
+          end;
+          {
+          while InternetReadFile(UrlHandle, @Buffer, SizeOf(Buffer), {%H-}BytesRead) do
+          begin
+            if (BytesRead = 0) then Break;
+            DataStream.Write(Buffer, BytesRead);
+          end;
+          }
+          //Buffer[0] := 0;
+          //DataStream.Write(Buffer, 1);
+          result:=(DataStream.Size>1);
+        end;
+      end;
+    finally
+      InternetCloseHandle(UrlHandle);
+    end
+  finally
+    InternetCloseHandle(NetHandle);
+  end;
+end;
+
+function WinInetErrorMsg(Err: DWORD): string;
+var
+  ErrMsg: array of Char;
+  ErrLen: DWORD;
+begin
+  if Err = ERROR_INTERNET_EXTENDED_ERROR then
+  begin
+    ErrLen := 0;
+    InternetGetLastResponseInfo(@Err, nil, ErrLen);
+    if GetLastError() = ERROR_INSUFFICIENT_BUFFER then
+    begin
+      SetLength(ErrMsg, ErrLen);
+      InternetGetLastResponseInfo(@Err, PChar(ErrMsg), ErrLen);
+      SetString(Result, PChar(ErrMsg), ErrLen);
+    end else begin
+      Result := 'Unknown WinInet error';
+    end;
+  end else
+    Result := SysErrorMessage(Err);
+end;
+
+function DownloadByWinINet(URL, TargetFile: string): boolean;
+var
+  aStream:TFileStream;
+begin
+  result:=false;
+  aStream := TFileStream.Create(TargetFile, fmCreate);
+  try
+    result:=DownloadByWinINet(URL,aStream);
+  finally
+    aStream.Free;
+  end;
+  if result then
+  begin
+    result:=FileExists(TargetFile);
+  end;
+end;
+
+function DownloadByPowerShell(URL, TargetFile: string): boolean;
+const
+  URLMAGIC='/download';
+var
+  Output : String;
+  URI    : TURI;
+  aURL,P : String;
+begin
+  aURL:=URL;
+  if AnsiEndsStr(URLMAGIC,URL) then SetLength(aURL,Length(URL)-Length(URLMAGIC));
+  URI:=ParseURI(aURL);
+  P:=URI.Protocol;
+  infoln('PowerShell downloader: Getting ' + URI.Document + ' from '+P+'://'+URI.Host+URI.Path,etDebug);
+  //result:=(ExecuteCommand('powershell -command "[Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; (new-object System.Net.WebClient).DownloadFile('''+URL+''','''+TargetFile+''')"', Output, False)=0);
+  //result:=(ExecuteCommand('powershell -command "(new-object System.Net.WebClient).DownloadFile('''+URL+''','''+TargetFile+''')"', Output, False)=0);
+
+  if (Pos('api.github.com',URL)>0) AND (Pos('fpcupdeluxe',URL)>0) then
+    P:=FPCUPUSERAGENT
+  else
+    P:=NORMALUSERAGENT;
+  result:=(ExecuteCommand('powershell -command "$cli = New-Object System.Net.WebClient;$cli.Headers[''User-Agent''] = '''+P+''';$cli.DownloadFile('''+URL+''','''+TargetFile+''')"', Output, False)=0);
+
+  if result then
+  begin
+    result:=FileExists(TargetFile);
+  end;
+end;
+
+function DownloadByBitsAdmin(URL, TargetFile: string): boolean;
+const
+  URLMAGIC='/download';
+var
+  Output : String;
+  URI    : TURI;
+  aURL,P : String;
+begin
+  aURL:=URL;
+  if AnsiEndsStr(URLMAGIC,URL) then SetLength(aURL,Length(URL)-Length(URLMAGIC));
+  URI:=ParseURI(aURL);
+  P:=URI.Protocol;
+  infoln('BitsAdmin downloader: Getting ' + URI.Document + ' from '+P+'://'+URI.Host+URI.Path,etDebug);
+  //result:=(ExecuteCommand('bitsadmin.exe /SetMinRetryDelay "JobName" 1', Output, False)=0);
+  //result:=(ExecuteCommand('bitsadmin.exe /SetNoProgressTimeout "JobName" 1', Output, False)=0);
+  result:=(ExecuteCommand('bitsadmin.exe /transfer "JobName" '+URL+' '+TargetFile, Output, False)=0);
+  if result then
+  begin
+    result:=FileExists(TargetFile);
+  end;
+end;
+{$endif MSWindows}
+
+function Download(UseWget:boolean; URL: string; DataStream:TStream; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''): boolean;
+var
+  aDownLoader:TBasicDownLoader;
+begin
+  result:=false;
+
+  if (NOT result) then
+  begin
+    if UseWget
+       then aDownLoader:=TWGetDownLoader.Create
+       else aDownLoader:=TNativeDownLoader.Create;
+    try
+      if (Pos('api.github.com',URL)>0) AND (Pos('fpcupdeluxe',URL)>0) then
+      begin
+        aDownLoader.UserAgent:=FPCUPUSERAGENT;
+        aDownLoader.ContentType:='application/json';
+      end;
+      result:=DownloadBase(aDownLoader,URL,DataStream,HTTPProxyHost,HTTPProxyPort,HTTPProxyUser,HTTPProxyPassword);
+    finally
+      aDownLoader.Destroy;
+    end;
+    if (NOT result) then infoln('FPCUP downloader failure.',etDebug);
+  end;
+
+  {$ifdef Windows}
+  //Third resort: use Windows INet
+  if (NOT result) then
+  begin
+    result:=DownloadByWinINet(URL,DataStream);
+    if (NOT result) then infoln('Windows WinINet downloader failure.',etDebug);
+  end;
+
+  //Fourth resort: use BitsAdmin
+  {
+  if (NOT result) then
+  begin
+    SysUtils.Deletefile(TargetFile);
+    result:=DownloadByBitsAdmin(URL,TargetFile);
+    if (NOT result) then infoln('Windows BitsAdmin downloader failure.',etDebug);
+  end;
+  }
+  {$endif}
+
+  //Final resort: use wget by force
+  if (NOT result) AND (NOT UseWget) then
+  begin
+    aDownLoader:=TWGetDownLoader.Create;
+    try
+      result:=DownloadBase(aDownLoader,URL,DataStream,HTTPProxyHost,HTTPProxyPort,HTTPProxyUser,HTTPProxyPassword);
+      if (NOT result) then infoln('FPCUP force wget downloader failure.',etDebug);
+    finally
+      aDownLoader.Destroy;
+    end;
+  end;
+
 end;
 
 
@@ -1462,6 +2039,10 @@ var
   aDownLoader:TBasicDownLoader;
 begin
   result:=false;
+
+  if (NOT result) then
+  begin
+    SysUtils.Deletefile(TargetFile);
   if UseWget
      then aDownLoader:=TWGetDownLoader.Create
      else aDownLoader:=TNativeDownLoader.Create;
@@ -1470,22 +2051,52 @@ begin
   finally
     aDownLoader.Destroy;
   end;
+    if (NOT result) then infoln('FPCUP native downloader failure.',etDebug);
+  end;
 
-  {$ifdef Windows}
-  //Second resort: use Windows PowerShell
+  {$ifdef MSWindows}
+
+  if (NOT CheckWin32Version(6,2)) then
+  begin
+    //Second resort on older Windows: use Windows INet
+    if (NOT result) then
+    begin
+      SysUtils.Deletefile(TargetFile);
+      result:=DownloadByWinINet(URL,TargetFile);
+      if (NOT result) then infoln('Windows WinINet downloader failure.',etDebug);
+    end;
+  end;
+
+  //Second or third resort: use Windows PowerShell
   if (NOT result) then
   begin
     SysUtils.Deletefile(TargetFile);
     result:=DownloadByPowerShell(URL,TargetFile);
+    if (NOT result) then infoln('Windows PowerShell downloader failure.',etDebug);
   end;
-  //Third resort: use BitsAdmin
-  {
+
+  if CheckWin32Version(6,2) then
+  begin
+    //Second or third resort: use Windows PowerShell
+    if (NOT result) then
+    begin
+      SysUtils.Deletefile(TargetFile);
+      result:=DownloadByWinINet(URL,TargetFile);
+      if (NOT result) then infoln('Windows WinINet downloader failure.',etDebug);
+    end;
+  end;
+
+  if (NOT CheckWin32Version(6,0)) then
+  begin
+    //Third or fourth resort: use BitsAdmin on older Windows
   if (NOT result) then
   begin
     SysUtils.Deletefile(TargetFile);
     result:=DownloadByBitsAdmin(URL,TargetFile);
+      if (NOT result) then infoln('Windows BitsAdmin downloader failure.',etDebug);
   end;
-  }
+  end;
+
   {$endif}
 
   //Final resort: use wget by force
@@ -1498,6 +2109,7 @@ begin
     finally
       aDownLoader.Destroy;
     end;
+    if (NOT result) then infoln('FPCUP wget downloader failure.',etDebug);
 end;
 
   if (NOT result) then SysUtils.Deletefile(TargetFile);
@@ -1505,114 +2117,90 @@ end;
 
 function GetGitHubFileList(aURL:string;fileurllist:TStringList; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''):boolean;
 var
-  {$ifdef Darwin}
-  Http:TNSHTTPSendAndReceive;
-  Ms: TMemoryStream;
-  {$else}
   Http: TFPHTTPClient;
-  {$endif}
-  JSONFile:string;
+  Ms: TMemoryStream;
   JSONFileList:TStringList;
   Content : string;
   Json : TJSONData;
   JsonObject : TJSONObject;
   JsonArray: TJSONArray;
   i:integer;
+  aStore:TGitHubStore;
 begin
   result:=false;
   Content:='';
 
-  {$ifdef Darwin}
-  // GitHub needs TLS 1.2 .... native FPC client does not support this (through OpenSSL)
-  // So, use client by Phil, a Lazarus forum member
-  // See: https://macpgmr.github.io/
-  Http:=TNSHTTPSendAndReceive.Create;
-  try
-    Http.Address := aURL;
-    Http.AddHeader('Content-Type', 'application/json');
-    if Length(HTTPProxyHost)>0 then
+  if (aURL='') then exit;
+
+  if Length(GitHubFileListCache)>0 then
     begin
-      with Http do
+    for aStore in GitHubFileListCache do
       begin
-        Proxy.Host:=HTTPProxyHost;
-        Proxy.Port:=HTTPProxyPort;
-        Proxy.UserName:=HTTPProxyUser;
-        Proxy.Password:=HTTPProxyPassword;
-      end;
-    end;
-    Ms := TMemoryStream.Create;
-    try
-      if Http.SendAndReceive(nil, Ms) then
+      if (aStore.URL=aURL) then
       begin
-        SetLength(Content, Ms.Size);
-        if Ms.Size > 0 then
+        infoln('GetGitHubFileList :We have a cache for GitHub URL: '+aURL,etDebug);
+        if (aStore.FileList.Count>0) then
         begin
-            Ms.Read(Content[1], Ms.Size);
+          for Content in aStore.FileList do fileurllist.Add(Content);
+        end;
           result:=true;
+        exit;
         end;
       end;
-    finally
-      Ms.Free;
     end;
-  finally
-    Http.Free;
+
+  infoln('GetGitHubFileList :No cache for GitHub URL: '+aURL,etDebug);
+  infoln('GetGitHubFileList :Creating cache for GitHub URL: '+aURL,etDebug);
+
+  SetLength(GitHubFileListCache,Length(GitHubFileListCache)+1);
+  with GitHubFileListCache[High(GitHubFileListCache)] do
+  begin
+    URL:=aURL;
+    FileList:=TStringList.Create;
   end;
-  {$else}
+  infoln('GetGitHubFileList :Created cache for GitHub URL: '+aURL,etDebug);
 
   if (NOT result) then
   begin
-    JSONFile := GetTempFileNameExt('','FPCUPTMP','tmp');
-
+    Ms := TMemoryStream.Create;
+    try
     result:=Download(
           False,
           aURL,
-          JSONFile,
+            Ms,
+            HTTPProxyHost,
+            HTTPProxyPort,
           HTTPProxyUser,
+            HTTPProxyPassword);
+
+      if (NOT result) then
+      begin
+        //retry
+        Ms.Clear;
+        result:=Download(
+              true,
+              aURL,
+              Ms,
+              HTTPProxyHost,
           HTTPProxyPort,
           HTTPProxyUser,
           HTTPProxyPassword);
+      end;
     if result then
     begin
       JSONFileList:=TStringList.Create;
       try
-        JSONFileList.LoadFromFile(JSONFile);
+          Ms.Position:=0;
+          JSONFileList.LoadFromStream(Ms);
         Content:=JSONFileList.Text;
       finally
         JSONFileList.Free;
       end;
     end;
-    SysUtils.Deletefile(JSONFile); //Get rid of temp file.
-  end;
-
-  if (NOT result) then
-  begin
-  Http:=TFPHTTPClient.Create(Nil);
-  try
-     Http.AddHeader('User-Agent',USERAGENT);
-     Http.AddHeader('Content-Type', 'application/json');
-      {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
-     Http.IOTimeout:=5000;
-     Http.AllowRedirect:=true;
-      {$ENDIF}
-    if Length(HTTPProxyHost)>0 then
-    begin
-      with Http do
-      begin
-        {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
-        Proxy.Host:=HTTPProxyHost;
-        Proxy.Port:=HTTPProxyPort;
-        Proxy.UserName:=HTTPProxyUser;
-        Proxy.Password:=HTTPProxyPassword;
-        {$endif}
-      end;
-    end;
-
-     Content:=Http.Get(aURL);
   finally
-    Http.Free;
+      Ms.Free;
   end;
   end;
-  {$endif}
 
   if (Length(Content)=0) OR (NOT result) then exit;
   Json:=GetJSON(Content);
@@ -1625,9 +2213,53 @@ begin
       Dec(i);
       JsonObject := JsonArray.Objects[i];
       fileurllist.Add(JsonObject.Get('browser_download_url'));
+      with GitHubFileListCache[High(GitHubFileListCache)] do FileList.Add(fileurllist[(fileurllist.Count-1)]);
     end;
   finally
     Json.Free;
+  end;
+
+end;
+
+function GetSVNFileList(aURL:string;fileurllist:TStringList; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''):boolean;
+var
+  Ms: TMemoryStream;
+begin
+  result:=false;
+  if (aURL='') then exit;
+  if (NOT result) then
+  begin
+    Ms := TMemoryStream.Create;
+    try
+      result:=Download(
+            False,
+            aURL,
+            Ms,
+            HTTPProxyHost,
+            HTTPProxyPort,
+            HTTPProxyUser,
+            HTTPProxyPassword);
+
+      if (NOT result) then
+      begin
+        //retry
+        Ms.Clear;
+        result:=Download(
+              true,
+              aURL,
+              Ms,
+              HTTPProxyHost,
+              HTTPProxyPort,
+              HTTPProxyUser,
+              HTTPProxyPassword);
+      end;
+      if result then
+      begin
+        FTPHTMLListingParser(Ms,fileurllist);
+      end;
+    finally
+      Ms.Free;
+    end;
   end;
 end;
 
@@ -1640,15 +2272,15 @@ var
   FileInfo: TSearchRec;
   {$ENDIF}
 begin
-{$ifdef unix}
-  result:=filesize(FileName);
-{$else}
   if SysUtils.FindFirst(FileName, faAnyFile, FileInfo ) = 0 then
+  {$ifdef MSWindows}
      result := Int64(FileInfo.FindData.nFileSizeHigh) shl Int64(32) + Int64(FileInfo.FindData.nFileSizeLow)
+  {$else}
+    result := FileInfo.Size
+  {$endif}
   else
      result := 0;
   SysUtils.FindClose(FileInfo);
-{$endif}
 end;
 
 function ParentDirectoryIsNotRoot(Dir: string): boolean;
@@ -1699,49 +2331,6 @@ begin
   {$endif}
   except
     result:=true;
-  end;
-end;
-
-function DownloadByBitsAdmin(URL, TargetFile: string): boolean;
-const
-  URLMAGIC='/download';
-var
-  Output : String;
-  URI    : TURI;
-  aURL,P : String;
-begin
-  aURL:=URL;
-  if AnsiEndsStr(URLMAGIC,URL) then SetLength(aURL,Length(URL)-Length(URLMAGIC));
-  URI:=ParseURI(aURL);
-  P:=URI.Protocol;
-  infoln('BitsAdmin downloader: Getting ' + URI.Document + ' from '+P+'://'+URI.Host+URI.Path,etDebug);
-  //result:=(ExecuteCommand('bitsadmin.exe /SetMinRetryDelay "JobName" 1', Output, False)=0);
-  //result:=(ExecuteCommand('bitsadmin.exe /SetNoProgressTimeout "JobName" 1', Output, False)=0);
-  result:=(ExecuteCommand('bitsadmin.exe /transfer "JobName" '+URL+' '+TargetFile, Output, False)=0);
-  if result then
-  begin
-    result:=FileExists(TargetFile);
-  end;
-end;
-
-function DownloadByPowerShell(URL, TargetFile: string): boolean;
-const
-  URLMAGIC='/download';
-var
-  Output : String;
-  URI    : TURI;
-  aURL,P : String;
-begin
-  aURL:=URL;
-  if AnsiEndsStr(URLMAGIC,URL) then SetLength(aURL,Length(URL)-Length(URLMAGIC));
-  URI:=ParseURI(aURL);
-  P:=URI.Protocol;
-  infoln('PowerShell downloader: Getting ' + URI.Document + ' from '+P+'://'+URI.Host+URI.Path,etDebug);
-  //result:=(ExecuteCommand('powershell -command "[Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; (new-object System.Net.WebClient).DownloadFile('''+URL+''','''+TargetFile+''')"', Output, False)=0);
-  result:=(ExecuteCommand('powershell -command "(new-object System.Net.WebClient).DownloadFile('''+URL+''','''+TargetFile+''')"', Output, False)=0);
-  if result then
-  begin
-    result:=FileExists(TargetFile);
   end;
 end;
 
@@ -1797,8 +2386,9 @@ begin
     begin
       if AnsiPos(LineEnding, Message)>0 then writeln(''); //Write an empty line before multiline messagse
       writeln(BeginSnippet+' '+Seriousness[Level]+' '+ Message); //we misuse this for info output
-      //sleep(200); //hopefully allow output to be written without interfering with other output
-      sleep(1);
+      {$IFDEF MSWINDOWS}
+      Sleep(1);
+      {$ENDIF}
     end
   else
     begin
@@ -1807,58 +2397,13 @@ begin
     Project Options/Other/Custom Options using -dDEBUG}
     if AnsiPos(LineEnding, Message)>0 then writeln(''); //Write an empty line before multiline messagse
     writeln(BeginSnippet+' '+Seriousness[Level]+' '+ Message); //we misuse this for info output
-    //sleep(200); //hopefully allow output to be written without interfering with other output
-    sleep(1);
+    {$IFDEF MSWINDOWS}
+    Sleep(1);
+    {$ENDIF}
     {$ENDIF}
     end;
 {$ENDIF NOCONSOLE}
 end;
-
-Function GetTempFileNameExt(Const Dir,Prefix,Ext : String) : String;
-Var
-  I : Integer;
-  Start,Extension : String;
-begin
-  if (Dir='') then
-    Start:=GetTempDir
-  else
-    Start:=IncludeTrailingPathDelimiter(Dir);
-  if (Prefix='') then
-    Start:=Start+'TMP'
-  else
-    Start:=Start+Prefix;
-  if (Ext='') then
-    Extension:='tmp'
-  else
-    Extension:=Ext;
-  i:=0;
-  repeat
-    Result:=Format('%s%.5d.'+Extension,[Start,i]);
-    Inc(i);
-  until not FileExists(Result);
-end;
-
-
-Function GetTempDirName(Const Dir,Prefix : String) : String;
-Var
-  I : Integer;
-  Start,Extension : String;
-begin
-  if (Dir='') then
-    Start:=GetTempDir
-  else
-    Start:=IncludeTrailingPathDelimiter(Dir);
-  if (Prefix='') then
-    Start:=Start+'TMP'
-  else
-    Start:=Start+Prefix;
-  i:=0;
-  repeat
-    Result:=Format('%s%.5d',[Start,i]);
-    Inc(i);
-  until not DirectoryExists(Result);
-end;
-
 
 function MoveFile(const SrcFilename, DestFilename: string): boolean;
 // We might (in theory) be moving files across partitions so we cannot use renamefile
@@ -1907,8 +2452,12 @@ var
 begin
   { Fix separator }
   result:=s;
+  {$IFDEF MSWINDOWS}
+  for i:=2 to length(s) do
+  {$ELSE}
   for i:=1 to length(s) do
-   if s[i] in ['/','\'] then
+  {$ENDIF}
+   if (s[i] in ['/','\']){$IFDEF MSWINDOWS} AND (s[i-1]<>' '){$ENDIF} then
     result[i]:=DirectorySeparator;
 end;
 
@@ -1977,30 +2526,56 @@ begin
 end;
 
 
+function StringsStartsWith(const SearchIn:array of string; SearchFor:string; StartIndex:integer; CS:boolean): integer;
+var
+  Found:boolean=false;
+  i:integer;
+begin
+  for i:=StartIndex to High(SearchIn) do
+  begin
+    if CS then
+      Found:=AnsiStartsStr(SearchFor,TrimLeft(SearchIn[i]))
+    else
+      Found:=AnsiStartsText(SearchFor,TrimLeft(SearchIn[i]));
+    if Found then break;
+  end;
+  if Found then
+    result:=i
+  else
+    result:=-1;
+end;
 
 function StringListStartsWith(SearchIn:TStringList; SearchFor:string; StartIndex:integer; CS:boolean): integer;
 var
   Found:boolean=false;
   i:integer;
 begin
-  for i:=StartIndex to SearchIn.Count-1 do
+  for i:=StartIndex to Pred(SearchIn.Count) do
   begin
     if CS then
-    begin
-      if copy(Trim(SearchIn[i]),1,length(SearchFor))=SearchFor then
-      begin
-        Found:=true;
-        break;
-      end;
-    end
+      Found:=AnsiStartsStr(SearchFor,TrimLeft(SearchIn[i]))
     else
-    begin
-      if UpperCase(copy(Trim(SearchIn[i]),1,length(SearchFor)))=UpperCase(SearchFor) then
-      begin
-        Found:=true;
-        break;
+      Found:=AnsiStartsText(SearchFor,TrimLeft(SearchIn[i]));
+    if Found then break;
       end;
-    end;
+  if Found then
+    result:=i
+    else
+    result:=-1;
+end;
+
+function StringListContains(SearchIn:TStringList; SearchFor:string; StartIndex:integer; CS:boolean): integer;
+var
+  Found:boolean=false;
+  i:integer;
+    begin
+  for i:=StartIndex to Pred(SearchIn.Count) do
+      begin
+    if CS then
+      Found:=AnsiContainsStr(SearchIn[i],SearchFor)
+    else
+      Found:=AnsiContainsText(SearchIn[i],SearchFor);
+    if Found then break;
   end;
   if Found then
     result:=i
@@ -2037,6 +2612,7 @@ var
   i,j:integer;
   ReturnCode: integer;
   FoundLinkFile : boolean;
+  OutputLines   : TStringList;
 begin
   FoundLinkFile:=false;
   result:='';
@@ -2071,6 +2647,64 @@ begin
           begin
             result:=s2;
             FoundLinkFile:=true;
+          end;
+        end;
+      end;
+
+      if (NOT FoundLinkFile) then
+      begin
+        Output:='';
+        ReturnCode:=ExecuteCommand('gcc -print-search-dirs', Output, false);
+        if (ReturnCode=0) then
+        begin
+          Output:=TrimRight(Output);
+          if Length(Output)>0 then
+          begin
+            OutputLines:=TStringList.Create;
+            try
+              OutputLines.Text:=Output;
+              if OutputLines.Count>0 then
+              begin
+                for i:=0 to (OutputLines.Count-1) do
+                begin
+                  s1:=OutputLines.Strings[i];
+                  j:=Pos('libraries:',s1);
+                  if j=1 then
+                  begin
+                    j:=Pos(DirectorySeparator,s1);
+                    if j>0 then
+                    begin
+                      Delete(s1,1,j-1);
+                      LinkFiles := TStringList.Create;
+                      try
+                        LinkFiles.StrictDelimiter:=true;
+                        LinkFiles.Delimiter:=':';
+                        LinkFiles.DelimitedText:=s1;
+                        if LinkFiles.Count>0 then
+                        begin
+                          for j:=0 to (LinkFiles.Count-1) do
+                          begin
+                            s2:=ExcludeTrailingPathDelimiter(LinkFiles.Strings[j]);
+                            //s2:=ExtractFileDir(LinkFiles.Strings[j]);
+                            if FileExists(s2+DirectorySeparator+LINKFILE) then
+                            begin
+                              result:=s2;
+                              FoundLinkFile:=true;
+                              break;
+                            end;
+                          end;
+                        end;
+                      finally
+                        LinkFiles.Free;
+                      end;
+                    end;
+                    break;
+                  end;
+                end;
+              end;
+            finally
+              OutputLines.Free;
+            end;
           end;
         end;
       end;
@@ -2241,6 +2875,24 @@ begin
   mu := SystemInf.mem_unit;
   result := (QWord(SystemInf.freeswap*mu) shr 20);
 end;
+
+function IsLinuxMUSL:boolean;
+var
+  Output:string;
+begin
+  result:=false;
+  Output:='';
+  ExecuteCommand('getconf GNU_LIBC_VERSION', Output, False);
+  begin
+    //exit;
+    if AnsiContainsText(Output,'glibc') then exit;
+  end;
+  Output:='';
+  ExecuteCommand('ldd --version', Output, False);
+  begin
+    if AnsiContainsText(Output,'musl') then result:=true;
+  end;
+end;
 {$ENDIF LINUX}
 {$ENDIF UNIX}
 
@@ -2315,7 +2967,7 @@ begin
   end;
 end;
   end;
-  result:=s;
+  result:=Trim(s);
 end;
 {$endif}
 
@@ -2401,10 +3053,37 @@ begin
   end;
 end;
 
-function Which(Executable: string): string;
+function GetEnumValueSimple(aTypeInfo:PTypeInfo;const aEnum:string):integer;
+begin
+  begin
+    if (aTypeInfo=nil) or (aTypeInfo^.Kind<>tkEnumeration) then
+      result := -1 else
+      result:=GetEnumValue(aTypeInfo,aEnum);
+  end;
+end;
+
+
+function LibWhich(aLibrary: string): boolean;
 var
   Output: string;
 begin
+  ExecuteCommand('sh -c "ldconfig -p | grep '+aLibrary+'"', Output, false);
+  result:=(Pos(aLibrary,Output)>0);
+end;
+
+function Which(const Executable: string): string;
+var
+  Output: string;
+begin
+  (*
+  {$IFDEF Windows}
+  if ExtractFileExt(Executable)='' then
+     result:=ExeSearch(Executable+'.exe',SysUtils.GetEnvironmentVariable('PATH'))
+  else
+  {$ENDIF}
+  result:=ExeSearch(Executable,SysUtils.GetEnvironmentVariable('PATH'));
+  *)
+
   result:=FindDefaultExecutablePath(Executable);
 
   {$IFNDEF FREEBSD}
@@ -2454,9 +3133,11 @@ end;
 function IsExecutable(Executable: string):boolean;
 var
   aPath:string;
+  {$ifdef UNIX}
+  Info : Stat;
+  {$endif}
 begin
   result:=false;
-  //aPath:=FindDefaultExecutablePath(Executable);
   aPath:=Executable;
   if NOT FileExists(aPath) then exit;
   {$ifdef Windows}
@@ -2464,10 +3145,12 @@ begin
   {$endif}
   if ExtractFileExt(aPath)=GetExeExt then
   begin
-    {$ifdef Windows}
-    result:=true;
+    {$ifdef UNIX}
+    //result:=(fpAccess(aPath,X_OK)=0);
+    result:=(FpStat(aPath,info{%H-})<>-1) and FPS_ISREG(info.st_mode) and
+            (BaseUnix.FpAccess(aPath,BaseUnix.X_OK)=0);
     {$else}
-    result:=(fpAccess(aPath,X_OK)=0);
+    result:=true;
     {$endif}
   end;
 end;
@@ -2477,26 +3160,28 @@ begin
   result:=true;
   if (NOT DirectoryExists(Dir)) then
   begin
-    infoln('Non existing directory: '+Dir+'. Going to create it.', etInfo);
+    //infoln('Non existing directory: '+Dir+'. Going to create it.', etInfo);
     result:=ForceDirectories(Dir);
     if (NOT result) then infoln('Could not create directory: '+Dir, etWarning);
   end;
 end;
 
-{$IFDEF UNIX}
 //Adapted from sysutils; Unix/Linux only
 Function XdgConfigHome: String;
 { Follows base-dir spec,
   see [http://freedesktop.org/Standards/basedir-spec].
   Always ends with PathDelim. }
 begin
+  {$ifdef UNIX}
   Result:=GetEnvironmentVariable('XDG_CONFIG_HOME');
   if (Result='') then
     Result:=IncludeTrailingPathDelimiter(SafeExpandFileName('~'))+'.config'+DirectorySeparator
   else
     Result:=IncludeTrailingPathDelimiter(Result);
+  {$ELSE}
+  Result:=IncludeTrailingPathDelimiter('.');
+  {$ENDIF}
 end;
-{$ENDIF UNIX}
 
 function CheckExecutable(Executable, Parameters, ExpectOutput: string; Level: TEventType): boolean;
 var
@@ -2518,7 +3203,7 @@ begin
     {$ENDIF}
     if ResultCode >= 0 then //Not all non-0 result codes are errors. There's no way to tell, really
     begin
-      if (ExpectOutput <> '') and (Ansipos(ExpectOutput, Output) = 0) then
+      if (ExpectOutput <> '') and (AnsiPos(ExpectOutput, Output) = 0) then
       begin
         // This is not a warning/error message as sometimes we can use multiple different versions of executables
         if Level<>etCustom then infoln(Executable + ' is not a valid ' + ExeName + ' application. ' +
@@ -2561,7 +3246,7 @@ begin
   result:=CheckExecutable(Executable, Parameters, ExpectOutput, etInfo);
 end;
 
-function GetJava: string;
+function GetJavaBase(aJava:string): string;
 var
   s:string;
   JavaFiles: TStringList;
@@ -2573,7 +3258,7 @@ begin
   if s<>'' then
   begin
     s:=IncludeTrailingPathDelimiter(s);
-    JavaFiles := FindAllFiles(s, 'java.exe', true);
+    JavaFiles := FindAllFiles(s, aJava+GetExeExt, true);
     try
       if JavaFiles.Count>0 then
       begin
@@ -2598,7 +3283,7 @@ begin
   end;
   {$endif win32}
   s:=IncludeTrailingPathDelimiter(s)+'Java'+DirectorySeparator;
-  JavaFiles := FindAllFiles(s, 'java.exe', true);
+  JavaFiles := FindAllFiles(s, aJava+GetExeExt, true);
   try
     if JavaFiles.Count>0 then
     begin
@@ -2615,7 +3300,7 @@ begin
   //On Win32, try to find the 32bit version of java in the standard 32bit program directory
   s:=GetWindowsSpecialDir(CSIDL_PROGRAM_FILES);
   s:=IncludeTrailingPathDelimiter(s)+'Java'+DirectorySeparator;
-  JavaFiles := FindAllFiles(s, 'java.exe', true);
+  JavaFiles := FindAllFiles(s, aJava+GetExeExt, true);
   try
     if JavaFiles.Count>0 then
     begin
@@ -2627,11 +3312,61 @@ begin
   end;
   {$endif win32}
 
-  if result='' then result:=Which('java.exe');
+  if result='' then result:=Which(aJava+GetExeExt);
 
   {$else Windows}
-  result:=Which('java');
+  result:=Which(aJava+GetExeExt);
+  if result<>'' then
+  begin
+    while FileIsSymlink(result) do
+    begin
+      try
+        result:=GetPhysicalFilename(result,pfeException);
+      except
+      end;
+    end;
+  end;
+
+  if result<>'' then exit;
+
+  {$ifdef Linux}
+  JavaFiles := FindAllFiles('/usr/lib/jvm', aJava+GetExeExt, true);
+  try
+    if JavaFiles.Count>0 then
+    begin
+      result:=JavaFiles[0];
+    end;
+  finally
+    JavaFiles.Free;
+  end;
+  if result<>'' then exit;
+  {$endif}
+
+  {$IF (defined(BSD)) and (not defined(Darwin))}
+  JavaFiles := FindAllFiles('/usr/local', aJava+GetExeExt, true);
+  try
+    if JavaFiles.Count>0 then
+    begin
+      result:=JavaFiles[0];
+    end;
+  finally
+    JavaFiles.Free;
+  end;
+  if result<>'' then exit;
+  {$endif}
+
   {$endif Windows}
+end;
+
+function GetJava: string;
+begin
+  result:=GetJavaBase('java');
+end;
+
+function GetJavac: string;
+begin
+  result:=GetJavaBase('javac');
+  //if length(result)=0 then result:=GetJavaBase('jexec');
 end;
 
 function CheckJava: boolean;
@@ -2815,7 +3550,7 @@ begin
       begin
         if Length(s)>0 then
         begin
-          GetVersionFromString(s,Major,Minor,Build);
+          VersionFromString(s,Major,Minor,Build);
           t:=t+' '+InttoStr(Major)+'.'+InttoStr(Minor)+'.'+InttoStr(Build);
         end;
       end;
@@ -2859,24 +3594,6 @@ begin
   result:=GetTargetCPU+'-'+GetTargetOS;
 end;
 
-
-function GetFPCTargetCPUOS(const aCPU,aOS:string;const Native:boolean=true): string;
-var
-  processorname, os: string;
-begin
-  os := GetTargetOS;
-  processorname := GetTargetCPU;
-
-  if not Native then
-  begin
-    if aCPU <> '' then
-      processorname := aCPU;
-    if aOS <> '' then
-      os := aOS;
-  end;
-  Result := processorname + '-' + os;
-end;
-
 function checkGithubRelease(const aURL:string):string;
 var
   s,aFile    : string;
@@ -2885,7 +3602,7 @@ var
   Releases   : TJSONArray;
   NewVersion : boolean;
   i          : integer;
-  JSONFile     : string;
+  Ms           : TMemoryStream;
   JSONFileList : TStringList;
   Content      : string;
   Success:boolean;
@@ -2896,23 +3613,26 @@ begin
   result:='';
   if (Length(aURL)>0) then
   begin
-
-    JSONFile := GetTempFileNameExt('','FPCUPTMP','tmp');
-
-    Success:=Download(
-             False,
-             aURL,
-             JSONFile);
+    Ms := TMemoryStream.Create;
+    try
+      Success:=Download(False,aURL,Ms);
     if Success then
     begin
       JSONFileList:=TStringList.Create;
     try
-        JSONFileList.LoadFromFile(JSONFile);
+          Ms.Position:=0;
+          JSONFileList.LoadFromStream(Ms);
         Content:=JSONFileList.Text;
       finally
         JSONFileList.Free;
         end;
+      end;
+    finally
+      Ms.Free;
+    end;
 
+    if Success then
+    begin
       if (Length(Content)>0) then
         begin
         Json:=GetJSON(Content);
@@ -2924,8 +3644,8 @@ begin
             // tag_name: "1.6.2b"
             // name: "Release v1.6.2b of fpcupdeluxe"
             s:=JsonObject.Get('tag_name');
-            if GetNumericalVersion(s)>GetNumericalVersion(DELUXEVERSION) then NewVersion:=True;
-            if GetNumericalVersion(s)=GetNumericalVersion(DELUXEVERSION) then
+            if CalculateNumericalVersion(s)>CalculateNumericalVersion(DELUXEVERSION) then NewVersion:=True;
+            if CalculateNumericalVersion(s)=CalculateNumericalVersion(DELUXEVERSION) then
             begin
               if Ord(s[Length(s)])>Ord(DELUXEVERSION[Length(DELUXEVERSION)]) then NewVersion:=True;
             end;
@@ -2975,8 +3695,6 @@ begin
           end;
         end;
       end;
-    SysUtils.Deletefile(JSONFile); //Get rid of temp file.
-
   end;
 end;
 
@@ -3101,8 +3819,16 @@ end;
 
 destructor TThreadedUnzipper.Destroy;
 begin
-  FFileList.Free;
-  FUnZipper.Free;
+  if Assigned(FFileList) then
+  begin
+    FFileList.Destroy;
+    FFileList:=nil;
+  end;
+  if Assigned(FUnZipper) then
+  begin
+    FUnZipper.Destroy;
+    FUnZipper:=nil;
+  end;
   inherited Destroy;
 end;
 
@@ -3143,10 +3869,11 @@ begin
 end;
 
 
-procedure TThreadedUnzipper.DoUnZip(const ASrcFile, ADstDir: String; Files:array of string);
+function TThreadedUnzipper.DoUnZip(const ASrcFile, ADstDir: String; Files:array of string):boolean;
 var
   i:word;
 begin
+  result:=true;
   if FStarted then exit;
   infoln('TThreadedUnzipper: Going to extract files from ' + ASrcFile + ' into ' + ADstDir,etInfo);
   FUnZipper.Clear;
@@ -3155,10 +3882,12 @@ begin
   FUnZipper.OutputPath := ADstDir;
   FUnZipper.OnProgress := @DoOnProgress;
   FUnZipper.OnStartFile:= @DoOnFile;
-  FFileList.Clear;
   if Length(Files)>0 then
+  begin
+    FFileList := TStringList.Create;
     for i := 0 to high(Files) do
       FFileList.Append(Files[i]);
+  end;
   FPercent:=0;
   FFileCount:=0;
   FTotalFileCount:=0;
@@ -3192,7 +3921,7 @@ begin
     if (FFileCnt MOD 5)=0 then infoln('Extracted #'+InttoStr(FFileCnt)+' files out of #'+InttoStr(FTotalFileCnt),etInfo);
   end
   else
-    infoln('Extracting '+FCurrentFile+'. #'+InttoStr(FFileCnt)+' out of #'+InttoStr(FTotalFileCnt),etInfo);
+    infoln('Extracted '+FCurrentFile+'. #'+InttoStr(FFileCnt)+' out of #'+InttoStr(FTotalFileCnt),etInfo);
 end;
 
 function TNormalUnzipper.DoUnZip(const ASrcFile, ADstDir: String; Files:array of string):boolean;
@@ -3207,6 +3936,7 @@ begin
   try
     FFileList := TStringList.Create;
   try
+      try
       FUnZipper.Clear;
       FUnZipper.OnPercent:=10;
       { Flat option only available in FPC >= 3.1 }
@@ -3320,6 +4050,16 @@ begin
 
     result:=true;
 
+      except
+        on E:EZipError do
+        begin
+          infoln('TNormalUnzipper: Could not unzip file.',etError);
+        end
+        else
+        begin
+          infoln('TNormalUnzipper: Unknown exception error.',etError);
+        end;
+      end;
     finally
       FFileList.Free;
     end;
@@ -3374,14 +4114,11 @@ end;
 
 constructor TBasicDownLoader.Create;
 begin
-  Inherited Create(nil);
-end;
-
-constructor TBasicDownLoader.Create(AOwner: TComponent);
-begin
-  inherited;
+  Inherited Create;
   FMaxRetries:=MAXCONNECTIONRETRIES;
   FVerbose:=False;
+  FContentType:='';
+  FUserAgent:='';
   FUsername:='';
   FPassword:='';
   FHTTPProxyHost:='';
@@ -3392,11 +4129,11 @@ end;
 
 destructor TBasicDownLoader.Destroy;
 begin
-  inherited;
+  inherited Destroy;
 end;
 
 procedure TBasicDownLoader.SetVerbose(aValue:boolean);
-begin
+    begin
   FVerbose:=aValue;
 end;
 
@@ -3415,107 +4152,11 @@ begin
 end;
 
 procedure TBasicDownLoader.parseFTPHTMLListing(F:TStream;filelist:TStringList);
-var
-  ADoc: THTMLDocument;
-  HTMFiles : TDOMNodeList;
-  HTMFile : TDOMNode;
-  FilenameValid:boolean;
-  i,j:integer;
-  s:string;
 begin
-  F.Position:=0;
-  try
-    ReadHTMLFile(ADoc,F);
-    // a bit rough, but it works
-    HTMFiles:=ADoc.GetElementsByTagName('a');
-    for i:=0 to HTMFiles.Count-1 do
-    begin
-      HtmFile:=HTMFiles.Item[i];
-      s:=HtmFile.TextContent;
-      if Length(s)>0 then
-      begin
-        // validate filename (also rough)
-        FilenameValid:=True;
-        for j:=1 to Length(s) do
-        begin
-          FilenameValid := (NOT CharInSet(s[j], [';', '=', '+', '<', '>', '|','"', '[', ']', '\', '/', '''']));
-          if (NOT FilenameValid) then break;
-        end;
-        if FilenameValid then FilenameValid:=(Pos('..',s)=0);
-        // restrict ourselves to zip and bz2 ... we only use this to retrieve lists of bootstrapper archives !
-        if FilenameValid then FilenameValid:=((LowerCase(ExtractFileExt(s))='.zip') OR (LowerCase(ExtractFileExt(s))='.bz2'));
-        // finally, add filename if all is ok !!
-        if FilenameValid then filelist.Add(s);
-      end;
-    end;
-  finally
-    aDoc.Free;
-  end;
+  FTPHTMLListingParser(F,filelist);
 end;
 
-{$ifdef ENABLENATIVE}
-constructor TUseNativeDownLoader.Create;
-begin
-  Inherited;
-  FMaxRetries:=MAXCONNECTIONRETRIES;
-  {$ifdef Darwin}
-  // GitHub needs TLS 1.2 .... native FPC client does not support this (through OpenSSL)
-  // So, use client by Phil, a Lazarus forum member
-  // See: https://macpgmr.github.io/
-  aFPHTTPClient:=TNSHTTPSendAndReceive.Create;
-  with aFPHTTPClient do
-  begin
-    TimeOut:=10000;
-  end;
-  {$else}
-  aFPHTTPClient:=TFPHTTPClient.Create(Nil);
-  with aFPHTTPClient do
-  begin
-    {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
-    AllowRedirect:=True;
-    //ConnectTimeout:=10000;
-    //RequestHeaders.Add('Connection: Close');
-    // User-Agent needed for sourceforge and GitHub
-    AddHeader('User-Agent',USERAGENT);
-    OnPassword:=@DoPassword;
-    if FVerbose then
-    begin
-      OnRedirect:=@ShowRedirect;
-      OnDataReceived:=@DoProgress;
-      OnHeaders:=@DoHeaders;
-    end;
-    {$ENDIF}
-  end;
-  {$endif}
-end;
-
-destructor TUseNativeDownLoader.Destroy;
-begin
-  FreeAndNil(aFPHTTPClient);
-  inherited;
-end;
-
-procedure TUseNativeDownLoader.DoHeaders(Sender : TObject);
-Var
-  I : Integer;
-begin
-  writeln('Response headers received:');
-  with (Sender as TFPHTTPClient) do
-    for I:=0 to ResponseHeaders.Count-1 do
-      writeln(ResponseHeaders[i]);
-end;
-
-procedure TUseNativeDownLoader.DoProgress(Sender: TObject; const ContentLength, CurrentPos: Int64);
-begin
-  If (ContentLength=0) then
-    writeln('Reading headers : ',CurrentPos,' Bytes.')
-  else If (ContentLength=-1) then
-    writeln('Reading data (no length available) : ',CurrentPos,' Bytes.')
-  else
-    writeln('Reading data : ',CurrentPos,' Bytes of ',ContentLength);
-end;
-
-procedure TUseNativeDownLoader.DoOnWriteStream(Sender: TObject; APos: Int64);
+procedure TBasicDownLoader.DoOnWriteStream(Sender: TObject; APos: Int64);
 //From the mORMot !!
 function KB(bytes: Int64): string;
 const
@@ -3576,6 +4217,69 @@ begin
   end;
 end;
 
+{$ifdef ENABLENATIVE}
+constructor TUseNativeDownLoader.Create;
+begin
+  Inherited;
+  FMaxRetries:=MAXCONNECTIONRETRIES;
+  {$ifdef Darwin}
+  // GitHub needs TLS 1.2 .... native FPC client does not support this (through OpenSSL)
+  // So, use client by Phil, a Lazarus forum member
+  // See: https://macpgmr.github.io/
+  aFPHTTPClient:=TNSHTTPSendAndReceive.Create;
+  with aFPHTTPClient do
+  begin
+    TimeOut:=10000;
+    UserAgent:=NORMALUSERAGENT;
+  end;
+  {$else}
+  aFPHTTPClient:=TFPHTTPClient.Create(Nil);
+  with aFPHTTPClient do
+  begin
+    {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
+    AllowRedirect:=True;
+    //ConnectTimeout:=10000;
+    //RequestHeaders.Add('Connection: Close');
+    // User-Agent needed for sourceforge and GitHub
+    UserAgent:=NORMALUSERAGENT;
+    OnPassword:=@DoPassword;
+    if FVerbose then
+    begin
+      OnRedirect:=@ShowRedirect;
+      OnDataReceived:=@DoProgress;
+      OnHeaders:=@DoHeaders;
+    end;
+    {$ENDIF}
+  end;
+  {$endif}
+end;
+
+destructor TUseNativeDownLoader.Destroy;
+begin
+  FreeAndNil(aFPHTTPClient);
+  inherited;
+end;
+
+procedure TUseNativeDownLoader.DoHeaders(Sender : TObject);
+Var
+  I : Integer;
+begin
+  writeln('Response headers received:');
+  with (Sender as TFPHTTPClient) do
+    for I:=0 to ResponseHeaders.Count-1 do
+      writeln(ResponseHeaders[i]);
+end;
+
+procedure TUseNativeDownLoader.DoProgress(Sender: TObject; const ContentLength, CurrentPos: Int64);
+begin
+  If (ContentLength=0) then
+    writeln('Reading headers : ',CurrentPos,' Bytes.')
+  else If (ContentLength=-1) then
+    writeln('Reading data (no length available) : ',CurrentPos,' Bytes.')
+  else
+    writeln('Reading data : ',CurrentPos,' Bytes of ',ContentLength);
+end;
+
 procedure TUseNativeDownLoader.DoPassword(Sender: TObject; var RepeatRequest: Boolean);
 Var
   H,UN,PW : String;
@@ -3633,6 +4337,43 @@ procedure TUseNativeDownLoader.ShowRedirect(ASender: TObject; const ASrc: String
 begin
   writeln('Following redirect from ',ASrc,'  ==> ',ADest);
 end;
+
+procedure TUseNativeDownLoader.SetContentType(AValue:string);
+const
+  HEADERMAGIC='Content-Type';
+var
+  i:integer;
+begin
+  if AValue<>FContentType then
+  begin
+    FContentType:=AValue;
+    if FContentType='' then
+    begin
+      i:=aFPHTTPClient.IndexOfHeader(HEADERMAGIC);
+      if i<>-1 then aFPHTTPClient.RequestHeaders.Delete(i);
+    end
+    else aFPHTTPClient.AddHeader(HEADERMAGIC,FContentType);
+  end;
+end;
+
+procedure TUseNativeDownLoader.SetUserAgent(AValue:string);
+const
+  HEADERMAGIC='User-Agent';
+var
+  i:integer;
+begin
+  if AValue<>FUserAgent then
+  begin
+    FUserAgent:=AValue;
+    if FUserAgent='' then
+    begin
+      i:=aFPHTTPClient.IndexOfHeader(HEADERMAGIC);
+      if i<>-1 then aFPHTTPClient.RequestHeaders.Delete(i);
+    end
+    else aFPHTTPClient.AddHeader(HEADERMAGIC,FUserAgent);
+  end;
+end;
+
 
 procedure TUseNativeDownLoader.SetVerbose(aValue:boolean);
 begin
@@ -3732,20 +4473,27 @@ begin
   end;
 end;
 
-function TUseNativeDownLoader.FTPDownload(Const URL : String; filename:string):boolean;
+function TUseNativeDownLoader.FTPDownload(Const URL: String; DataStream:TStream):boolean;
 var
   URI : TURI;
   aPort:integer;
+  aFTPClient:TFTPSend;
 begin
-  // we will use synapse TFTPSend ... FPHTTPClient does not support FTP (yet)
-  aFileName:=ExtractFileName(filename);
   result:=false;
+
+  if DataStream=nil then exit;
+
   URI:=ParseURI(URL);
   aPort:=URI.Port;
   if aPort=0 then aPort:=21;
-  Result := False;
-  with TFTPSend.Create do
+
+  aFTPClient:=TFTPSend.Create;
+
   try
+    with aFTPClient do
+    begin
+      DirectFile := False;
+      DirectFileName := URI.Path+URI.Document;
     TargetHost := URI.Host;
     TargetPort := InttoStr(aPort);
     if FUsername <> '' then
@@ -3768,68 +4516,75 @@ begin
       Sock.HTTPTunnelUser:=HTTPProxyUser;
       Sock.HTTPTunnelPass:=HTTPProxyPassword;
     end;
-    if Login then
+    end;
+    DataStream.Position:=0;
+    DataStream.Size:=0;
+    if aFTPClient.Login then
     begin
-      DirectFileName := filename;
-      DirectFile:=True;
-      Result := RetrieveFile(URI.Path+URI.Document, False);
-      Logout;
+      Result := aFTPClient.RetrieveStream(DataStream, true);
+      aFTPClient.Logout;
     end;
   finally
-    Free;
+    aFTPClient.Destroy;
   end;
 end;
 
-function TUseNativeDownLoader.HTTPDownload(Const URL : String; filename:string):boolean;
+function TUseNativeDownLoader.HTTPDownload(Const URL : String; DataStream: TStream):boolean;
 var
   tries:byte;
   response: Integer;
-  aStream:TDownloadStream;
 begin
-  aFileName:=ExtractFileName(filename);
   result:=false;
   tries:=0;
-  SysUtils.DeleteFile(filename); // overwrite targetfile
 
-  aStream := TDownloadStream.Create(TFileStream.Create(filename, fmCreate));
-  aStream.FOnWriteStream:=@DoOnWriteStream;
-  StoredTickCount:=GetUpTickCount;
+  if DataStream=nil then exit;
 
-  try
   with aFPHTTPClient do
   begin
     repeat
       try
-          aStream.Position:=0;
-          aStream.Size:=0;
-          Get(URL,aStream);
+          DataStream.Position:=0;
+          DataStream.Size:=0;
+          Get(URL,DataStream);
         response:=ResponseStatusCode;
         result:=(response=200);
         //result:=(response>=100) and (response<300);
         if (NOT result) then
         begin
+            // Do no retry on errors that we cannot recover from
+            if (response>=400) then break;
           Inc(tries);
-          if FVerbose then
-            infoln('TFPHTTPClient retry #' +InttoStr(tries)+ ' of download from '+URL+' into '+filename+'.',etDebug);
+          end
+          else
+          begin
+            //For GitHub
+            //See: https://developer.github.com/v3/#rate-limiting
+            //GetHeader('X-RateLimit-Remaining');
         end;
       except
         tries:=(MaxRetries+1);
       end;
     until (result or (tries>MaxRetries));
   end;
-  finally
-    aStream.Free;
-  end;
-  if NOT result then SysUtils.DeleteFile(filename); // delete stray file in case of error
 end;
 
 function TUseNativeDownLoader.getFile(const URL,filename:string):boolean;
+var
+  aFile:TDownloadStream;
 begin
+  result:=false;
+  aFile:=TDownloadStream.Create(filename,fmCreate);
   try
-    result:=Download(URL,filename);
-  except
-    SysUtils.DeleteFile(filename);
+    result:=Download(URL,aFile);
+  finally
+    aFile.Destroy;
   end;
+  if (NOT result) then SysUtils.DeleteFile(filename);
+  end;
+
+function TUseNativeDownLoader.getStream(const URL:string; DataStream:TStream):boolean;
+begin
+  result:=Download(URL,DataStream);
 end;
 
 function TUseNativeDownLoader.checkURL(const URL:string):boolean;
@@ -3837,32 +4592,20 @@ const
   HTTPHEADER='Connection';
   HTTPHEADERVALUE='Close';
 var
-  tries:byte;
   response: Integer;
 begin
   result:=false;
-  tries:=0;
   with aFPHTTPClient do
   begin
     AddHeader(HTTPHEADER,HTTPHEADERVALUE);
-    repeat
       try
         HTTPMethod('HEAD', URL, Nil, []);
         response:=ResponseStatusCode;
         // 404 Not Found
         // The requested resource could not be found but may be available in the future. Subsequent requests by the client are permissible.
         result:=(response<>404);
-        if (NOT result) then
-        begin
-          Inc(tries);
-          if FVerbose then
-            infoln('TFPHTTPClient retry #' +InttoStr(tries)+ ' check of ' + URL + '.',etInfo);
-        end;
       except
-        tries:=(MaxRetries+1);
       end;
-    until (result or (tries>MaxRetries));
-
     // remove additional header
     if GetHeader(HTTPHEADER)=HTTPHEADERVALUE then
     begin
@@ -3872,7 +4615,7 @@ begin
   end;
 end;
 
-function TUseNativeDownLoader.Download(const URL: String; filename:string):boolean;
+function TUseNativeDownLoader.Download(const URL: String; DataStream:TStream):boolean;
 const
   URLMAGIC='/download';
 Var
@@ -3885,12 +4628,19 @@ begin
   URI:=ParseURI(aURL);
   P:=URI.Protocol;
   infoln('Native downloader: Getting ' + URI.Document + ' from '+P+'://'+URI.Host+URI.Path,etDebug);
+
+  if (DataStream is TDownloadStream) then
+  begin
+    (DataStream as TDownloadStream).FOnWriteStream:=@DoOnWriteStream;
+    StoredTickCount:=GetUpTickCount;
+  end;
+
   If CompareText(P,'ftp')=0 then
-    result:=FTPDownload(URL,filename)
+    result:=FTPDownload(URL,DataStream)
   else if CompareText(P,'http')=0 then
-    result:=HTTPDownload(URL,filename)
+    result:=HTTPDownload(URL,DataStream)
   else if CompareText(P,'https')=0 then
-    result:=HTTPDownload(URL,filename);
+    result:=HTTPDownload(URL,DataStream);
 end;
 {$endif}
 
@@ -3903,7 +4653,10 @@ constructor TUseWGetDownloader.Create;
 begin
   Inherited;
 
+  FCURLOk:=False;
+  {$ifdef ENABLECURL}
   FCURLOk:=LoadCurlLibrary;
+  {$endif}
 
   if (Length(WGETBinary)=0) OR (NOT FileExists(WGETBinary)) then
   begin
@@ -3931,6 +4684,8 @@ begin
   begin
     //infoln('Could not initialize either libcurl or wget: expect severe failures !',etError);
   end;
+
+  UserAgent:=CURLUSERAGENT;
 end;
 
 constructor TUseWGetDownloader.Create(aWGETBinary:string);
@@ -3939,7 +4694,20 @@ begin
   inherited Create;
 end;
 
-function TUseWGetDownloader.WGetDownload(Const URL : String; Dest : TStream):boolean;
+procedure TUseWGetDownloader.AddHeader(const aHeader,aValue:String);
+begin
+  {
+  P := pointer(hdr);
+  while P<>nil do begin
+    GetNextLine(P,s);
+    if s<>'' then // nil would reset the whole list
+      fIn.Headers := curl.slist_append(fIn.Headers,pointer(s));
+  end;
+  }
+end;
+
+
+function TUseWGetDownloader.WGetDownload(Const URL : String; DataStream : TStream):boolean;
 var
   Buffer : Array[0..4096] of byte;
   Count : Integer;
@@ -3947,22 +4715,23 @@ begin
   result:=false;
   if (NOT FWGETOk) then exit;
 
-  With TProcess.Create(Self) do
+  With TProcess.Create(nil) do
   try
-    CommandLine:=WGETBinary+' -q --no-check-certificate --user-agent="'+USERAGENT+'" --tries='+InttoStr(MaxRetries)+' --output-document=- '+URL;
+    CommandLine:=WGETBinary+' -q --no-check-certificate --user-agent="'+FUserAgent+'" --tries='+InttoStr(MaxRetries)+' --output-document=- '+URL;
     Options:=[poUsePipes,poNoConsole];
     Execute;
     while Running do
     begin
       Count:=Output.Read(Buffer,SizeOf(Buffer));
-      if (Count>0) then Dest.WriteBuffer(Buffer,Count);
+      if (Count>0) then DataStream.WriteBuffer(Buffer,Count);
     end;
-    result:=((ExitStatus=0) AND (Dest.Size>0));
+    result:=((ExitStatus=0) AND (DataStream.Size>0));
   finally
     Free;
   end;
 end;
 
+{$ifdef ENABLECURL}
 function DoWrite(Ptr : Pointer; Size : size_t; nmemb: size_t; Data : Pointer) : size_t;cdecl;
 begin
   if Data=nil then result:=0 else
@@ -3971,7 +4740,7 @@ begin
   end;
 end;
 
-function TUseWGetDownloader.LibCurlDownload(Const URL : String; Dest : TStream):boolean;
+function TUseWGetDownloader.LibCurlDownload(Const URL : String; DataStream : TStream):boolean;
 var
   hCurl : pCurl;
   res: CURLcode;
@@ -3979,6 +4748,7 @@ var
   aBuffer:PChar;
   location:string;
   response:sizeint;
+  curl_headers: pointer;
 begin
   result:=false;
 
@@ -3990,6 +4760,7 @@ begin
     curl_global_init(CURL_GLOBAL_ALL);
 
     try
+      try
       hCurl:= curl_easy_init();
       if Assigned(hCurl) then
       begin
@@ -4016,47 +4787,90 @@ begin
         {$else}
         if res=CURLE_OK then res:=curl_easy_setopt(hCurl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
         {$endif}
-        if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_URL,PChar(URL));
+        if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_URL,pointer(URL));
         if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_WRITEFUNCTION,@DoWrite);
-        if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_WRITEDATA,Pointer(Dest));
-        if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_USERAGENT,PChar(CURLUSERAGENT));
+        if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_WRITEDATA,Pointer(DataStream));
+        if (Length(FUserAgent)>0) then if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_USERAGENT,pointer(FUserAgent));
+
+        curl_headers := nil;
+        {
+        if (Length(FContentType)>0) then
+        begin
+          if res=CURLE_OK then curl_headers := curl_slist_append(nil,PChar(FContentType));
+          if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_HTTPHEADER,curl_headers);
+        end;
+        }
 
         //check the URL
         if res=CURLE_OK then res:=curl_easy_getinfo(hCurl,CURLINFO_RESPONSE_CODE, @response);
         if ( (res=CURLE_OK) AND (response<>0) AND (response<>404) ) then
         begin
                   res := curl_easy_perform(hCurl);
-        result:=((res=CURLE_OK) AND (Dest.Size>0));
+          result:=((res=CURLE_OK) AND (DataStream.Size>0));
         end else result:=false;
 
-        curl_easy_cleanup(hCurl);
+        try
+          if Assigned(curl_headers) then
+          begin
+            curl_slist_free_all(curl_headers);
+            curl_headers:=nil;
+          end;
+        except
+        end;
+       end;
+
+      finally
+        if Assigned(hCurl) then curl_easy_cleanup(hCurl);
       end;
     except
       // swallow libcurl exceptions
     end;
   end;
 end;
+{$endif ENABLECURL}
 
 
-function TUseWGetDownloader.FTPDownload(Const URL : String; Dest : TStream):boolean;
+function TUseWGetDownloader.FTPDownload(Const URL : String; DataStream : TStream):boolean;
 begin
-  result:=LibCurlDownload(URL,Dest);
+  result:=false;
+  {$ifdef ENABLECURL}
+  result:=LibCurlDownload(URL,DataStream);
   if (result) then infoln('LibCurl FTP file download success !!!', etDebug);
+  {$endif}
   if (NOT result) then
   begin
-    result:=WGetDownload(URL,Dest);
+    result:=WGetDownload(URL,DataStream);
     if (result) then infoln('Wget FTP file download success !', etDebug);
   end;
 end;
 
-function TUseWGetDownloader.HTTPDownload(Const URL : String; Dest : TStream):boolean;
+function TUseWGetDownloader.HTTPDownload(Const URL : String; DataStream : TStream):boolean;
 begin
-  result:=LibCurlDownload(URL,Dest);
+  result:=false;
+  {$ifdef ENABLECURL}
+  result:=LibCurlDownload(URL,DataStream);
   if (result) then infoln('LibCurl HTTP file download success !!!', etDebug);
+  {$endif}
   if (NOT result) then
   begin
-    result:=WGetDownload(URL,Dest);
+    result:=WGetDownload(URL,DataStream);
     if (result) then infoln('Wget HTTP file download success !', etDebug);
+  end;
+end;
+
+procedure TUseWGetDownloader.SetContentType(AValue:string);
+begin
+  if AValue<>FContentType then
+  begin
+    FContentType:=AValue;
+  end;
+end;
+
+procedure TUseWGetDownloader.SetUserAgent(AValue:string);
+begin
+  if AValue<>FUserAgent then
+  begin
+    FUserAgent:=AValue;
   end;
 end;
 
@@ -4065,11 +4879,13 @@ const
   WGETFTPLISTFILE='.listing';
 var
   aURL:string;
-  aTFTPList:TFTPList;
   s:string;
   i:integer;
   URI : TURI;
   P : String;
+  {$IF NOT DEFINED(MORPHOS) AND NOT DEFINED(AROS)}  // this is very bad coding ... ;-)
+  aTFTPList:TFTPList;
+  {$ENDIF}
 begin
   result:=false;
   if (NOT FWGETOk) then exit;
@@ -4083,6 +4899,7 @@ begin
     result:=(ExecuteCommand(WGETBinary+' -q --no-remove-listing --tries='+InttoStr(MaxRetries)+' --spider '+aURL,false)=0);
     if result then
     begin
+      {$IF NOT DEFINED(MORPHOS) AND NOT DEFINED(AROS)}  // this is very bad coding ... ;-)
       if FileExists(WGETFTPLISTFILE) then
       begin
         aTFTPList:=TFTPList.Create;
@@ -4100,10 +4917,12 @@ begin
           aTFTPList.Free;
         end;
       end;
+      {$ENDIF}
     end;
   end;
 end;
 
+{$ifdef ENABLECURL}
 function TUseWGetDownloader.LibCurlFTPFileList(const URL:string; filelist:TStringList):boolean;
 var
   hCurl : pCurl;
@@ -4128,6 +4947,7 @@ begin
       //curl_global_init(CURL_GLOBAL_ALL);
 
       try
+       try
         hCurl:= curl_easy_init();
         if Assigned(hCurl) then
         begin
@@ -4151,7 +4971,7 @@ begin
             if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_URL,pointer(URL));
             if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_WRITEFUNCTION,@DoWrite);
             if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_WRITEDATA,Pointer(F));
-            if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_USERAGENT,CURLUSERAGENT);
+
             {$ifdef MSWINDOWS}
             if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_SSL_VERIFYPEER, 0);
             {$endif}
@@ -4159,8 +4979,6 @@ begin
             if res=CURLE_OK then res:=curl_easy_perform(hCurl);
 
             result:=(res=CURLE_OK);
-
-            curl_easy_cleanup(hCurl);
 
             // libcurl correct exit ?
             if result then
@@ -4203,17 +5021,25 @@ begin
           end;
 
         end;
+       finally
+        if Assigned(hCurl) then curl_easy_cleanup(hCurl);
+       end;
+
       except
         // swallow libcurl exceptions
       end;
     end;
   end;
 end;
+{$endif ENABLECURL}
 
 function TUseWGetDownloader.getFTPFileList(const URL:string; filelist:TStringList):boolean;
 begin
+  result:=false;
+  {$ifdef ENABLECURL}
   result:=LibCurlFTPFileList(URL,filelist);
   if (result) then infoln('LibCurl FTP filelist success !!!!', etDebug);
+  {$endif}
   if (NOT result) then
   begin
     result:=WGetFTPFileList(URL,filelist);
@@ -4234,7 +5060,7 @@ begin
   end;
 
   Output:='';
-  result:=(ExecuteCommand(WGETBinary+' --no-check-certificate --user-agent="'+USERAGENT+'" --tries='+InttoStr(MaxRetries)+' --spider '+URL,Output,false)=0);
+  result:=(ExecuteCommand(WGETBinary+' --no-check-certificate --user-agent="'+FUserAgent+'" --tries='+InttoStr(MaxRetries)+' --spider '+URL,Output,false)=0);
   if result then
   begin
     result:=(Pos('Remote file exists',Output)>0);
@@ -4247,7 +5073,7 @@ begin
   end;
 end;
 
-function TUseWGetDownloader.Download(const URL: String; Dest: TStream):boolean;
+function TUseWGetDownloader.Download(const URL: String; DataStream: TStream):boolean;
 Var
   URI : TURI;
   P : String;
@@ -4256,78 +5082,84 @@ begin
   URI:=ParseURI(URL);
   P:=URI.Protocol;
   infoln('Wget downloader: Getting ' + URI.Document + ' from '+P+'://'+URI.Host+URI.Path,etDebug);
+
+  if (DataStream is TDownloadStream) then
+  begin
+    (DataStream as TDownloadStream).FOnWriteStream:=@DoOnWriteStream;
+    StoredTickCount:=GetUpTickCount;
+  end;
+
   If CompareText(P,'ftp')=0 then
-    result:=FTPDownload(URL,Dest)
+    result:=FTPDownload(URL,DataStream)
   else if CompareText(P,'http')=0 then
-    result:=HTTPDownload(URL,Dest)
+    result:=HTTPDownload(URL,DataStream)
   else if CompareText(P,'https')=0 then
-    result:=HTTPDownload(URL,Dest);
+    result:=HTTPDownload(URL,DataStream);
 end;
 
 function TUseWGetDownloader.getFile(const URL,filename:string):boolean;
 var
-  F : TFileStream;
+  aFile:TDownloadStream;
 begin
   result:=false;
   try
-    F:=TFileStream.Create(filename,fmCreate);
+    aFile:=TDownloadStream.Create(filename,fmCreate);
     try
-      result:=Download(URL,F);
+      result:=getStream(URL,aFile);
     finally
-      F.Free;
+      aFile.Destroy;
     end;
   except
     result:=False;
-    SysUtils.DeleteFile(filename);
   end;
+  if (NOT result) then SysUtils.DeleteFile(filename);
 end;
 
+function TUseWGetDownloader.getStream(const URL:string;DataStream:TStream):boolean;
+begin
+  result:=false;
 
+  if DataStream=nil then exit;
+
+  try
+    DataStream.Position:=0;
+    DataStream.Size:=0;
+    result:=Download(URL,DataStream);
+  except
+    result:=False;
+end;
+end;
 {$ENDIF ENABLEWGET}
 
 { TDownloadStream }
-constructor TDownloadStream.Create(AStream: TStream);
-begin
-  inherited Create;
-  FStream := AStream;
-  FStream.Position := 0;
-end;
-
-destructor TDownloadStream.Destroy;
-begin
-  FStream.Free;
-  inherited Destroy;
-end;
-
-function TDownloadStream.Read(var Buffer; Count: LongInt): LongInt;
-begin
-  Result := FStream.Read(Buffer, Count);
-end;
-
-function TDownloadStream.Write(const Buffer; Count: LongInt): LongInt;
-begin
-  Result := FStream.Write(Buffer, Count);
-  DoProgress;
-end;
-
-function TDownloadStream.Seek(Offset: LongInt; Origin: Word): LongInt;
-begin
-  Result := FStream.Seek(Offset, Origin);
-end;
-
 procedure TDownloadStream.DoProgress;
 begin
   if Assigned(FOnWriteStream) then
     FOnWriteStream(Self, Self.Position);
 end;
 
+function TDownloadStream.Write(const Buffer; Count: LongInt): LongInt;
+begin
+  Result:= inherited Write(Buffer, Count);
+  DoProgress;
+end;
 
-initialization
-  resourcefiles:=TStringList.Create;
-  DoEnumResources;
+procedure FinaGitHubStore;
+var
+  aStore:TGitHubStore;
+begin
+  if Length(GitHubFileListCache)>0 then
+  begin
+    for aStore in GitHubFileListCache do
+begin
+      if Assigned(aStore.FileList) then aStore.FileList.Free
+end;
+end;
+  Finalize(GitHubFileListCache);
+end;
 
 finalization
-  resourcefiles.Free;
+  FinaGitHubStore;
 
 end.
 

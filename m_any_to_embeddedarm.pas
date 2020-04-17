@@ -37,10 +37,6 @@ uses
 
 implementation
 
-const
-  ARCH='arm';
-  OS='embedded';
-
 type
 
 { TAny_Embeddedarm }
@@ -61,7 +57,6 @@ end;
 
 function TAny_Embeddedarm.GetLibs(Basepath:string): boolean;
 const
-  DirName=ARCH+'-'+OS;
   LibName='libgcc.a';  // is this correct ??
 begin
   // Arm-embedded does not need libs by default, but user can add them.
@@ -106,8 +101,6 @@ end;
 {$endif}
 
 function TAny_Embeddedarm.GetBinUtils(Basepath:string): boolean;
-const
-  DirName=ARCH+'-'+OS;
 var
   AsFile,aOption: string;
   BinPrefixTry: string;
@@ -172,6 +165,7 @@ begin
   begin
     FBinsFound:=true;
 
+    {
     if length(FSubArch)>0 then
     begin
       ShowInfo('Cross-bins: We have a subarch: '+FSubArch);
@@ -184,10 +178,21 @@ begin
       end else aOption:=Trim(FCrossOpts[i]);
       AddFPCCFGSnippet(aOption);
     end else ShowInfo('Cross-bins: No subarch defined. Expect fatal errors.',etError);
+    }
 
     // Configuration snippet for FPC
     AddFPCCFGSnippet('-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath));
     AddFPCCFGSnippet('-XP'+FBinUtilsPrefix); {Prepend the binutils names};
+
+    i:=StringListStartsWith(FCrossOpts,'-Cp');
+    if i=-1 then
+    begin
+      if length(FSubArch)=0 then FSubArch:='armv6m';
+      aOption:='-Cp'+FSubArch;
+      FCrossOpts.Add(aOption+' ');
+      ShowInfo('Did not find any -Cp architecture parameter; using -Cp'+FSubArch+' and SUBARCH='+FSubArch+'.');
+    end else aOption:=Trim(FCrossOpts[i]);
+    AddFPCCFGSnippet(aOption);
 
     (*
     if length(FSubArch)=0 then
@@ -221,12 +226,9 @@ end;
 constructor TAny_Embeddedarm.Create;
 begin
   inherited Create;
-  FTargetCPU:=ARCH;
-  FTargetOS:=OS;
-  FBinUtilsPrefix:=ARCH+'-'+OS+'-'; //crossfpc nomenclature; module will also search for android crossbinutils
-  FBinUtilsPath:='';
-  FFPCCFGSnippet:=''; //will be filled in later
-  FLibsPath:='';
+  FTargetCPU:=TCPU.arm;
+  FTargetOS:=TOS.embedded;
+  Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
@@ -241,7 +243,8 @@ var
 
 initialization
   Any_Embeddedarm:=TAny_Embeddedarm.Create;
-  RegisterExtension(Any_Embeddedarm.TargetCPU+'-'+Any_Embeddedarm.TargetOS,Any_Embeddedarm);
+  RegisterCrossCompiler(Any_Embeddedarm.RegisterName,Any_Embeddedarm);
+
 finalization
   Any_Embeddedarm.Destroy;
 end.

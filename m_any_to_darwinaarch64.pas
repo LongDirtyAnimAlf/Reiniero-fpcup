@@ -41,10 +41,6 @@ implementation
 uses
   fileutil,fpcuputil;
 
-const
-  ARCH='aarch64';
-  OS='darwin';
-
 type
 
 { Tany_darwinaarch64 }
@@ -62,7 +58,6 @@ end;
 
 function Tany_darwinaarch64.GetLibs(Basepath:string): boolean;
 const
-  DirName=ARCH+'-'+OS;
   LibName='libc.dylib';
 var
   s:string;
@@ -173,8 +168,6 @@ begin
 end;
 
 function Tany_darwinaarch64.GetBinUtils(Basepath:string): boolean;
-const
-  DirName=ARCH+'-'+OS;
 var
   AsFile: string;
   BinPrefixTry: string;
@@ -246,13 +239,9 @@ end;
 constructor Tany_darwinaarch64.Create;
 begin
   inherited Create;
-  FTargetCPU:=ARCH;
-  FTargetOS:=OS;
-  FBinUtilsPrefix:=ARCH+'-'+OS+'-';
-  FBinUtilsPath:='';
-  //FBinutilsPathInPath:=true;
-  FFPCCFGSnippet:='';
-  FLibsPath:='';
+  FTargetCPU:=TCPU.aarch64;
+  FTargetOS:=TOS.darwin;
+  Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
@@ -267,7 +256,8 @@ var
 
 initialization
   any_darwinaarch64:=Tany_darwinaarch64.Create;
-  RegisterExtension(any_darwinaarch64.TargetCPU+'-'+any_darwinaarch64.TargetOS,any_darwinaarch64);
+  RegisterCrossCompiler(any_darwinaarch64.RegisterName,any_darwinaarch64);
+
 finalization
   any_darwinaarch64.Destroy;
 

@@ -69,6 +69,9 @@ type
     function GetRepoExecutableName: string; override;
     function FindRepoExecutable: string; override;
   public
+    property UserName: string read FUserName write FUserName;
+    property Password: string read FPassword write FPassword;
+
     procedure CheckOutOrUpdate; override;
     function Commit(Message: string): boolean; override;
     function Execute(Command: string): integer; override;
@@ -77,14 +80,13 @@ type
     function LocalRepositoryExists: boolean; override;
     //Revision number of local repository - the repository wide revision number regardless of what branch we are in
     property LocalRevisionWholeRepo: string read GetLocalRevisionWholeRepo;
-    property UserName: string read FUserName write FUserName;
-    property Password: string read FPassword write FPassword;
-    // Run SVN log command for repository and put results into Log
-    procedure Log(var Log: TStringList); override;
     procedure ParseFileList(const CommandOutput: string; var FileList: TStringList; const FilterCodes: array of string); override;
-    procedure DeleteDirectories(const CommandOutput: string);
     procedure SwitchURL; override;
     procedure Revert; override;
+    function CheckURL: boolean;
+    // Run SVN log command for repository and put results into Log
+    procedure Log(var Log: TStringList); override;
+
     constructor Create;
     destructor Destroy; override;
   end;
@@ -94,7 +96,6 @@ implementation
 
 uses
   fpcuputil,
-  Process,
   {$IFDEF UNIX}
   BaseUnix,Unix,
   {$ENDIF}
@@ -236,9 +237,9 @@ begin
      end;
 
   if (FDesiredRevision = '') or (Uppercase(trim(FDesiredRevision)) = 'HEAD') then
-    Command:=Command+'HEAD '+Repository+' '+LocalRepository
+    Command:=Command+'HEAD '+Repository+' '+DoubleQuoteIfNeeded(LocalRepository)
   else
-    Command:=Command+FDesiredRevision+' '+Repository+' '+LocalRepository;
+    Command:=Command+FDesiredRevision+' '+Repository+' '+DoubleQuoteIfNeeded(LocalRepository);
 
   {$IFNDEF MSWINDOWS}
   // due to the fact that strnew returns nil for an empty string, we have to use something special to process a command with empty strings on non windows systems
@@ -246,7 +247,7 @@ begin
   if Pos('emptystring',Command)>0 then
   begin
     Command:=StringReplace(Command,'emptystring','""',[rfReplaceAll,rfIgnoreCase]);
-    TempOutputFile := GetTempFileNameExt('','FPCUPTMP','svn');
+    TempOutputFile:=ChangeFileExt(GetTempFileName(GetTempDir(false),'FPCUPTMP'),'svn');
     Command:=Command+' &> '+TempOutputFile;
     ExecuteSpecialDue2EmptyString:=True;
   end;
@@ -256,7 +257,7 @@ begin
 
   while true do
   begin
-    {$IFNDEF MSWINDOWS}
+    {$IFDEF UNIX}
     if ExecuteSpecialDue2EmptyString then
     begin
       if Verbose then infoln('Executing: '+FRepoExecutable+' '+Command);
@@ -309,7 +310,7 @@ begin
         if RetryAttempt>CONNECTIONMAXRETRIES then break else
         begin
           // remove locks if any
-          ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive ' + LocalRepository, Verbose);
+          ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive ' + DoubleQuoteIfNeeded(LocalRepository), Verbose);
           // try again
           continue;
         end;
@@ -322,7 +323,7 @@ begin
       if (Pos('E155004', Output) > 0) OR (Pos('E175002', Output) > 0) then
       begin
         // Let's try one time to fix it and don't update FReturnCode here
-        ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive ' + LocalRepository, Verbose); //attempt again
+        ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive ' + DoubleQuoteIfNeeded(LocalRepository), Verbose); //attempt again
         // We probably ended up with a local repository where not all files were checked out
         // Let's call update to finalize.
         Update;
@@ -333,7 +334,7 @@ begin
       if Pos('E155036', Output) > 0 then
       begin
         // Let's try one time upgrade to fix it (don't update FReturnCode here)
-        ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' upgrade '+ProxyCommand+' --non-interactive ' + LocalRepository, Verbose); //attempt again
+        ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' upgrade '+ProxyCommand+' --non-interactive ' + DoubleQuoteIfNeeded(LocalRepository), Verbose); //attempt again
         // Now update again:
         Update;
       end;
@@ -383,9 +384,9 @@ begin
   end;
 
   if (FDesiredRevision = '') or (Uppercase(trim(FDesiredRevision)) = 'HEAD') then
-    Command := ' update ' + ProxyCommand + Command + ' --quiet --non-interactive --trust-server-cert -r HEAD ' + LocalRepository
+    Command := ' update ' + ProxyCommand + Command + ' --quiet --non-interactive --trust-server-cert -r HEAD ' + DoubleQuoteIfNeeded(LocalRepository)
   else
-    Command := ' update ' + ProxyCommand + Command + ' --quiet --non-interactive --trust-server-cert -r ' + FDesiredRevision + ' ' + LocalRepository;
+    Command := ' update ' + ProxyCommand + Command + ' --quiet --non-interactive --trust-server-cert -r ' + FDesiredRevision + ' ' + DoubleQuoteIfNeeded(LocalRepository);
 
   {$IFNDEF MSWINDOWS}
   // due to the fact that strnew returns nil for an empty string, we have to use something special to process a command with empty strings on non windows systems
@@ -393,21 +394,21 @@ begin
   if Pos('emptystring',Command)>0 then
   begin
     Command:=StringReplace(Command,'emptystring','""',[rfReplaceAll,rfIgnoreCase]);
-    TempOutputFile := GetTempFileNameExt('','FPCUPTMP','svn');
+    TempOutputFile:=ChangeFileExt(GetTempFileName(GetTempDir(false),'FPCUPTMP'),'svn');
     Command:=Command + ' &> '+TempOutputFile;
     ExecuteSpecialDue2EmptyString:=True;
   end;
   {$ENDIF}
 
   // always perform a cleaup before doing anything else ... just to be sure !
-  ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive ' + LocalRepository, Verbose);
+  ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive ' + DoubleQuoteIfNeeded(LocalRepository), Verbose);
 
   FileList := TStringList.Create;
   try
     // On Windows, at least certain SVN versions don't update everything.
     // So we try until there are no more files downloaded.
 
-    {$IFNDEF MSWINDOWS}
+    {$IFDEF UNIX}
     if ExecuteSpecialDue2EmptyString then
     begin
       if Verbose then infoln('Executing: '+FRepoExecutable+' '+Command);
@@ -445,15 +446,10 @@ begin
 
     if (Pos('An obstructing working copy was found', Output) > 0) then
     begin
-      // this is a very severe error !
-      // can only be solved by brute force !!
-      // we are going to delete the .svn directory and any obstructing directories
-      DeleteDirectoryEx(IncludeTrailingPathDelimiter(LocalRepository)+'.svn');
-      DeleteDirectories(Output);
-      // perform forced checkout
-      CheckOut(True);
-      Output:='';
-      // hope all is well now
+      infoln('SVN reported than an obstructing working copy was found.',etError);
+      infoln('Please try to resolve.',etError);
+      //FReturnCode := -1;
+      exit;
     end;
 
     FileList.Clear;
@@ -472,13 +468,13 @@ begin
         }
         begin
           // Let's try to release locks; don't update FReturnCode
-          ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive ' + LocalRepository, Verbose); //attempt again
+          ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive ' + DoubleQuoteIfNeeded(LocalRepository), Verbose); //attempt again
         end;
         //Give everybody a chance to relax ;)
         Sleep(500);
         // attempt again !!
 
-        {$IFNDEF MSWINDOWS}
+        {$IFDEF UNIX}
         if ExecuteSpecialDue2EmptyString then
         begin
           if Verbose then infoln('Executing: '+FRepoExecutable+' '+Command);
@@ -519,8 +515,8 @@ begin
         if (AfterErrorRetry = ERRORMAXRETRIES) then
         begin
           //revert local changes to try to cleanup errors ...
-          //ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' revert -R '+ProxyCommand+' --non-interactive ' + LocalRepository, Verbose); //revert changes
-          ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive --remove-unversioned --remove-ignored ' + LocalRepository, Verbose); //attempt again
+          //ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' revert -R '+ProxyCommand+' --non-interactive ' + DoubleQuoteIfNeeded(LocalRepository), Verbose); //revert changes
+          ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive --remove-unversioned --remove-ignored ' + DoubleQuoteIfNeeded(LocalRepository), Verbose); //attempt again
         end;
 
       end;
@@ -575,20 +571,82 @@ begin
 end;
 
 function TSVNClient.GetDiffAll: string;
+var
+  aFile:string;
+  aResult:TStringList;
+  aProcess:TExternalTool;
 begin
-  Result := ''; //fail by default
+  result := '';
+  FReturnCode := 0;
+
   if ExportOnly then
   begin
-    FReturnCode := 0;
     exit;
   end;
-  // Using proxy more for completeness here
-  //FReturnCode := ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + GetProxyCommand + ' diff '+' .', LocalRepository, Result, Verbose);
-  // with external diff program
-  //FReturnCode := ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + GetProxyCommand + ' diff --diff-cmd diff --extensions "--binary -wbua"'+' .', LocalRepository, Result, Verbose);
-  // ignoring whitespaces
-  FReturnCode := ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + GetProxyCommand + ' diff -x --ignore-space-change'+' .', LocalRepository, Result, Verbose);
-  FReturnOutput := Result;
+
+  infoln('Getting diff between current sources and online sources of ' + LocalRepository,etInfo);
+
+  aProcess:=nil;
+
+  {$ifdef  MSWINDOWS}
+  aProcess := TExternalTool.Create(nil);
+  aProcess.Process.Executable := GetEnvironmentVariable('COMSPEC');
+  if NOT FileExists(aProcess.Process.Executable) then aProcess.Process.Executable := 'c:\windows\system32\cmd.exe';
+  aProcess.Process.Parameters.Add('/c');
+  {$endif  MSWINDOWS}
+
+  {$ifdef LINUX}
+  aProcess := TExternalTool.Create(nil);
+  aProcess.Process.Executable := '/bin/sh';
+  aProcess.Process.Parameters.Add('-c');
+  {$endif LINUX}
+
+  if Assigned(aProcess) then
+  begin
+    if NOT FileExists(aProcess.Process.Executable) then
+    begin
+      aProcess.Free;
+      aProcess:=nil;
+    end;
+  end;
+
+  if Assigned(aProcess) then
+  begin
+    aFile := ChangeFileExt(GetTempFileName(GetTempDir(false),'FPCUPTMP'),'diff');
+    aProcess.Process.CurrentDirectory:=LocalRepository;
+    aProcess.Process.Parameters.Add(DoubleQuoteIfNeeded(FRepoExecutable) + GetProxyCommand + ' diff -x --ignore-space-change'+' . > ' + aFile);
+    infoln(aProcess.GetExeInfo,etInfo);
+    try
+      aProcess.ExecuteAndWait;
+      FReturnCode:=aProcess.ExitCode;
+      if (FReturnCode=0) AND (FileExists(aFile)) then
+      begin
+        aResult:=TStringList.Create;
+        try
+          aResult.LoadFromFile(aFile);
+          result:=aResult.Text;
+        finally
+          aResult.Free;
+        end;
+      end;
+    finally
+      aProcess.Free;
+      aProcess:=nil;
+      DeleteFile(aFile);
+    end;
+  end;
+
+  if result='' then
+  begin
+    // Using proxy more for completeness here
+    //FReturnCode := ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + GetProxyCommand + ' diff '+' .', LocalRepository, Result, Verbose);
+    // with external diff program
+    //FReturnCode := ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + GetProxyCommand + ' diff --diff-cmd diff --extensions "--binary -wbua"'+' .', LocalRepository, Result, Verbose);
+    // ignoring whitespaces
+    FReturnCode := ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + GetProxyCommand + ' diff -x --ignore-space-change'+' .', LocalRepository, result, Verbose);
+  end;
+
+  FReturnOutput := result;
 end;
 
 procedure TSVNClient.Log(var Log: TStringList);
@@ -596,7 +654,7 @@ var
   s: string = '';
 begin
   // Using proxy more for completeness here
-  FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' log ' + GetProxyCommand + ' ' + LocalRepository, s, Verbose);
+  FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' log ' + GetProxyCommand + ' ' + DoubleQuoteIfNeeded(LocalRepository), s, Verbose);
   FReturnOutput := s;
   Log.Text := s;
 end;
@@ -608,7 +666,18 @@ begin
     FReturnCode := 0;
     exit;
   end;
-  FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' revert '+GetProxyCommand+' --recursive ' + LocalRepository, FReturnOutput, Verbose);
+  FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' revert '+GetProxyCommand+' --recursive ' + DoubleQuoteIfNeeded(LocalRepository), FReturnOutput, Verbose);
+end;
+
+function TSVNClient.CheckURL: boolean;
+var
+  Output:string;
+begin
+  FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' ls '+ Repository, false);
+  //FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' ls '+ Repository, Output, Verbose);
+  //FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' ls --depth empty '+ Repository, Output, Verbose);
+  result:=(FReturnCode=0);
+  //result:=(Output=GetFileNameFromURL(Repository));
 end;
 
 procedure TSVNClient.ParseFileList(const CommandOutput: string; var FileList: TStringList; const FilterCodes: array of string);
@@ -664,39 +733,6 @@ begin
   end;
 end;
 
-procedure TSVNClient.DeleteDirectories(const CommandOutput: string);
- // Parses directory lists from svn update and svn status outputsto find skipped directories.
- // If FilterCodes specified, only returns the files that match one of the characters in the code (e.g 'CGM');
- // Case-sensitive filter.
-var
-  AllFilesRaw: TStringList;
-  Counter,index: integer;
-  DirName: string;
-begin
-  AllFilesRaw := TStringList.Create;
-  try
-    AllFilesRaw.Text := CommandOutput;
-    for Counter := 0 to AllFilesRaw.Count - 1 do
-    begin
-      DirName:=AllFilesRaw[Counter];
-      index:=Pos('Skipped ',DirName);
-      if index>0 then
-      begin
-        Delete(DirName,1,Length('Skipped '));
-        index:=Pos('--',DirName);
-        if index>0 then
-        begin
-          Delete(DirName,index,MaxInt);
-          RemovePadChars(DirName,[' ','''','"','`']);
-          DeleteDirectoryEx(DirName);
-        end;
-      end;
-    end;
-  finally
-    AllFilesRaw.Free;
-  end;
-end;
-
 procedure TSVNClient.SwitchURL;
 var
   Command: string;
@@ -727,12 +763,12 @@ begin
   end;
 
   if (FDesiredRevision = '') or (Uppercase(trim(FDesiredRevision)) = 'HEAD') then
-    Command := ' switch ' + ProxyCommand + Command + ' --force --quiet --non-interactive --trust-server-cert -r HEAD ' + Repository + ' ' + LocalRepository
+    Command := ' switch ' + ProxyCommand + Command + ' --force --quiet --non-interactive --trust-server-cert -r HEAD ' + Repository + ' ' + DoubleQuoteIfNeeded(LocalRepository)
   else
-    Command := ' switch ' + ProxyCommand + Command + ' --force --quiet --non-interactive --trust-server-cert -r ' + FDesiredRevision + ' ' + Repository + ' ' + LocalRepository;
+    Command := ' switch ' + ProxyCommand + Command + ' --force --quiet --non-interactive --trust-server-cert -r ' + FDesiredRevision + ' ' + Repository + ' ' + DoubleQuoteIfNeeded(LocalRepository);
 
   // always perform a cleaup before doing anything else ... just to be sure !
-  ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive ' + LocalRepository, Verbose);
+  ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive ' + DoubleQuoteIfNeeded(LocalRepository), Verbose);
 
   FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + command, Output, Verbose);
   FReturnOutput := Output;
@@ -743,7 +779,7 @@ begin
   begin
     while (ReturnCode <> 0) and (RetryAttempt < ERRORMAXRETRIES) do
     begin
-      //ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive ' + LocalRepository, Verbose); //attempt again
+      //ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive ' + DoubleQuoteIfNeeded(LocalRepository), Verbose); //attempt again
       //relax ... ;-)
       Sleep(500);
       FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + Command, Output, Verbose);
@@ -764,7 +800,7 @@ begin
     exit;
   end;
 
-  FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' status '+GetProxyCommand+' --depth infinity ' + FLocalRepository, Output, Verbose);
+  FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' status '+GetProxyCommand+' --depth infinity ' + DoubleQuoteIfNeeded(LocalRepository), Output, Verbose);
   FReturnOutput := Output;
   FileList.Clear;
   AllFiles := TStringList.Create;
@@ -795,7 +831,7 @@ begin
     exit;
   end;
 
-  FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' info ' + FLocalRepository, Output, Verbose);
+  FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' info ' + DoubleQuoteIfNeeded(LocalRepository), Output, Verbose);
   FReturnOutput := Output;
 
   // If command fails due to wrong version, try again
@@ -804,11 +840,11 @@ begin
     // svn: E155036: Please see the 'svn upgrade' command
     // svn: E155036: The working copy is too old to work with client. You need to upgrade the working copy first
     // Let's try one time upgrade to fix it (don't update FReturnCode here)
-    if Pos('E155036', Output) > 0 then ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' upgrade --non-interactive ' + FLocalRepository, Verbose);
+    if Pos('E155036', Output) > 0 then ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' upgrade --non-interactive ' + DoubleQuoteIfNeeded(LocalRepository), Verbose);
     //Give everybody a chance to relax ;)
     Sleep(500);
     //attempt again
-    FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' info ' + FLocalRepository, Output, Verbose);
+    FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' info ' + DoubleQuoteIfNeeded(LocalRepository), Output, Verbose);
     FReturnOutput := Output;
   end;
 
@@ -893,13 +929,13 @@ begin
               if Pos('emptystring',Command)>0 then
               begin
                 Command:=StringReplace(Command,'emptystring','""',[rfReplaceAll,rfIgnoreCase]);
-                TempOutputFile := GetTempFileNameExt('','FPCUPTMP','svn');
+                TempOutputFile:=ChangeFileExt(GetTempFileName(GetTempDir(false),'FPCUPTMP'),'svn');
                 Command:=Command+' &> '+TempOutputFile;
                 ExecuteSpecialDue2EmptyString:=True;
               end;
               {$ENDIF}
 
-              {$IFNDEF MSWINDOWS}
+              {$IFDEF UNIX}
               if ExecuteSpecialDue2EmptyString then
               begin
                 if Verbose then infoln('Executing: '+FRepoExecutable+' '+Command);
@@ -937,7 +973,7 @@ begin
               exit;
             end;
        end
-       else FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' info ' + FLocalRepository, Output, Verbose);
+       else FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' info ' + DoubleQuoteIfNeeded(LocalRepository), Output, Verbose);
 
     FReturnOutput := Output;
     // Could have used svnversion but that would have meant calling yet another command...

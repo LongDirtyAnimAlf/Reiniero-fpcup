@@ -55,7 +55,6 @@ end;
 
 function Tany_darwinpowerpc.GetLibs(Basepath:string): boolean;
 const
-  DirName='powerpc-darwin';
   LibName='libc.dylib';
 var
   s:string;
@@ -152,8 +151,6 @@ begin
 end;
 
 function Tany_darwinpowerpc.GetBinUtils(Basepath:string): boolean;
-const
-  DirName='powerpc-darwin';
 var
   AsFile: string;
   BinPrefixTry: string;
@@ -203,13 +200,9 @@ end;
 constructor Tany_darwinpowerpc.Create;
 begin
   inherited Create;
-  FBinUtilsPrefix:='powerpc-darwin-';
-  FBinUtilsPath:='';
-  FBinutilsPathInPath:=true;
-  FFPCCFGSnippet:='';
-  FLibsPath:='';
-  FTargetCPU:='powerpc';
-  FTargetOS:='darwin';
+  FTargetCPU:=TCPU.powerpc;
+  FTargetOS:=TOS.darwin;
+  Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
@@ -225,7 +218,8 @@ var
 {$ifdef mswindows}
 initialization
   any_darwinpowerpc:=Tany_darwinpowerpc.Create;
-  RegisterExtension(any_darwinpowerpc.TargetCPU+'-'+any_darwinpowerpc.TargetOS,any_darwinpowerpc);
+  RegisterCrossCompiler(any_darwinpowerpc.RegisterName,any_darwinpowerpc);
+
 finalization
   any_darwinpowerpc.Destroy;
 {$endif mswindows}

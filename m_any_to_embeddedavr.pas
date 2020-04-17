@@ -73,7 +73,6 @@ end;
 
 function TAny_Embeddedavr.GetLibs(Basepath:string): boolean;
 const
-  DirName='avr-embedded';
   LibName='libc.a';
   {$ifdef unix}
   UnixAVRLibDirs :array[0..3] of string = ('/usr/local/lib/avr/lib','/usr/lib/avr/lib','/usr/lib/avr','/lib/avr');
@@ -146,8 +145,6 @@ end;
 {$endif}
 
 function TAny_Embeddedavr.GetBinUtils(Basepath:string): boolean;
-const
-  DirName='avr-embedded';
 var
   AsFile,aOption: string;
   BinPrefixTry: string;
@@ -227,25 +224,22 @@ begin
     i:=StringListStartsWith(FCrossOpts,'-Cp');
     if i=-1 then
     begin
-      aOption:='-Cpavr5';
+      if length(FSubArch)=0 then FSubArch:='avr5';
+      aOption:='-Cp'+FSubArch;
       FCrossOpts.Add(aOption+' ');
-      //When compiling for avr-embedded, a sub-architecture (e.g. SUBARCH=avr25 or SUBARCH=avr35) must be defined)
-      FSubArch:='avr5';
-      ShowInfo('Did not find any -Cp architecture parameter; using -Cpavr5 and SUBARCH=avr5.');
+      ShowInfo('Did not find any -Cp architecture parameter; using -Cp'+FSubArch+' and SUBARCH='+FSubArch+'.');
     end else aOption:=Trim(FCrossOpts[i]);
     AddFPCCFGSnippet(aOption);
+
   end;
 end;
 
 constructor TAny_Embeddedavr.Create;
 begin
   inherited Create;
-  FBinUtilsPrefix:='avr-embedded-'; //crossfpc nomenclature; module will also search for android crossbinutils
-  FBinUtilsPath:='';
-  FFPCCFGSnippet:=''; //will be filled in later
-  FLibsPath:='';
-  FTargetCPU:='avr';
-  FTargetOS:='embedded';
+  FTargetCPU:=TCPU.avr;
+  FTargetOS:=TOS.embedded;
+  Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
@@ -260,7 +254,8 @@ var
 
 initialization
   Any_Embeddedavr:=TAny_Embeddedavr.Create;
-  RegisterExtension(Any_Embeddedavr.TargetCPU+'-'+Any_Embeddedavr.TargetOS,Any_Embeddedavr);
+  RegisterCrossCompiler(Any_Embeddedavr.RegisterName,Any_Embeddedavr);
+
 finalization
   Any_Embeddedavr.Destroy;
 end.

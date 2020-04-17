@@ -38,10 +38,6 @@ uses
 
 implementation
 
-const
-  ARCH='arm';
-  OS='darwin';
-
 type
 
 { Tany_darwinarm }
@@ -59,7 +55,6 @@ end;
 
 function Tany_darwinarm.GetLibs(Basepath:string): boolean;
 const
-  DirName=ARCH+'-'+OS;
   LibName='libc.dylib';
 var
   s:string;
@@ -161,8 +156,6 @@ begin
 end;
 
 function Tany_darwinarm.GetBinUtils(Basepath:string): boolean;
-const
-  DirName=ARCH+'-'+OS;
 var
   AsFile: string;
   BinPrefixTry: string;
@@ -212,13 +205,9 @@ end;
 constructor Tany_darwinarm.Create;
 begin
   inherited Create;
-  FTargetCPU:=ARCH;
-  FTargetOS:=OS;
-  FBinUtilsPrefix:=ARCH+'-'+OS+'-';
-  FBinUtilsPath:='';
-  //FBinutilsPathInPath:=true;
-  FFPCCFGSnippet:='';
-  FLibsPath:='';
+  FTargetCPU:=TCPU.arm;
+  FTargetOS:=TOS.darwin;
+  Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
@@ -233,7 +222,8 @@ var
 
 initialization
   any_darwinarm:=Tany_darwinarm.Create;
-  RegisterExtension(any_darwinarm.TargetCPU+'-'+any_darwinarm.TargetOS,any_darwinarm);
+  RegisterCrossCompiler(any_darwinarm.RegisterName,any_darwinarm);
+
 finalization
   any_darwinarm.Destroy;
 

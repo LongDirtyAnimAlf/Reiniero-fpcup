@@ -19,6 +19,7 @@ uses
  Classes,
  SysUtils,
  StrUtils,
+ m_crossinstaller,
  installerCore,
  installerUniversal,
  fpcuputil,
@@ -199,8 +200,8 @@ begin
         end;
       end;
       FInstaller.ConfigFile:=Options.GetOption('','moduleconfig',SafeGetApplicationPath+installerUniversal.CONFIGFILENAME);
-
-      FInstaller.CrossCPU_Target:=Options.GetOption('','cputarget','');
+      s:=Options.GetOption('','cputarget','');
+      if (s<>'') then FInstaller.CrossCPU_Target:=GetTCPU(s);
       FInstaller.CrossOS_SubArch:=Options.GetOption('','subarch','');
       FInstaller.CrossOPT:=Options.GetOption('','crossopt','');
 
@@ -307,14 +308,15 @@ begin
       else
       begin
         if Length(FInstaller.IncludeModules)>0 then FInstaller.IncludeModules:=FInstaller.IncludeModules+',';
-        FInstaller.IncludeModules:=FInstaller.IncludeModules+'lhelp';
+        FInstaller.IncludeModules:=FInstaller.IncludeModules+_LHELP;
       end;
 
       FInstaller.FPCPatches:=Options.GetOption('','fpcpatch','',false);
       {$ifndef FPCONLY}
       FInstaller.LazarusPatches:=Options.GetOption('','lazpatch','',false);
       {$endif}
-      FInstaller.CrossOS_Target:=Options.GetOption('','ostarget','');
+      s:=Options.GetOption('','ostarget','');
+      if (s<>'') then FInstaller.CrossOS_Target:=GetTOS(s);
       {$ifndef FPCONLY}
       s:=Options.GetOption('','primary-config-path','');
       if (s='') then

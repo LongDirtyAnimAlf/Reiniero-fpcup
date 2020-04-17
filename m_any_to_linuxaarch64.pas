@@ -57,8 +57,6 @@ end;
 { Tany_linuxaarch64 }
 
 function Tany_linuxaarch64.GetLibs(Basepath:string): boolean;
-const
-  DirName='aarch64-linux';
 begin
   result:=FLibsFound;
   if result then exit;
@@ -84,10 +82,9 @@ begin
   if result then
   begin
     FLibsFound:=True;
-    //todo: check if -XR is needed for fpc root dir Prepend <x> to all linker search paths
     AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath));
+    //AddFPCCFGSnippet('-XR'+IncludeTrailingPathDelimiter(FLibsPath)+'lib64'); {buildfaq 1.6.4/3.3.1: the directory to look for the target libraries ... just te be safe ...}
     AddFPCCFGSnippet('-Xr/usr/lib');
-    //AddFPCCFGSnippet('-FL/usr/lib/ld-linux.so.2'); {buildfaq 3.3.1: the name of the dynamic linker on the target};
   end;
 end;
 
@@ -100,8 +97,6 @@ end;
 {$endif}
 
 function Tany_linuxaarch64.GetBinUtils(Basepath:string): boolean;
-const
-  DirName='aarch64-linux';
 var
   AsFile: string;
   BinPrefixTry: string;
@@ -149,12 +144,9 @@ end;
 constructor Tany_linuxaarch64.Create;
 begin
   inherited Create;
-  FBinUtilsPrefix:='aarch64-linux-';
-  FBinUtilsPath:='';
-  FFPCCFGSnippet:='';
-  FLibsPath:='';
-  FTargetCPU:='aarch64';
-  FTargetOS:='linux';
+  FTargetCPU:=TCPU.aarch64;
+  FTargetOS:=TOS.linux;
+  Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
@@ -169,7 +161,8 @@ var
 
 initialization
   any_linuxaarch64:=Tany_linuxaarch64.Create;
-  RegisterExtension(any_linuxaarch64.TargetCPU+'-'+any_linuxaarch64.TargetOS,any_linuxaarch64);
+  RegisterCrossCompiler(any_linuxaarch64.RegisterName,any_linuxaarch64);
+
 finalization
   any_linuxaarch64.Destroy;
 

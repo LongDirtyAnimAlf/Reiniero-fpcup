@@ -35,16 +35,9 @@ interface
 
 uses
   Classes, SysUtils,
-  {$IFDEF UNIX}
-  baseunix,
-  {$ENDIF}
   m_crossinstaller,fileutil,fpcuputil;
 
 implementation
-
-const
-  ARCH='x86_64';
-  OS='netbsd';
 
 type
 
@@ -62,8 +55,6 @@ end;
 { TAny_NetBSDx64 }
 
 function TAny_NetBSDx64.GetLibs(Basepath:string): boolean;
-const
-  DirName=ARCH+'-'+OS;
 begin
   result:=FLibsFound;
   if result then exit;
@@ -75,6 +66,8 @@ begin
   if not result then
     result:=SimpleSearchLibrary(BasePath,DirName,LIBCNAME);
 
+  SearchLibraryInfo(result);
+
   if result then
   begin
     FLibsFound:=true;
@@ -85,23 +78,20 @@ begin
     AddFPCCFGSnippet('-k"-rpath=/usr/X11R7/lib"');
     AddFPCCFGSnippet('-k"-rpath=/usr/pkg/lib"');
     //AddFPCCFGSnippet('-Xr/usr/lib'); {buildfaq 3.3.1: makes the linker create the binary so that it searches in the specified directory on the target system for libraries}
-    SearchLibraryInfo(result);
   end;
   {
   else
   begin
     //libs path is optional; it can be empty
     ShowInfo('Libspath ignored; it is optional for this cross compiler.');
-    FLibsPath:='';
     FLibsFound:=true;
+    FLibsPath:='';
     result:=true;
   end;
   }
 end;
 
 function TAny_NetBSDx64.GetBinUtils(Basepath:string): boolean;
-const
-  DirName=ARCH+'-'+OS;
 var
   AsFile: string;
   BinPrefixTry: string;
@@ -115,16 +105,6 @@ begin
   result:=SearchBinUtil(BasePath,AsFile);
   if not result then
     result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
-
-  // Also allow for crossfpc naming
-  if not result then
-  begin
-    BinPrefixTry:=ARCH+'-'+OS+'-';
-    AsFile:=BinPrefixTry+'as'+GetExeExt;
-    result:=SearchBinUtil(BasePath,AsFile);
-    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
-    if result then FBinUtilsPrefix:=BinPrefixTry;
-  end;
 
   // Also allow for crossbinutils without prefix
   if not result then
@@ -155,13 +135,9 @@ end;
 constructor TAny_NetBSDx64.Create;
 begin
   inherited Create;
-  FTargetCPU:=ARCH;
-  FTargetOS:=OS;
-  // This prefix is HARDCODED into the compiler so should match (or be empty, actually)
-  FBinUtilsPrefix:=ARCH+'-'+OS+'-';
-  FBinUtilsPath:='';
-  FFPCCFGSnippet:='';
-  FLibsPath:='';
+  FTargetCPU:=TCPU.x86_64;
+  FTargetOS:=TOS.netbsd;
+  Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
@@ -176,7 +152,7 @@ var
 
 initialization
   Any_NetBSDx64:=TAny_NetBSDx64.Create;
-  RegisterExtension(Any_NetBSDx64.TargetCPU+'-'+Any_NetBSDx64.TargetOS,Any_NetBSDx64);
+  RegisterCrossCompiler(Any_NetBSDx64.RegisterName,Any_NetBSDx64);
 
 finalization
   Any_NetBSDx64.Destroy;

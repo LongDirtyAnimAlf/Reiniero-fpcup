@@ -79,8 +79,6 @@ end;
 { Twin32_linuxmips }
 
 function Twin32_linuxmips.GetLibs(Basepath:string): boolean;
-const
-  DirName='mips-linux';
 begin
   result:=FLibsFound;
   if result then exit;
@@ -113,8 +111,6 @@ end;
 {$endif}
 
 function Twin32_linuxmips.GetBinUtils(Basepath:string): boolean;
-const
-  DirName='mips-linux';
 var
   AsFile: string;
 begin
@@ -143,12 +139,9 @@ constructor Twin32_linuxmips.Create;
 begin
   inherited Create;
   FCrossModuleNamePrefix:='TWinAll';
-  FBinUtilsPrefix:='mips-linux-';
-  FBinUtilsPath:='';
-  FFPCCFGSnippet:='';
-  FLibsPath:='';
-  FTargetCPU:='mips'; //mips: fpc 2.7+ only; FPC 2.6 does not support mips
-  FTargetOS:='linux';
+  FTargetCPU:=TCPU.mips;
+  FTargetOS:=TOS.linux;
+  Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
@@ -165,7 +158,8 @@ var
 // Even though it's officially for Win32, win64 can run x86 binaries without problem, so allow it.
 initialization
   Win32_linuxmips:=Twin32_linuxmips.Create;
-  RegisterExtension(Win32_linuxmips.TargetCPU+'-'+Win32_linuxmips.TargetOS,Win32_linuxmips);
+  RegisterCrossCompiler(Win32_linuxmips.RegisterName,Win32_linuxmips);
+
 finalization
   Win32_linuxmips.Destroy;
 {$ENDIF}

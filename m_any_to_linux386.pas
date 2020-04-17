@@ -70,69 +70,88 @@ end;
 
 function Tany_linux386.GetLibs(Basepath:string): boolean;
 const
-  DirName='i386-linux';
+  NormalDirName='i386-linux';
+  MUSLDirName='i386-musllinux';
 var
-  s:string;
-  i:integer;
+  aDirName,aLibName,s:string;
 begin
   result:=FLibsFound;
   if result then exit;
 
+  if FMUSL then
+  begin
+    aDirName:=MUSLDirName;
+    aLibName:='libc.musl-'+GetCPU(TargetCPU)+'.so.1';
+  end
+  else
+  begin
+    aDirName:=NormalDirName;
+    aLibName:=LIBCNAME;
+  end;
+
   // begin simple: check presence of library file in basedir
-  result:=SearchLibrary(Basepath,LIBCNAME);
+  result:=SearchLibrary(Basepath,aLibName);
 
   // first search local paths based on libbraries provided for or adviced by fpc itself
   if not result then
-    result:=SimpleSearchLibrary(BasePath,DirName,LIBCNAME);
+    result:=SimpleSearchLibrary(BasePath,aDirName,aLibName);
 
   if result then
   begin
     FLibsFound:=True;
     AddFPCCFGSnippet('-Xd'); {buildfaq 3.4.1 do not pass parent /lib etc dir to linker}
     AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath)); {buildfaq 1.6.4/3.3.1: the directory to look for the target  libraries}
-    //AddFPCCFGSnippet('-XR'+ExcludeTrailingPathDelimiter(FLibsPath)); {buildfaq 1.6.4/3.3.1: the directory to look for the target libraries ... just te be safe ...}
+    //Remember: -XR sets the sysroot path used for linking
+    //AddFPCCFGSnippet('-XR'+IncludeTrailingPathDelimiter(FLibsPath)+'lib64'); {buildfaq 1.6.4/3.3.1: the directory to look for the target libraries ... just te be safe ...}
+    //Remember: -Xr adds a  rlink path to the linker
     AddFPCCFGSnippet('-Xr/usr/lib');
+
+    if FMUSL then
+    begin
+      aLibName:='ld-musl-'+GetCPU(TargetCPU)+'.so.1';
+      AddFPCCFGSnippet('-FL/lib/'+aLibName);
+    end;
   end;
 
   if not result then
   begin
-    {$IFDEF UNIX}
+    {$IFDEF LINUX}
     {$IFDEF MULTILIB}
     FLibsPath:='/usr/lib/i386-linux-gnu'; //debian (multilib) Jessie+ convention
     result:=DirectoryExists(FLibsPath);
-    if (NOT result) then
-    begin
-      FLibsPath:='/lib32';
-      result:=DirectoryExists(FLibsPath);
-    end;
     if result then
     begin
       FLibsFound:=True;
       AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath));
-      //AddFPCCFGSnippet('-FL'+IncludeTrailingPathDelimiter(FLibsPath)+'ld-linux.so.2');
       {$ifdef CPU64}
-      s:='/usr/lib32';
+
+      s:='/lib32';
       if DirectoryExists(s) then
       begin
-        AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(s));
+        s:=s+DirectorySeparator;
+        AddFPCCFGSnippet('-Fl'+s);
       end;
+
+      s:='/usr/lib32';
+      if DirectoryExists(s) then
+      s:=s+DirectorySeparator;
+      AddFPCCFGSnippet('-Fl'+s);
+
+      s:='/lib/i386-linux-gnu';
+      if DirectoryExists(s) then
+      s:=s+DirectorySeparator;
+      AddFPCCFGSnippet('-Fl'+s);
+
       // gcc 32bit multilib
       s:=IncludeTrailingPathDelimiter(GetStartupObjects)+'32';
       if DirectoryExists(s) then
       begin
         AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(s));
       end;
-      // set linker target; multilib //
-      // we could test multilib by asking the linker ; ld --target-help, and process the output to see if elf32-i386 is supported
-      //AddFPCCFGSnippet('-k-b elf32-i386'));
       {$endif}
-      //AddFPCCFGSnippet('-FL/lib/ld-linux.so.2');
-      {buildfaq 3.3.1: makes the linker create the binary so that it searches in the specified directory on the target system for libraries}
-      //AddFPCCFGSnippet('-Xr'+ExcludeTrailingPathDelimiter(FLibsPath));
-      //AddFPCCFGSnippet('-Xr/usr/lib);
     end else ShowInfo('Searched but not found (multilib) libspath '+FLibsPath);
-    {$ENDIF}
-    {$ENDIF}
+    {$ENDIF MULTILIB}
+    {$ENDIF LINUX}
   end;
 
   SearchLibraryInfo(result);
@@ -148,14 +167,21 @@ end;
 
 function Tany_linux386.GetBinUtils(Basepath:string): boolean;
 const
-  DirName='i386-linux';
+  NormalDirName='i386-linux';
+  MUSLDirName='i386-musllinux';
 var
   AsFile: string;
   BinPrefixTry: string;
+  aDirName: string;
   s:string;
 begin
   result:=inherited;
   if result then exit;
+
+  if FMUSL then
+    aDirName:=MUSLDirName
+  else
+    aDirName:=NormalDirName;
 
   AsFile:=FBinUtilsPrefix+'as'+GetExeExt;
 
@@ -199,7 +225,7 @@ begin
   {$ENDIF}
 
   if not result then
-    result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+    result:=SimpleSearchBinUtil(BasePath,aDirName,AsFile);
 
   // Also allow for (cross)binutils without prefix
   if not result then
@@ -207,7 +233,7 @@ begin
     BinPrefixTry:='';
     AsFile:=BinPrefixTry+'as'+GetExeExt;
     result:=SearchBinUtil(BasePath,AsFile);
-    if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+    if not result then result:=SimpleSearchBinUtil(BasePath,aDirName,AsFile);
     if result then FBinUtilsPrefix:=BinPrefixTry;
   end;
 
@@ -225,12 +251,9 @@ end;
 constructor Tany_linux386.Create;
 begin
   inherited Create;
-  FBinUtilsPrefix:='i386-linux-';
-  FBinUtilsPath:='';
-  FFPCCFGSnippet:='';
-  FLibsPath:='';
-  FTargetCPU:='i386';
-  FTargetOS:='linux';
+  FTargetCPU:=TCPU.i386;
+  FTargetOS:=TOS.linux;
+  Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
@@ -245,7 +268,8 @@ var
 
 initialization
   any_linux386:=Tany_linux386.Create;
-  RegisterExtension(any_linux386.TargetCPU+'-'+any_linux386.TargetOS,any_linux386);
+  RegisterCrossCompiler(any_linux386.RegisterName,any_linux386);
+
 finalization
   any_linux386.Destroy;
 

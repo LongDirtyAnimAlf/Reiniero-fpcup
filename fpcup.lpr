@@ -80,8 +80,14 @@ uses
   m_any_to_linuxmipsel,
   m_any_to_linuxpowerpc64,
   m_any_to_linuxaarch64,
+  m_any_to_aros386,
+  m_any_to_arosx64,
+  m_any_to_arosarm,
+  m_any_to_amigam68k,
+  m_any_to_morphospowerpc,
   m_any_to_haiku386,
   m_any_to_haikux64,
+  m_any_to_dragonflyx64,
   m_any_to_embeddedarm,
   m_any_to_embeddedavr,
   m_any_to_embeddedmipsel,
@@ -91,6 +97,7 @@ uses
   m_any_to_solarisx64,
   m_any_to_solarissparc,
   m_any_to_msdosi8086,
+  m_any_to_go32v2i386,
   {$ifdef LINUX}
   //{$ifdef CPUX86}
   m_linux386_to_mips,
@@ -98,9 +105,15 @@ uses
   //{$endif}
   {$endif}
   {$ifdef Darwin}
+  {$ifndef CPUX86_64}
   m_crossdarwin64,
+  {$endif}
+  {$ifndef CPUX86}
   m_crossdarwin32,
+  {$endif}
+  {$ifdef CPUX86}
   m_crossdarwinpowerpc,
+  {$endif}
   m_crossdarwinarm,
   m_crossdarwinaarch64,
   m_crossdarwinx64iphonesim,
@@ -108,8 +121,10 @@ uses
   {$else}
   m_any_to_darwin386,
   m_any_to_darwinx64,
+  {$ifdef MSWINDOWS}
   m_any_to_darwinpowerpc,
   m_any_to_darwinpowerpc64,
+  {$endif MSWINDOWS}
   m_any_to_darwinarm,
   m_any_to_darwinaarch64,
   {$endif}
@@ -126,9 +141,10 @@ uses
   m_any_to_freebsdx64,
   m_any_to_freebsd386,
   m_any_to_openbsd386,
+  m_any_to_openbsdx64,
   {$endif}
   {$ifdef MSWINDOWS}
-  m_win32_to_linuxmips, m_win32_to_go32v2i386, m_win32_to_wincearm,
+  m_win32_to_linuxmips, m_win32_to_wincearm,
   {$ifdef win64}
   m_crosswin32,
   {$endif win64}

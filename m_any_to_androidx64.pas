@@ -67,8 +67,6 @@ end;
 { TAny_Androidx64 }
 
 function TAny_Androidx64.GetLibs(Basepath:string): boolean;
-const
-  DirName=ARCH+'-'+OS;
   // we presume, libc.so has to be present in a cross-library for arm
   // we presume, libandroid.so has to be present in a cross-library for arm
   //LibName='libandroid.so';
@@ -210,8 +208,6 @@ begin
 end;
 
 function TAny_Androidx64.GetBinUtils(Basepath:string): boolean;
-const
-  DirName=ARCH+'-'+OS;
 var
   AsFile: string;
   PresetBinPath:string;
@@ -392,13 +388,9 @@ end;
 constructor TAny_Androidx64.Create;
 begin
   inherited Create;
-  FTargetCPU:=ARCH;
-  FTargetOS:=OS;
-  // This prefix is HARDCODED into the compiler so should match (or be empty, actually)
-  FBinUtilsPrefix:=ARCH+'-linux-'+OS+'-';//standard eg in Android NDK 9
-  FBinUtilsPath:='';
-  FFPCCFGSnippet:='';
-  FLibsPath:='';
+  FTargetCPU:=TCPU.x86_64;
+  FTargetOS:=TOS.android;
+  Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
@@ -413,7 +405,7 @@ var
 
 initialization
   Any_Androidx64:=TAny_Androidx64.Create;
-  RegisterExtension(Any_Androidx64.TargetCPU+'-'+Any_Androidx64.TargetOS,Any_Androidx64);
+  RegisterCrossCompiler(Any_Androidx64.RegisterName,Any_Androidx64);
 finalization
   Any_Androidx64.Destroy;
 end.
