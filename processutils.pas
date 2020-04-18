@@ -3,22 +3,16 @@ unit processutils;
 {$mode objfpc}{$H+}
 
 {$ifdef LCL}
-{.$define THREADEDEXECUTE}
+{$define THREADEDEXECUTE}
 {$endif}
 
 interface
 
 uses
   Classes, SysUtils,
-  {$ifdef THREADEDEXECUTE}
-  LMessages,
-  {$endif}
   Process;
 
 const
-  {$ifdef THREADEDEXECUTE}
-  WM_THREADINFO = LM_USER + 2010;
-  {$endif}
   {$IFDEF MSWINDOWS}
   PATHVARNAME = 'Path'; //Name for path environment variable
   {$ELSE}
@@ -199,6 +193,7 @@ type
   // PrependPath is prepended to existing path. If empty, keep current path
   function ExecuteCommandInDir(Commandline, Directory: string; out Output:string; PrependPath: string; Verbose:boolean): integer; overload;
 
+  procedure ThreadLog(Msg: string);
 
 implementation
 
@@ -206,24 +201,30 @@ uses
   {$ifdef LCL}
   Forms,
   Controls, // for crHourGlass
-  {$endif}
   {$ifdef THREADEDEXECUTE}
   LCLIntf,
+  LMessages,
+  {$endif}
   {$endif}
   Pipes,
   Math,
   FileUtil,
   LazFileUtils;
 
-{$ifdef THREADEDEXECUTE}
 procedure ThreadLog(Msg: string);
+{$ifdef THREADEDEXECUTE}
+const
+  WM_THREADINFO = LM_USER + 2010;
 var
   PInfo: PChar;
 begin
   PInfo := StrAlloc(Length(Msg)+1);
   StrCopy(PInfo, PChar(Msg));
-  Application.MainForm.Handle;
-  PostMessage(Application.MainForm.Handle, WM_THREADINFO, NativeUInt(PInfo), 0);
+  if (Assigned(Application) AND Assigned(Application.MainForm)) then PostMessage(Application.MainForm.Handle, WM_THREADINFO, {%H-}NativeUInt(PInfo), 0);
+end;
+{$else}
+begin
+  writeln(Msg);
 end;
 {$endif}
 
@@ -534,11 +535,7 @@ begin
       end;
       if Verbose then
       begin
-        {$ifdef THREADEDEXECUTE}
         ThreadLog(LineStr);
-        {$else}
-        writeln(LineStr);
-        {$endif}
       end;
     end;
   finally
@@ -740,6 +737,7 @@ begin
   finally
     LeaveCriticalSection;
   end;
+  (*
   if NeedProcTerminate and (Process<>nil) then
   begin
     Process.Terminate(AbortedExitCode);
@@ -749,6 +747,7 @@ begin
     Process.WaitOnExit(5000);
     {$ENDIF}
   end;
+  *)
 end;
 
 function TExternalTool.CanFree: boolean;
@@ -783,6 +782,7 @@ end;
 procedure TExternalTool.WaitForExit;
 begin
   repeat
+    //if Thread=nil then exit;
     EnterCriticalSection;
     try
       if Stage=etsDestroying then exit;
@@ -822,6 +822,7 @@ begin
   WaitForExit;
   //result:=ExitCode;
   result:=ExitStatus;
+  //result:=(ErrorMessage='') and (not Terminated) and (ExitStatus=0);
 end;
 
 { TExternalToolThread }
@@ -927,10 +928,11 @@ var
   ErrMsg: String;
   ok: Boolean;
   HasOutput: Boolean;
-  i:integer;
+  ProcessCounter:integer;
 begin
   SetLength({%H-}Buf,4096);
   ErrorFrameCount:=0;
+  ProcessCounter:=0;
   fLines:=TStringList.Create;
   try
     try
@@ -976,7 +978,8 @@ begin
       OutputLine:='';
       StdErrLine:='';
       LastUpdate:=GetTickCount64;
-      while (Tool<>nil) and (Tool.Stage=etsRunning) do begin
+      while (Tool<>nil) and (Tool.Stage=etsRunning) do
+      begin
         if Tool.ReadStdOutBeforeErr then begin
           HasOutput:=ReadInputPipe(Tool.Process.Output,OutputLine,false)
                   or ReadInputPipe(Tool.Process.Stderr,StdErrLine,true);
@@ -1001,9 +1004,9 @@ begin
           {$ifndef THREADEDEXECUTE}
           {$ifdef LCL}
           Sleep(10);
-          if (i<100) then Inc(i);
+          if (ProcessCounter<100) then Inc(ProcessCounter);
           // process message queue after 50ms
-          if ((i DIV 5)=0) then
+          if ((ProcessCounter DIV 5)=0) then
           begin
             try
               Application.ProcessMessages;
@@ -1013,7 +1016,7 @@ begin
             if Application.Terminated then Break;
           end;
           // set cursor after 1 second of execution time
-          if (i=99) then Application.MainForm.Cursor:=crHourGlass;
+          if (ProcessCounter=99) then Application.MainForm.Cursor:=crHourGlass;
           {$endif}
           {$else}
           Sleep(50);
@@ -1027,6 +1030,16 @@ begin
       begin
         Tool.AddOutputLines(fLines);
         fLines.Clear;
+      end;
+
+      if (Tool<>nil) and (Tool.FStage=etsWaitingForStop) then
+      begin
+        Tool.Process.Terminate(AbortedExitCode);
+        {$IF FPC_FULLVERSION < 30300}
+        Tool.Process.WaitOnExit;
+        {$ELSE}
+        Tool.Process.WaitOnExit(5000);
+        {$ENDIF}
       end;
 
       {$ifndef THREADEDEXECUTE}

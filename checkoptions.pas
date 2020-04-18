@@ -115,12 +115,16 @@ begin
           begin
             // Empty file, invalid section name etc
             Options.IniFile:='';
-            infoln('Specified ini file '+sIniFile+' cannot be read or does not have section '+Options.IniFileSection+'. Aborting.',etError);
+            {$ifndef LCL}
+            writeln('Specified ini file '+sIniFile+' cannot be read or does not have section '+Options.IniFileSection+'. Aborting.');
+            {$endif}
             halt(3);
           end;
           on F:Exception do
           begin
-            infoln('Error reading specified ini file '+sIniFile+'. Exception: '+F.Message+'. Aborting!',etError);
+            {$ifndef LCL}
+            writeln('Error reading specified ini file '+sIniFile+'. Exception: '+F.Message+'. Aborting!');
+            {$endif}
             halt(3);
           end;
         end;
@@ -351,8 +355,8 @@ begin
       on E:Exception do
       begin
         result:=ERROR_WRONG_OPTIONS; //Quit with error resultcode
-        infoln('Error: wrong command line options given: '+E.Message,etError);
         {$ifndef LCL}
+        writeln('Error: wrong command line options given: '+E.Message);
         writeln('Press enter to see a list of all available command line options.');
         readln;
         {$endif}
@@ -369,7 +373,9 @@ begin
     except
       on E:Exception do
       begin
-        infoln('Error: wrong command line options given: '+E.Message,etError);
+        {$ifndef LCL}
+        writeln('Error: wrong command line options given: '+E.Message);
+        {$endif}
         result:=ERROR_WRONG_OPTIONS; //Quit with error resultcode
         exit;
       end;
@@ -435,7 +441,9 @@ begin
     except
       on E:Exception do
       begin
-        infoln('Error: wrong command line options given: '+E.Message,etError);
+        {$ifndef LCL}
+        writeln('Error: wrong command line options given: '+E.Message);
+        {$endif}
         result:=ERROR_WRONG_OPTIONS; //Quit with error resultcode
         exit;
       end;
@@ -477,8 +485,8 @@ begin
         if LeftOverOptions.Count>0 then
         begin
           result:=ERROR_WRONG_OPTIONS; //Quit with error resultcode
-          infoln('Error: wrong command line options given: '+LeftOverOptions.Text,etError);
           {$ifndef LCL}
+          writeln('Error: wrong command line options given: '+LeftOverOptions.Text);
           writeln('Press enter to see a list of all available command line options.');
           readln;
           {$endif}
@@ -509,7 +517,6 @@ begin
       FInstaller.PersistentOptions:=Options.PersistentOptions;
 
       {$ifndef LCL}
-
       writeln('Options:');
       if FInstaller.Clean then
       begin
@@ -675,7 +682,7 @@ begin
           result:=OK_IGNORE; //quit without error
         end;
       end;
-      {$endif}
+      {$endif LCL}
     end;
   finally
     Options.free;

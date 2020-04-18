@@ -332,8 +332,6 @@ function GetWindowsAppDataFolder: string;
 {$ENDIF MSWINDOWS}
 //check if there is at least one directory between Dir and root
 function ParentDirectoryIsNotRoot(Dir:string):boolean;
-// Shows non-debug messages on screen (no logging); also shows debug messages if DEBUG defined
-procedure infoln(Message: string; const Level: TEventType=etInfo);
 // Moves file if it exists, overwriting destination file
 function MoveFile(const SrcFilename, DestFilename: string): boolean;
 // Correct line-endings
@@ -866,7 +864,6 @@ var
 begin
   result:=false;
 
-  try
     if FileExists(filename) then SysUtils.DeleteFile(filename);
     with TResourceStream.Create(hInstance, resourcename, RT_RCDATA) do
     try
@@ -880,10 +877,6 @@ begin
       Free;
     end;
     result:=FileExists(filename);
-  except
-    on E: Exception do
-      infoln('File from resource creation error: '+E.Message,etError);
-  end;
 end;
 
 
@@ -901,7 +894,6 @@ var
 begin
   result:=false;
 
-  try
     if NOT FileExists(filename) then
     begin
       result:=SaveFileFromResource(filename,resourcename);
@@ -967,12 +959,6 @@ begin
   end;
 
     result:=FileExists(filename);
-
-  except
-    on E: Exception do
-      infoln('File creation error: '+E.Message,etError);
-  end;
-
 end;
 
 {$IFDEF MSWINDOWS}
@@ -1075,8 +1061,6 @@ begin
 
     if OperationSucceeded=false then
     begin
-      infoln('CreateDesktopShortcut: xdg-desktop-icon failed to create shortcut to '+Target,etWarning);
-      infoln('CreateDesktopShortcut: going to create shortcut manually',etWarning);
       aDirectory:='/usr/share/applications';
       if false then // skip global
       //if DirectoryExists(aDirectory) then
@@ -1118,9 +1102,6 @@ var
   ScriptText: TStringList;
   ScriptFile: string;
 begin
-  {$IFDEF MSWINDOWS}
-  infoln('Todo: write me (CreateHomeStartLink)!', etDebug);
-  {$ENDIF MSWINDOWS}
   {$IFDEF UNIX}
   //create dir if it doesn't exist
   ForceDirectoriesSafe(ExtractFilePath(IncludeTrailingPathDelimiter(SafeExpandFileName('~'))+ShortcutName));
@@ -1136,8 +1117,6 @@ begin
       ScriptText.SaveToFile(ScriptFile);
       FpChmod(ScriptFile, &755); //rwxr-xr-x
     except
-      on E: Exception do
-        infoln('CreateHomeStartLink: could not create link: '+E.Message,etWarning);
     end;
   finally
     ScriptText.Free;
@@ -1749,10 +1728,6 @@ begin
 
   if Length(HTTPProxyHost)>0 then aDownLoader.setProxy(HTTPProxyHost,HTTPProxyPort,HTTPProxyUser,HTTPProxyPassword);
   result:=aDownLoader.getStream(URL,DataStream);
-  if (NOT result) then
-  begin
-    infoln('Error while trying to stream download '+URL,etDebug);
-  end;
 end;
 
 function DownloadBase(aDownLoader:TBasicDownloader;URL, TargetFile: string; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''): boolean;
@@ -1778,7 +1753,6 @@ begin
   end;
   if (NOT result) then
   begin
-    infoln('Error while trying to file download '+URL,etDebug);
     if FileExists(TargetFile) then SysUtils.DeleteFile(TargetFile); // delete stale targetfile
   end;
 end;
@@ -1816,8 +1790,6 @@ begin
     URI.Host:='netix.dl.sourceforge.net';
     aURL:=P+'://'+URI.Host+URI.Path+URI.Document
   end else aURL:=URL;
-
-  infoln('WinINet downloader: Getting ' + URI.Document + ' from '+P+'://'+URI.Host+URI.Path,etDebug);
 
   if (Pos('api.github.com',URL)>0) AND (Pos('fpcupdeluxe',URL)>0) then
     NetHandle := InternetOpen(FPCUPUSERAGENT, INTERNET_OPEN_TYPE_PRECONFIG, nil, nil, 0)
@@ -1937,7 +1909,6 @@ begin
   if AnsiEndsStr(URLMAGIC,URL) then SetLength(aURL,Length(URL)-Length(URLMAGIC));
   URI:=ParseURI(aURL);
   P:=URI.Protocol;
-  infoln('PowerShell downloader: Getting ' + URI.Document + ' from '+P+'://'+URI.Host+URI.Path,etDebug);
   //result:=(ExecuteCommand('powershell -command "[Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; (new-object System.Net.WebClient).DownloadFile('''+URL+''','''+TargetFile+''')"', Output, False)=0);
   //result:=(ExecuteCommand('powershell -command "(new-object System.Net.WebClient).DownloadFile('''+URL+''','''+TargetFile+''')"', Output, False)=0);
 
@@ -1965,7 +1936,6 @@ begin
   if AnsiEndsStr(URLMAGIC,URL) then SetLength(aURL,Length(URL)-Length(URLMAGIC));
   URI:=ParseURI(aURL);
   P:=URI.Protocol;
-  infoln('BitsAdmin downloader: Getting ' + URI.Document + ' from '+P+'://'+URI.Host+URI.Path,etDebug);
   //result:=(ExecuteCommand('bitsadmin.exe /SetMinRetryDelay "JobName" 1', Output, False)=0);
   //result:=(ExecuteCommand('bitsadmin.exe /SetNoProgressTimeout "JobName" 1', Output, False)=0);
   result:=(ExecuteCommand('bitsadmin.exe /transfer "JobName" '+URL+' '+TargetFile, Output, False)=0);
@@ -1997,7 +1967,6 @@ begin
     finally
       aDownLoader.Destroy;
     end;
-    if (NOT result) then infoln('FPCUP downloader failure.',etDebug);
   end;
 
   {$ifdef Windows}
@@ -2005,7 +1974,6 @@ begin
   if (NOT result) then
   begin
     result:=DownloadByWinINet(URL,DataStream);
-    if (NOT result) then infoln('Windows WinINet downloader failure.',etDebug);
   end;
 
   //Fourth resort: use BitsAdmin
@@ -2014,7 +1982,6 @@ begin
   begin
     SysUtils.Deletefile(TargetFile);
     result:=DownloadByBitsAdmin(URL,TargetFile);
-    if (NOT result) then infoln('Windows BitsAdmin downloader failure.',etDebug);
   end;
   }
   {$endif}
@@ -2025,7 +1992,6 @@ begin
     aDownLoader:=TWGetDownLoader.Create;
     try
       result:=DownloadBase(aDownLoader,URL,DataStream,HTTPProxyHost,HTTPProxyPort,HTTPProxyUser,HTTPProxyPassword);
-      if (NOT result) then infoln('FPCUP force wget downloader failure.',etDebug);
     finally
       aDownLoader.Destroy;
     end;
@@ -2051,7 +2017,6 @@ begin
   finally
     aDownLoader.Destroy;
   end;
-    if (NOT result) then infoln('FPCUP native downloader failure.',etDebug);
   end;
 
   {$ifdef MSWindows}
@@ -2063,7 +2028,6 @@ begin
     begin
       SysUtils.Deletefile(TargetFile);
       result:=DownloadByWinINet(URL,TargetFile);
-      if (NOT result) then infoln('Windows WinINet downloader failure.',etDebug);
     end;
   end;
 
@@ -2072,7 +2036,6 @@ begin
   begin
     SysUtils.Deletefile(TargetFile);
     result:=DownloadByPowerShell(URL,TargetFile);
-    if (NOT result) then infoln('Windows PowerShell downloader failure.',etDebug);
   end;
 
   if CheckWin32Version(6,2) then
@@ -2082,7 +2045,6 @@ begin
     begin
       SysUtils.Deletefile(TargetFile);
       result:=DownloadByWinINet(URL,TargetFile);
-      if (NOT result) then infoln('Windows WinINet downloader failure.',etDebug);
     end;
   end;
 
@@ -2093,7 +2055,6 @@ begin
   begin
     SysUtils.Deletefile(TargetFile);
     result:=DownloadByBitsAdmin(URL,TargetFile);
-      if (NOT result) then infoln('Windows BitsAdmin downloader failure.',etDebug);
   end;
   end;
 
@@ -2109,7 +2070,6 @@ begin
     finally
       aDownLoader.Destroy;
     end;
-    if (NOT result) then infoln('FPCUP wget downloader failure.',etDebug);
 end;
 
   if (NOT result) then SysUtils.Deletefile(TargetFile);
@@ -2138,7 +2098,6 @@ begin
       begin
       if (aStore.URL=aURL) then
       begin
-        infoln('GetGitHubFileList :We have a cache for GitHub URL: '+aURL,etDebug);
         if (aStore.FileList.Count>0) then
         begin
           for Content in aStore.FileList do fileurllist.Add(Content);
@@ -2149,16 +2108,12 @@ begin
       end;
     end;
 
-  infoln('GetGitHubFileList :No cache for GitHub URL: '+aURL,etDebug);
-  infoln('GetGitHubFileList :Creating cache for GitHub URL: '+aURL,etDebug);
-
   SetLength(GitHubFileListCache,Length(GitHubFileListCache)+1);
   with GitHubFileListCache[High(GitHubFileListCache)] do
   begin
     URL:=aURL;
     FileList:=TStringList.Create;
   end;
-  infoln('GetGitHubFileList :Created cache for GitHub URL: '+aURL,etDebug);
 
   if (NOT result) then
   begin
@@ -2378,33 +2333,6 @@ end;
 
 {$ENDIF MSWINDOWS}
 
-procedure infoln(Message: string; const Level: TEventType=etInfo);
-begin
-{$IFNDEF NOCONSOLE}
-  // Note: these strings should remain as is so any fpcupgui highlighter can pick it up
-  if (Level<>etDebug) then
-    begin
-      if AnsiPos(LineEnding, Message)>0 then writeln(''); //Write an empty line before multiline messagse
-      writeln(BeginSnippet+' '+Seriousness[Level]+' '+ Message); //we misuse this for info output
-      {$IFDEF MSWINDOWS}
-      Sleep(1);
-      {$ENDIF}
-    end
-  else
-    begin
-    {$IFDEF DEBUG}
-    {DEBUG conditional symbol is defined using
-    Project Options/Other/Custom Options using -dDEBUG}
-    if AnsiPos(LineEnding, Message)>0 then writeln(''); //Write an empty line before multiline messagse
-    writeln(BeginSnippet+' '+Seriousness[Level]+' '+ Message); //we misuse this for info output
-    {$IFDEF MSWINDOWS}
-    Sleep(1);
-    {$ENDIF}
-    {$ENDIF}
-    end;
-{$ENDIF NOCONSOLE}
-end;
-
 function MoveFile(const SrcFilename, DestFilename: string): boolean;
 // We might (in theory) be moving files across partitions so we cannot use renamefile
 begin
@@ -2616,9 +2544,6 @@ var
 begin
   FoundLinkFile:=false;
   result:='';
-
-  try
-    //start with a very simple filesearch.
 
     for i:=Low(SEARCHDIRS) to High(SEARCHDIRS) do
     begin
@@ -2840,15 +2765,6 @@ begin
         end;
     end;
   end;
-
-  finally
-    {$IF (not defined(Solaris)) and (not defined(Darwin))}
-    if (NOT FoundLinkFile) then
-    begin
-      infoln('GetStartupObjects: Could not find ' + LINKFILE + ' on system. Expect linking warnings/errors.',etWarning);
-    end;
-    {$ENDIF}
-end;
 
 end;
 
@@ -3160,9 +3076,7 @@ begin
   result:=true;
   if (NOT DirectoryExists(Dir)) then
   begin
-    //infoln('Non existing directory: '+Dir+'. Going to create it.', etInfo);
     result:=ForceDirectories(Dir);
-    if (NOT result) then infoln('Could not create directory: '+Dir, etWarning);
   end;
 end;
 
@@ -3198,16 +3112,13 @@ begin
     {$ELSE}
     ResultCode := ExecuteCommand(Executable + ' ' + Parameters, Output, False);
     {$ENDIF}
-    {$IFDEF DEBUG}
-    infoln(Executable + ': Result code was: ' + IntToStr(ResultCode),etDebug);
-    {$ENDIF}
     if ResultCode >= 0 then //Not all non-0 result codes are errors. There's no way to tell, really
     begin
       if (ExpectOutput <> '') and (AnsiPos(ExpectOutput, Output) = 0) then
       begin
         // This is not a warning/error message as sometimes we can use multiple different versions of executables
-        if Level<>etCustom then infoln(Executable + ' is not a valid ' + ExeName + ' application. ' +
-          ExeName + ' exists but shows no (' + ExpectOutput + ') in its output.',Level);
+        //if Level<>etCustom then infoln(Executable + ' is not a valid ' + ExeName + ' application. ' +
+        //  ExeName + ' exists but shows no (' + ExpectOutput + ') in its output.',Level);
         OperationSucceeded := false;
       end
       else
@@ -3218,24 +3129,19 @@ begin
     end
     else
     begin
-      {$IFDEF DEBUG}
-      infoln(Executable + ' is not a valid ' + ExeName + ' application (' + ExeName + ' result code was: ' + IntToStr(ResultCode) + ')',etDebug);
-      {$ELSE}
-      // This is not a warning/error message as sometimes we can use multiple different versions of executables
-      if Level<>etCustom then infoln(Executable + ' is not a valid ' + ExeName + ' application (' + ExeName + ' result code was: ' + IntToStr(ResultCode) + ')',Level);
-      {$ENDIF}
+      //if Level<>etCustom then infoln(Executable + ' is not a valid ' + ExeName + ' application (' + ExeName + ' result code was: ' + IntToStr(ResultCode) + ')',Level);
       OperationSucceeded := false;
     end;
   except
     on E: Exception do
     begin
       // This is not a warning/error message as sometimes we can use multiple different versions of executables
-      if Level<>etCustom then infoln(Executable + ' is not a valid ' + ExeName + ' application (' + 'Exception: ' + E.ClassName + '/' + E.Message + ')', Level);
+      //if Level<>etCustom then infoln(Executable + ' is not a valid ' + ExeName + ' application (' + 'Exception: ' + E.ClassName + '/' + E.Message + ')', Level);
       OperationSucceeded := false;
     end;
   end;
-  if OperationSucceeded then
-    infoln('Found valid ' + ExeName + ' application.',etDebug);
+  //if OperationSucceeded then
+  //  infoln('Found valid ' + ExeName + ' application.',etDebug);
   Result := OperationSucceeded;
 end;
 
@@ -3875,7 +3781,6 @@ var
 begin
   result:=true;
   if FStarted then exit;
-  infoln('TThreadedUnzipper: Going to extract files from ' + ASrcFile + ' into ' + ADstDir,etInfo);
   FUnZipper.Clear;
   FUnZipper.OnPercent:=10;
   FUnZipper.FileName := ASrcFile;
@@ -3903,25 +3808,25 @@ begin
   FCurrentFile:=ExtractFileName(AFileName);
   if FTotalFileCnt>50000 then
   begin
-    if (FFileCnt MOD 5000)=0 then infoln('Extracted #'+InttoStr(FFileCnt)+' files out of #'+InttoStr(FTotalFileCnt),etInfo);
+    //if (FFileCnt MOD 5000)=0 then infoln('Extracted #'+InttoStr(FFileCnt)+' files out of #'+InttoStr(FTotalFileCnt),etInfo);
   end
   else
   if FTotalFileCnt>5000 then
   begin
-    if (FFileCnt MOD 500)=0 then infoln('Extracted #'+InttoStr(FFileCnt)+' files out of #'+InttoStr(FTotalFileCnt),etInfo);
+    //if (FFileCnt MOD 500)=0 then infoln('Extracted #'+InttoStr(FFileCnt)+' files out of #'+InttoStr(FTotalFileCnt),etInfo);
   end
   else
   if FTotalFileCnt>500 then
   begin
-    if (FFileCnt MOD 50)=0 then infoln('Extracted #'+InttoStr(FFileCnt)+' files out of #'+InttoStr(FTotalFileCnt),etInfo);
+    //if (FFileCnt MOD 50)=0 then infoln('Extracted #'+InttoStr(FFileCnt)+' files out of #'+InttoStr(FTotalFileCnt),etInfo);
   end
   else
   if FTotalFileCnt>50 then
   begin
-    if (FFileCnt MOD 5)=0 then infoln('Extracted #'+InttoStr(FFileCnt)+' files out of #'+InttoStr(FTotalFileCnt),etInfo);
-  end
-  else
-    infoln('Extracted '+FCurrentFile+'. #'+InttoStr(FFileCnt)+' out of #'+InttoStr(FTotalFileCnt),etInfo);
+    //if (FFileCnt MOD 5)=0 then infoln('Extracted #'+InttoStr(FFileCnt)+' files out of #'+InttoStr(FTotalFileCnt),etInfo);
+  end;
+  //else
+  //  infoln('Extracted '+FCurrentFile+'. #'+InttoStr(FFileCnt)+' out of #'+InttoStr(FTotalFileCnt),etInfo);
 end;
 
 function TNormalUnzipper.DoUnZip(const ASrcFile, ADstDir: String; Files:array of string):boolean;
@@ -3930,7 +3835,6 @@ var
   x:cardinal;
   s:string;
 begin
-  infoln('TNormalUnzipper: Going to extract files from ' + ASrcFile + ' into ' + ADstDir,etInfo);
   result:=false;
   FUnzipper := TUnzipper.Create;
   try
@@ -3988,11 +3892,11 @@ begin
       except
         on E:EFCreateError do
         begin
-          infoln('TNormalUnzipper: Could not create file.',etError);
+            //infoln('TNormalUnzipper: Could not create file.',etError);
         end
         else
         begin
-          infoln('TNormalUnzipper: Unknown exception error.',etError);
+            //infoln('TNormalUnzipper: Unknown exception error.',etError);
         end;
       end;
       { Flat option only available in FPC >= 3.1 }
@@ -4053,11 +3957,11 @@ begin
       except
         on E:EZipError do
         begin
-          infoln('TNormalUnzipper: Could not unzip file.',etError);
+          //infoln('TNormalUnzipper: Could not unzip file.',etError);
         end
         else
         begin
-          infoln('TNormalUnzipper: Unknown exception error.',etError);
+          //infoln('TNormalUnzipper: Unknown exception error.',etError);
         end;
       end;
     finally
@@ -4088,13 +3992,13 @@ end;
 procedure TLogger.WriteLog(Message: string; ToConsole: Boolean);
 begin
   FLog.Info(Message);
-  if ToConsole then infoln(Message,etInfo);
+  //if ToConsole then infoln(Message,etInfo);
 end;
 
 procedure TLogger.WriteLog(EventType: TEventType;Message: string; ToConsole: Boolean);
 begin
   FLog.Log(EventType, Message);
-  if ToConsole then infoln(Message,EventType);
+  //if ToConsole then infoln(Message,EventType);
 end;
 
 constructor TLogger.Create;
@@ -4212,7 +4116,7 @@ begin
   //Show progress only every 5 seconds
   if GetUpTickCount>StoredTickCount+5000 then
   begin
-    infoln('Download progress '+aFileName+': '+KB(APos),etInfo);
+    //infoln('Download progress '+aFileName+': '+KB(APos),etInfo);
     StoredTickCount:=GetUpTickCount;
   end;
 end;
@@ -4261,23 +4165,29 @@ begin
 end;
 
 procedure TUseNativeDownLoader.DoHeaders(Sender : TObject);
-Var
+{$ifndef LCL}
+var
   I : Integer;
+{$endif}
 begin
+  {$ifndef LCL}
   writeln('Response headers received:');
   with (Sender as TFPHTTPClient) do
     for I:=0 to ResponseHeaders.Count-1 do
       writeln(ResponseHeaders[i]);
+  {$endif}
 end;
 
 procedure TUseNativeDownLoader.DoProgress(Sender: TObject; const ContentLength, CurrentPos: Int64);
 begin
+  {$ifndef LCL}
   If (ContentLength=0) then
     writeln('Reading headers : ',CurrentPos,' Bytes.')
   else If (ContentLength=-1) then
     writeln('Reading data (no length available) : ',CurrentPos,' Bytes.')
   else
     writeln('Reading data : ',CurrentPos,' Bytes of ',ContentLength);
+  {$endif}
 end;
 
 procedure TUseNativeDownLoader.DoPassword(Sender: TObject; var RepeatRequest: Boolean);
@@ -4312,6 +4222,7 @@ begin
       H:=Copy(H,1,Pos('"',H)-1);
     end;
 
+    {$ifndef LCL}
     writeln('Authorization required !');
     {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
     if Length(H)>1 then
@@ -4329,13 +4240,16 @@ begin
     end;
     end;
     {$ENDIF}
+    {$endif LCL}
   end;
 end;
 
 procedure TUseNativeDownLoader.ShowRedirect(ASender: TObject; const ASrc: String;
   var ADest: String);
 begin
+  {$ifndef LCL}
   writeln('Following redirect from ',ASrc,'  ==> ',ADest);
+  {$endif}
 end;
 
 procedure TUseNativeDownLoader.SetContentType(AValue:string);
@@ -4627,7 +4541,6 @@ begin
   if AnsiEndsStr(URLMAGIC,URL) then SetLength(aURL,Length(URL)-Length(URLMAGIC));
   URI:=ParseURI(aURL);
   P:=URI.Protocol;
-  infoln('Native downloader: Getting ' + URI.Document + ' from '+P+'://'+URI.Host+URI.Path,etDebug);
 
   if (DataStream is TDownloadStream) then
   begin
@@ -4835,12 +4748,10 @@ begin
   result:=false;
   {$ifdef ENABLECURL}
   result:=LibCurlDownload(URL,DataStream);
-  if (result) then infoln('LibCurl FTP file download success !!!', etDebug);
   {$endif}
   if (NOT result) then
   begin
     result:=WGetDownload(URL,DataStream);
-    if (result) then infoln('Wget FTP file download success !', etDebug);
   end;
 end;
 
@@ -4849,12 +4760,10 @@ begin
   result:=false;
   {$ifdef ENABLECURL}
   result:=LibCurlDownload(URL,DataStream);
-  if (result) then infoln('LibCurl HTTP file download success !!!', etDebug);
   {$endif}
   if (NOT result) then
   begin
     result:=WGetDownload(URL,DataStream);
-    if (result) then infoln('Wget HTTP file download success !', etDebug);
   end;
 end;
 
@@ -5038,12 +4947,10 @@ begin
   result:=false;
   {$ifdef ENABLECURL}
   result:=LibCurlFTPFileList(URL,filelist);
-  if (result) then infoln('LibCurl FTP filelist success !!!!', etDebug);
   {$endif}
   if (NOT result) then
   begin
     result:=WGetFTPFileList(URL,filelist);
-    if (result) then infoln('Wget FTP filelist success !!!!', etDebug);
   end;
 end;
 
@@ -5055,7 +4962,6 @@ begin
 
   if (NOT FWGETOk) then
   begin
-    infoln('No Wget binary found: download will fail !!', etDebug);
     exit;
   end;
 
@@ -5081,7 +4987,6 @@ begin
   result:=false;
   URI:=ParseURI(URL);
   P:=URI.Protocol;
-  infoln('Wget downloader: Getting ' + URI.Document + ' from '+P+'://'+URI.Host+URI.Path,etDebug);
 
   if (DataStream is TDownloadStream) then
   begin

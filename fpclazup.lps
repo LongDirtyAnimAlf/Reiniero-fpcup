@@ -3,7 +3,7 @@
   <ProjectSession>
     <PathDelim Value="\"/>
     <Version Value="12"/>
-    <BuildModes Count="3" Active="Debug">
+    <BuildModes Count="3" Active="win32">
       <Item1 Name="linuxarmhf">
         <MacroValues Count="1">
           <Macro1 Name="LCLWidgetType" Value="nogui"/>
@@ -181,12 +181,10 @@ end;"/>
         <Filename Value="installerfpc.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerFpc"/>
-        <IsVisibleTab Value="True"/>
-        <EditorIndex Value="1"/>
+        <EditorIndex Value="-1"/>
         <TopLine Value="2070"/>
-        <CursorPos Y="2079"/>
+        <CursorPos X="37" Y="2070"/>
         <UsageCount Value="200"/>
-        <Loaded Value="True"/>
       </Unit5>
       <Unit6>
         <Filename Value="installerlazarus.pas"/>
@@ -216,7 +214,7 @@ end;"/>
       <Unit9>
         <Filename Value="fpcup.ini"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="2"/>
+        <EditorIndex Value="1"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
         <DefaultSyntaxHighlighter Value="Ini"/>
@@ -510,26 +508,14 @@ end;"/>
       <FormatVersion Value="2"/>
       <Modes ActiveMode="default"/>
     </RunParams>
-    <HistoryLists Count="3">
-      <List0 Name="WorkingDirectory" Type="File" Count="1"/>
-      <List1 Name="LaunchingApplication" Type="File" Count="1">
+    <HistoryLists Count="2">
+      <List0 Name="LaunchingApplication" Type="File" Count="1">
         <Item1 Value="C:\WINDOWS\system32\cmd.exe /C ${TargetCmdLine}"/>
-      </List1>
-      <List2 Name="CommandLineParameters" Count="2">
+      </List0>
+      <List1 Name="CommandLineParameters" Count="2">
         <Item1 Value="--verbose"/>
         <Item2 Value="--verbose --fpcURL=&quot;newpascal&quot; --lazURL=&quot;newpascal&quot; --ostarget=&quot;darwin&quot; --cputarget=&quot;i386&quot; --only=&quot;FPCCleanOnly,FPCBuildOnly&quot; --installdir=&quot;c:\NewPascal\&quot;"/>
-      </List2>
+      </List1>
     </HistoryLists>
   </ProjectSession>
-  <Debugging>
-    <BreakPoints>
-      <Item>
-        <Kind Value="bpkSource"/>
-        <WatchScope Value="wpsLocal"/>
-        <WatchKind Value="wpkWrite"/>
-        <Source Value="installerfpc.pas"/>
-        <Line Value="2079"/>
-      </Item>
-    </BreakPoints>
-  </Debugging>
 </CONFIG>
