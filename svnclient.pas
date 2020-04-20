@@ -37,8 +37,6 @@ interface
 
 uses
   Classes, SysUtils,
-  processutils,
-  FileUtil {Requires LCL},
   repoclient;
 
 const
@@ -74,7 +72,6 @@ type
 
     procedure CheckOutOrUpdate; override;
     function Commit(Message: string): boolean; override;
-    function Execute(Command: string): integer; override;
     function GetDiffAll: string; override;
     procedure LocalModifications(var FileList: TStringList); override;
     function LocalRepositoryExists: boolean; override;
@@ -86,20 +83,20 @@ type
     function CheckURL: boolean;
     // Run SVN log command for repository and put results into Log
     procedure Log(var Log: TStringList); override;
-
-    constructor Create;
-    destructor Destroy; override;
   end;
 
 
 implementation
 
 uses
-  fpcuputil,
+  FileUtil {Requires LCL},
   {$IFDEF UNIX}
   BaseUnix,Unix,
   {$ENDIF}
-  strutils, regexpr;
+  StrUtils, regexpr,
+  InstallerCore,
+  processutils,
+  fpcuputil;
 
 { TSVNClient }
 function TSVNClient.GetRepoExecutableName: string;
@@ -168,10 +165,11 @@ begin
   // If file exists, check for valid svn executable
   if FileExists(FRepoExecutable) then
   begin
-    rv:=ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' --version', Verbose);
+    rv:=TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' --version', Verbose);
     if rv<>0 then
     begin
       FRepoExecutable := '';
+      ThreadLog('SVN client found, but error code during check: '+InttoStr(rv),etError);
     end;
   end
   else
@@ -279,12 +277,15 @@ begin
     end
     else
     {$ENDIF}
-    FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + Command, Output, Verbose);
-
+    FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + Command, Output, True);
     FReturnOutput := Output;
 
-    if (ReturnCode = 0) then break else
+    if (ReturnCode=AbortedExitCode) then exit;
+
+    if (ReturnCode=0) then break else
     begin
+      ThreadLog('SVN client error return code: '+InttoStr(ReturnCode),etWarning);
+
       Inc(RetryAttempt);
 
       //Give everybody a chance to relax ;)
@@ -302,7 +303,8 @@ begin
         if RetryAttempt>CONNECTIONMAXRETRIES then break else
         begin
           // remove locks if any
-          ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive ' + DoubleQuoteIfNeeded(LocalRepository), Verbose);
+          FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive ' + DoubleQuoteIfNeeded(LocalRepository), Verbose);
+          if (ReturnCode=AbortedExitCode) then exit;
           // try again
           continue;
         end;
@@ -315,7 +317,8 @@ begin
       if (Pos('E155004', Output) > 0) OR (Pos('E175002', Output) > 0) then
       begin
         // Let's try one time to fix it and don't update FReturnCode here
-        ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive ' + DoubleQuoteIfNeeded(LocalRepository), Verbose); //attempt again
+        FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive ' + DoubleQuoteIfNeeded(LocalRepository), Verbose); //attempt again
+        if (ReturnCode=AbortedExitCode) then exit;
         // We probably ended up with a local repository where not all files were checked out
         // Let's call update to finalize.
         Update;
@@ -326,7 +329,8 @@ begin
       if Pos('E155036', Output) > 0 then
       begin
         // Let's try one time upgrade to fix it (don't update FReturnCode here)
-        ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' upgrade '+ProxyCommand+' --non-interactive ' + DoubleQuoteIfNeeded(LocalRepository), Verbose); //attempt again
+        FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' upgrade '+ProxyCommand+' --non-interactive ' + DoubleQuoteIfNeeded(LocalRepository), Verbose); //attempt again
+        if (ReturnCode=AbortedExitCode) then exit;
         // Now update again:
         Update;
       end;
@@ -393,7 +397,9 @@ begin
   {$ENDIF}
 
   // always perform a cleaup before doing anything else ... just to be sure !
-  ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive ' + DoubleQuoteIfNeeded(LocalRepository), Verbose);
+  FReturnCode:=TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive ' + DoubleQuoteIfNeeded(LocalRepository), Verbose);
+
+  if (ReturnCode=AbortedExitCode) then exit;
 
   FileList := TStringList.Create;
   try
@@ -423,17 +429,20 @@ begin
     end
     else
     {$ENDIF}
-    FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + command, Output, Verbose);
+    FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + command, Output, Verbose);
     FReturnOutput := Output;
+
+    if (ReturnCode=AbortedExitCode) then exit;
 
     if (ReturnCode <> 0) then
     begin
-      RepoInfo:='SVN client error return code: '+InttoStr(ReturnCode);
+      ThreadLog('SVN client error return code: '+InttoStr(ReturnCode),etError);
     end;
 
     if (Pos('An obstructing working copy was found', Output) > 0) then
     begin
-      RepoInfo:='SVN reported than an obstructing working copy was found.';
+      ThreadLog('SVN reported than an obstructing working copy was found.',etError);
+      ThreadLog('Please try to resolve.',etError);
       FReturnCode := -1;
       exit;
     end;
@@ -454,7 +463,8 @@ begin
         }
         begin
           // Let's try to release locks; don't update FReturnCode
-          ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive ' + DoubleQuoteIfNeeded(LocalRepository), Verbose); //attempt again
+          FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive ' + DoubleQuoteIfNeeded(LocalRepository), Verbose); //attempt again
+          if (ReturnCode=AbortedExitCode) then exit;
         end;
         //Give everybody a chance to relax ;)
         Sleep(500);
@@ -489,15 +499,19 @@ begin
         FileList.Clear;
         ParseFileList(Output, FileList, ['?','!']);
         }
-        FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + command, FReturnOutput, Verbose);
+        FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + command, FReturnOutput, Verbose);
+        if (ReturnCode=AbortedExitCode) then exit;
+
         AfterErrorRetry := AfterErrorRetry + 1;
 
         // last resort measures
         if (AfterErrorRetry = ERRORMAXRETRIES) then
         begin
           //revert local changes to try to cleanup errors ...
-          //ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' revert -R '+ProxyCommand+' --non-interactive ' + DoubleQuoteIfNeeded(LocalRepository), Verbose); //revert changes
-          ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive --remove-unversioned --remove-ignored ' + DoubleQuoteIfNeeded(LocalRepository), Verbose); //attempt again
+          //FReturnCode := TInstaller(FParent).ExecuteCommandCompat(DoubleQuoteIfNeeded(FRepoExecutable) + ' revert -R '+ProxyCommand+' --non-interactive ' + DoubleQuoteIfNeeded(LocalRepository), Verbose); //revert changes
+          FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive --remove-unversioned --remove-ignored ' + DoubleQuoteIfNeeded(LocalRepository), Verbose); //attempt again
+          if (ReturnCode=AbortedExitCode) then exit;
+
         end;
 
       end;
@@ -541,14 +555,8 @@ begin
     Result:=True;
     exit;
   end;
-  FReturnCode := ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + ' commit '+GetProxyCommand+' --message='+Message, LocalRepository, FReturnOutput, Verbose);
+  FReturnCode := TInstaller(FParent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + ' commit '+GetProxyCommand+' --message='+Message, LocalRepository, FReturnOutput, Verbose);
   Result:=(FReturnCode=0);
-end;
-
-function TSVNClient.Execute(Command: string): integer;
-begin
-  FReturnCode := ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + ' '+Command+' '+GetProxyCommand, LocalRepository, FReturnOutput, Verbose);
-  Result := FReturnCode;
 end;
 
 function TSVNClient.GetDiffAll: string;
@@ -620,11 +628,11 @@ begin
   if result='' then
   begin
     // Using proxy more for completeness here
-    //FReturnCode := ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + GetProxyCommand + ' diff '+' .', LocalRepository, Result, Verbose);
+    //FReturnCode := TInstaller(FParent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + GetProxyCommand + ' diff '+' .', LocalRepository, Result, Verbose);
     // with external diff program
-    //FReturnCode := ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + GetProxyCommand + ' diff --diff-cmd diff --extensions "--binary -wbua"'+' .', LocalRepository, Result, Verbose);
+    //FReturnCode := TInstaller(FParent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + GetProxyCommand + ' diff --diff-cmd diff --extensions "--binary -wbua"'+' .', LocalRepository, Result, Verbose);
     // ignoring whitespaces
-    FReturnCode := ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + GetProxyCommand + ' diff -x --ignore-space-change'+' .', LocalRepository, result, Verbose);
+    FReturnCode := TInstaller(FParent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + GetProxyCommand + ' diff -x --ignore-space-change'+' .', LocalRepository, result, Verbose);
   end;
 
   FReturnOutput := result;
@@ -635,7 +643,7 @@ var
   s: string = '';
 begin
   // Using proxy more for completeness here
-  FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' log ' + GetProxyCommand + ' ' + DoubleQuoteIfNeeded(LocalRepository), s, Verbose);
+  FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' log ' + GetProxyCommand + ' ' + DoubleQuoteIfNeeded(LocalRepository), s, Verbose);
   FReturnOutput := s;
   Log.Text := s;
 end;
@@ -647,16 +655,16 @@ begin
     FReturnCode := 0;
     exit;
   end;
-  FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' revert '+GetProxyCommand+' --recursive ' + DoubleQuoteIfNeeded(LocalRepository), FReturnOutput, Verbose);
+  FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' revert '+GetProxyCommand+' --recursive ' + DoubleQuoteIfNeeded(LocalRepository), FReturnOutput, Verbose);
 end;
 
 function TSVNClient.CheckURL: boolean;
 var
   Output:string;
 begin
-  FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' ls '+ Repository, false);
-  //FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' ls '+ Repository, Output, Verbose);
-  //FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' ls --depth empty '+ Repository, Output, Verbose);
+  FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' ls '+ Repository, false);
+  //FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' ls '+ Repository, Output, Verbose);
+  //FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' ls --depth empty '+ Repository, Output, Verbose);
   result:=(FReturnCode=0);
   //result:=(Output=GetFileNameFromURL(Repository));
 end;
@@ -749,10 +757,12 @@ begin
     Command := ' switch ' + ProxyCommand + Command + ' --force --quiet --non-interactive --trust-server-cert -r ' + FDesiredRevision + ' ' + Repository + ' ' + DoubleQuoteIfNeeded(LocalRepository);
 
   // always perform a cleaup before doing anything else ... just to be sure !
-  ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive ' + DoubleQuoteIfNeeded(LocalRepository), Verbose);
+  FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive ' + DoubleQuoteIfNeeded(LocalRepository), Verbose);
+  if (ReturnCode=AbortedExitCode) then exit;
 
-  FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + command, Output, Verbose);
+  FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + command, Output, Verbose);
   FReturnOutput := Output;
+  if (ReturnCode=AbortedExitCode) then exit;
 
   // If command fails, e.g. due to misconfigured firewalls blocking ICMP etc, retry a few times
   RetryAttempt := 1;
@@ -760,10 +770,10 @@ begin
   begin
     while (ReturnCode <> 0) and (RetryAttempt < ERRORMAXRETRIES) do
     begin
-      //ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive ' + DoubleQuoteIfNeeded(LocalRepository), Verbose); //attempt again
+      //TInstaller(FParent).ExecuteCommandCompat(DoubleQuoteIfNeeded(FRepoExecutable) + ' cleanup --non-interactive ' + DoubleQuoteIfNeeded(LocalRepository), Verbose); //attempt again
       //relax ... ;-)
       Sleep(500);
-      FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + Command, Output, Verbose);
+      FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + Command, Output, Verbose);
       FReturnOutput := Output;
       RetryAttempt := RetryAttempt + 1;
     end;
@@ -781,7 +791,7 @@ begin
     exit;
   end;
 
-  FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' status '+GetProxyCommand+' --depth infinity ' + DoubleQuoteIfNeeded(LocalRepository), Output, Verbose);
+  FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' status '+GetProxyCommand+' --depth infinity ' + DoubleQuoteIfNeeded(LocalRepository), Output, Verbose);
   FReturnOutput := Output;
   FileList.Clear;
   AllFiles := TStringList.Create;
@@ -812,7 +822,7 @@ begin
     exit;
   end;
 
-  FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' info ' + DoubleQuoteIfNeeded(LocalRepository), Output, Verbose);
+  FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' info ' + DoubleQuoteIfNeeded(LocalRepository), Output, Verbose);
   FReturnOutput := Output;
 
   // If command fails due to wrong version, try again
@@ -821,11 +831,11 @@ begin
     // svn: E155036: Please see the 'svn upgrade' command
     // svn: E155036: The working copy is too old to work with client. You need to upgrade the working copy first
     // Let's try one time upgrade to fix it (don't update FReturnCode here)
-    if Pos('E155036', Output) > 0 then ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' upgrade --non-interactive ' + DoubleQuoteIfNeeded(LocalRepository), Verbose);
+    if Pos('E155036', Output) > 0 then TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' upgrade --non-interactive ' + DoubleQuoteIfNeeded(LocalRepository), Verbose);
     //Give everybody a chance to relax ;)
     Sleep(500);
     //attempt again
-    FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' info ' + DoubleQuoteIfNeeded(LocalRepository), Output, Verbose);
+    FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' info ' + DoubleQuoteIfNeeded(LocalRepository), Output, Verbose);
     FReturnOutput := Output;
   end;
 
@@ -939,7 +949,7 @@ begin
               end
               else
               {$ENDIF}
-              FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + Command, Output, Verbose);
+              FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + Command, Output, Verbose);
             end
             else
             begin
@@ -949,7 +959,7 @@ begin
               exit;
             end;
        end
-       else FReturnCode := ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' info ' + DoubleQuoteIfNeeded(LocalRepository), Output, Verbose);
+       else FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' info ' + DoubleQuoteIfNeeded(LocalRepository), Output, Verbose);
 
     FReturnOutput := Output;
     // Could have used svnversion but that would have meant calling yet another command...
@@ -1035,17 +1045,6 @@ function TSVNClient.GetLocalRevisionWholeRepo: string;
 begin
   GetLocalRevisions;
   Result := FLocalRevisionWholeRepo;
-end;
-
-
-constructor TSVNClient.Create;
-begin
-  inherited Create;
-end;
-
-destructor TSVNClient.Destroy;
-begin
-  inherited Destroy;
 end;
 
 end.

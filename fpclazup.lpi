@@ -395,13 +395,13 @@ end;"/>
     </PublishOptions>
     <RunParams>
       <local>
-        <CommandLineParams Value="--verbose --fpcURL=&quot;newpascal&quot; --lazURL=&quot;newpascal&quot; --ostarget=&quot;darwin&quot; --cputarget=&quot;i386&quot; --only=&quot;FPCCleanOnly,FPCBuildOnly&quot; --installdir=&quot;c:\NewPascal\&quot;"/>
+        <CommandLineParams Value="--verbose"/>
       </local>
       <FormatVersion Value="2"/>
       <Modes Count="1">
         <Mode0 Name="default">
           <local>
-            <CommandLineParams Value="--verbose --fpcURL=&quot;newpascal&quot; --lazURL=&quot;newpascal&quot; --ostarget=&quot;darwin&quot; --cputarget=&quot;i386&quot; --only=&quot;FPCCleanOnly,FPCBuildOnly&quot; --installdir=&quot;c:\NewPascal\&quot;"/>
+            <CommandLineParams Value="--verbose"/>
           </local>
         </Mode0>
       </Modes>

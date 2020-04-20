@@ -13,6 +13,16 @@ uses
   Process;
 
 const
+  {$ifdef LCL}
+  BeginSnippet='fpcupdeluxe:'; //helps identify messages as coming from fpcupdeluxe instead of make etc
+  {$else}
+  {$ifndef FPCONLY}
+  BeginSnippet='fpclazup:'; //helps identify messages as coming from fpclazup instead of make etc
+  {$else}
+  BeginSnippet='fpcup:'; //helps identify messages as coming from fpcup instead of make etc
+  {$endif}
+  {$endif}
+
   {$IFDEF MSWINDOWS}
   PATHVARNAME = 'Path'; //Name for path environment variable
   {$ELSE}
@@ -87,9 +97,12 @@ type
     FReadStdOutBeforeErr: boolean;
     FTitle: string;
     FProcessEnvironment:TProcessEnvironment;
+    FCmdLineExe: string;
     function GetCmdLineParams: string;
     procedure SetCmdLineParams(aParams: string);
+    procedure SetCmdLineExe(aExe: string);
     procedure SetTitle(const AValue: string);
+    procedure RunEvent(Sender,Context : TObject;Status:TRunCommandEventCode;const Message:string);
   protected
     FErrorMessage: string;
     FTerminated: boolean;
@@ -112,6 +125,7 @@ type
 
     // process
     property Process: TProcess read FProcess;
+    property Executable: string read FCmdLineExe write SetCmdLineExe;
     property CmdLineParams: string read GetCmdLineParams write SetCmdLineParams;
     property Stage: TExternalToolStage read FStage;
     procedure Execute; virtual; abstract;
@@ -162,11 +176,12 @@ type
     procedure AddOutputLines(Lines: TStringList);
     procedure SetThread(AValue: TExternalToolThread);
     procedure DoTerminate;
+    procedure SyncAutoFree({%H-}aData: PtrInt=0);
   protected
     procedure DoExecute; override;
     procedure DoStart;
     function CanFree: boolean; override;
-    procedure QueueAsyncAutoFree; virtual; abstract;
+    procedure QueueAsyncAutoFree;
   public
     constructor Create(aOwner: TComponent); override;
     destructor Destroy; override;
@@ -180,20 +195,7 @@ type
     function ExecuteAndWait:integer;
   end;
 
-  // Convenience functions
-  // Runs command, returns result code. Negative codes are processutils internal error codes
-  function ExecuteCommand(Commandline: string; Verbose:boolean): integer; overload;
-  // Runs command, returns result code. Negative codes are processutils internal error codes
-  function ExecuteCommand(Commandline: string; out Output:string; Verbose:boolean): integer; overload;
-  // Runs command, returns result code. Negative codes are processutils internal error codes
-  function ExecuteCommandInDir(Commandline, Directory: string; Verbose:boolean): integer; overload;
-  // Runs command, returns result code. Negative codes are processutils internal error codes
-  function ExecuteCommandInDir(Commandline, Directory: string; out Output:string; Verbose:boolean): integer; overload;
-  // Runs command, returns result code. Negative codes are processutils internal error codes
-  // PrependPath is prepended to existing path. If empty, keep current path
-  function ExecuteCommandInDir(Commandline, Directory: string; out Output:string; PrependPath: string; Verbose:boolean): integer; overload;
-
-  procedure ThreadLog(Msg: string);
+  procedure ThreadLog(const aMsg: string;{%H-}const aEvent:TEventType=etInfo);
 
 implementation
 
@@ -201,98 +203,14 @@ uses
   {$ifdef LCL}
   Forms,
   Controls, // for crHourGlass
-  {$ifdef THREADEDEXECUTE}
   LCLIntf,
   LMessages,
-  {$endif}
   {$endif}
   Pipes,
   Math,
   FileUtil,
   LazFileUtils;
 
-procedure ThreadLog(Msg: string);
-{$ifdef THREADEDEXECUTE}
-const
-  WM_THREADINFO = LM_USER + 2010;
-var
-  PInfo: PChar;
-begin
-  PInfo := StrAlloc(Length(Msg)+1);
-  StrCopy(PInfo, PChar(Msg));
-  if (Assigned(Application) AND Assigned(Application.MainForm)) then PostMessage(Application.MainForm.Handle, WM_THREADINFO, {%H-}NativeUInt(PInfo), 0);
-end;
-{$else}
-begin
-  writeln(Msg);
-end;
-{$endif}
-
-function ExecuteCommand(Commandline: string; Verbose: boolean): integer;
-var
-  s:string='';
-begin
-  Result:=ExecuteCommandInDir(Commandline,'',s,Verbose);
-end;
-
-function ExecuteCommand(Commandline: string; out Output: string;
-  Verbose: boolean): integer;
-begin
-  Result:=ExecuteCommandInDir(Commandline,'',Output,Verbose);
-end;
-
-function ExecuteCommandInDir(Commandline, Directory: string; Verbose: boolean
-  ): integer;
-var
-  s:string='';
-begin
-  Result:=ExecuteCommandInDir(Commandline,Directory,s,Verbose);
-end;
-
-function ExecuteCommandInDir(Commandline, Directory: string;
-  out Output: string; Verbose: boolean): integer;
-begin
-  Result:=ExecuteCommandInDir(CommandLine,Directory,Output,'',Verbose);
-end;
-
-function ExecuteCommandInDir(Commandline, Directory: string;
-  out Output: string; PrependPath: string; Verbose: boolean): integer;
-var
-  OldPath: string;
-  i:integer;
-  aTool:TExternalTool;
-begin
-  aTool:=TExternalTool.Create(nil);
-
-  aTool.Verbose:=Verbose;
-
-  try
-    if Directory<>'' then
-      aTool.Process.CurrentDirectory:=Directory;
-
-    // Prepend specified PrependPath if needed:
-    if PrependPath<>'' then
-    begin
-      OldPath:=aTool.Environment.GetVar(PATHVARNAME);
-      if OldPath<>'' then
-         aTool.Environment.SetVar(PATHVARNAME, PrependPath+PathSeparator+OldPath)
-      else
-        aTool.Environment.SetVar(PATHVARNAME, PrependPath);
-    end;
-
-    aTool.Process.CommandLine:=Commandline;
-    repeat
-      i:=aTool.Process.Parameters.IndexOf('emptystring');
-      if (i<>-1) then aTool.Process.Parameters.Strings[i]:='""';
-    until (i=-1);
-
-    result:=aTool.ExecuteAndWait;
-
-    Output:=aTool.WorkerOutput.Text;
-  finally
-    aTool.Free;
-  end;
-end;
 
 { TProcessEnvironment }
 
@@ -397,8 +315,16 @@ end;
 { TAbstractExternalTool }
 
 function TAbstractExternalTool.GetCmdLineParams: string;
+var
+  i: Integer;
 begin
-  Result:=MergeCmdLineParams(Process.Parameters);
+  Result:='';
+  if Process.Parameters=nil then exit;
+  for i:=0 to Pred(Process.Parameters.Count) do
+  begin
+    if i>0 then Result+=' ';
+    Result:=Result+Process.Parameters[i];
+  end;
 end;
 
 procedure TAbstractExternalTool.SetCmdLineParams(aParams: string);
@@ -414,10 +340,31 @@ begin
   end;
 end;
 
+procedure TAbstractExternalTool.SetCmdLineExe(aExe: string);
+begin
+  FCmdLineExe:=aExe;
+  Process.Executable:=FCmdLineExe;
+end;
+
 procedure TAbstractExternalTool.SetTitle(const AValue: string);
 begin
   if FTitle=AValue then exit;
   FTitle:=AValue;
+end;
+
+procedure TAbstractExternalTool.RunEvent(Sender,Context : TObject;Status:TRunCommandEventCode;const Message:string);
+begin
+  if MainThreadID=ThreadID then
+  begin
+    //if IsMultiThread then
+    {$ifdef LCL}
+    Application.ProcessMessages;
+    {$else}
+    CheckSynchronize(0);
+    {$endif}
+  end;
+  if status=RunCommandIdle then
+    sleep(Process.RunCommandSleepTime);
 end;
 
 function TAbstractExternalTool.CanFree: boolean;
@@ -499,6 +446,9 @@ begin
         ErrorMessage:='ExitStatus '+IntToStr(ExitStatus);
     end;
     if FStage>=etsStopped then exit;
+    if Assigned(FProcessEnvironment) then FProcessEnvironment.Destroy;
+    FProcessEnvironment:=nil;
+    FVerbose:=True;
     FStage:=etsStopped;
   finally
     LeaveCriticalSection;
@@ -526,7 +476,10 @@ begin
       if IsMultiThread then
       begin
       end;
-      if Verbose then
+      if Verbose
+      //OR (NOT IsMultiThread)
+      //{$ifdef LCL}OR True{$endif}
+      then
       begin
         ThreadLog(LineStr);
       end;
@@ -563,11 +516,18 @@ begin
   inherited Create(aOwner);
   FWorkerOutput:=TStringList.Create;
   FProcess:=TProcess.Create(nil);
-  //FProcess.Options:= [poUsePipes{$IFDEF Windows},poStderrToOutPut{$ENDIF}];
-  FProcess.Options := FProcess.Options +[poUsePipes, poStderrToOutPut];
+  //FProcess:=DefaultTProcess.Create(nil);
+  //Process.Options:= [poUsePipes{$IFDEF Windows},poStderrToOutPut{$ENDIF}];
+  //Process.Options := FProcess.Options +[poUsePipes, poStderrToOutPut];
+  Process.Options:= [{poWaitOnExit,}poRunIdle,poUsePipes{$ifdef Windows},poStderrToOutPut{$endif}];
+  //Process.Options := FProcess.Options +[poRunIdle,poUsePipes, poStderrToOutPut]-[poRunSuspended,poWaitOnExit];
   {$ifdef LCL}
   FProcess.ShowWindow := swoHide;
   {$endif}
+
+  Process.RunCommandSleepTime:=10; // rest the default sleep time to 0 (context switch only)
+  Process.OnRunCommandEvent:=@RunEvent;
+
   FVerbose:=true;
 end;
 
@@ -613,9 +573,11 @@ begin
     if Stage<>etsInit then
       raise Exception.Create('TExternalTool.Execute: already initialized');
     FStage:=etsInitializing;
+    WorkerOutput.Clear;
   finally
     LeaveCriticalSection;
   end;
+
 
   // init CurrentDirectory
   Process.CurrentDirectory:=TrimFilename(Process.CurrentDirectory);
@@ -730,7 +692,6 @@ begin
   finally
     LeaveCriticalSection;
   end;
-  (*
   if NeedProcTerminate and (Process<>nil) then
   begin
     Process.Terminate(AbortedExitCode);
@@ -739,13 +700,26 @@ begin
     {$ELSE}
     Process.WaitOnExit(5000);
     {$ENDIF}
+    //To check !!
+    //fTerminated:=false;
   end;
-  *)
 end;
 
 function TExternalTool.CanFree: boolean;
 begin
   Result:=(FThread=nil) and inherited CanFree;
+end;
+
+procedure TExternalTool.SyncAutoFree(aData: PtrInt);
+begin
+  AutoFree;
+end;
+
+procedure TExternalTool.QueueAsyncAutoFree;
+begin
+  {$ifdef LCL}
+  Application.QueueAsyncCall(@SyncAutoFree,0);
+  {$endif}
 end;
 
 function TExternalTool.CanStart: boolean;
@@ -759,7 +733,17 @@ end;
 procedure TExternalTool.Execute;
 begin
   if Stage<>etsInit then
-    raise Exception.Create('TExternalTool.Execute "'+Title+'" already started');
+  begin
+    if Stage=etsStopped then
+    begin
+      EnterCriticalSection;
+      try
+        FStage:=etsInit;
+      finally
+        LeaveCriticalSection;
+      end;
+    end else raise Exception.Create('TExternalTool.Execute "'+Title+'" already started');
+  end;
   DoExecute;
   if Stage<>etsWaitingForStart then
     exit
@@ -775,37 +759,34 @@ end;
 procedure TExternalTool.WaitForExit;
 begin
   repeat
-    EnterCriticalSection;
     try
-      if Stage=etsDestroying then exit;
-      if (Stage=etsStopped) then
-      begin
-        //Make ready for next invoke in case of re-use.
-        FStage:=etsInit;
-        exit;
+      EnterCriticalSection;
+      try
+        if Stage=etsDestroying then break;
+        if (Stage=etsStopped) then break;
+        // still running => wait a bit to prevent cpu cycle burning
+      finally
+        LeaveCriticalSection;
       end;
     finally
-      LeaveCriticalSection;
-    end;
-    if MainThreadID=ThreadID then
-    begin
-      {$ifdef LCL}
-      try
+      if MainThreadID=ThreadID then
+      begin
+        //if IsMultiThread then
+        {$ifdef LCL}
         Application.ProcessMessages;
-      except
-        Application.HandleException(Application);
+        {$else}
+        CheckSynchronize(0); // if we use Thread.Synchronize
+        {$endif}
+        //TExternalToolsBase(Owner).HandleMesages;
       end;
-      {$endif}
     end;
-    // still running => wait a bit to prevent cpu cycle burning
-    Sleep(10);
-    //if Thread=nil then exit;
+    sleep(10)
   until false;
 end;
 
 function TExternalTool.GetExeInfo:string;
 begin
-  result:='Executing: '+Process.Executable+'. With params: '+CmdLineParams+' (working dir: '+ Process.CurrentDirectory +')';
+  result:='Executing: '+Process.Executable+' '+CmdLineParams+' (working dir: '+ Process.CurrentDirectory +')';
 end;
 
 function TExternalTool.ExecuteAndWait:integer;
@@ -817,6 +798,7 @@ begin
   result:=ExitStatus;
   //result:=(ErrorMessage='') and (not Terminated) and (ExitStatus=0);
 end;
+
 
 { TExternalToolThread }
 
@@ -922,10 +904,16 @@ var
   ok: Boolean;
   HasOutput: Boolean;
   ProcessCounter:integer;
+  aExit:longword;
 begin
   SetLength({%H-}Buf,4096);
+
+  //FillChar(Buf[1],SizeOf(Buf)-1,0);
+  FillChar(ErrorFrames,SizeOf(ErrorFrames),0);
+
   ErrorFrameCount:=0;
   ProcessCounter:=0;
+
   fLines:=TStringList.Create;
   try
     try
@@ -991,64 +979,26 @@ begin
           fLines.Clear;
           LastUpdate:=GetTickCount64;
         end;
-        if (not HasOutput) then
+        if (poRunIdle in Tool.Process.Options) and Assigned(Tool.Process.OnRunCommandEvent) then
         begin
-          // no more pending output and process is still running
-          {$ifndef THREADEDEXECUTE}
-          {$ifdef LCL}
-          Sleep(10);
-          if (ProcessCounter<100) then Inc(ProcessCounter);
-          // process message queue after 50ms
-          if ((ProcessCounter DIV 5)=0) then
-          begin
-            try
-              Application.ProcessMessages;
-            except
-              Application.HandleException(Application);
-            end;
-            if Application.Terminated then Break;
-          end;
-          // set cursor after 1 second of execution time
-          if (ProcessCounter=99) then Application.MainForm.Cursor:=crHourGlass;
-          {$endif}
-          {$else}
-          Sleep(50);
-          {$endif}
-        end;
+          Tool.Process.OnRunCommandEvent(self,Nil,RunCommandIdle,'')
+        end
+        else
+          if (not HasOutput) then sleep(50);
       end;
       // add rest of output
+
       if (OutputLine<>'') then fLines.Add(OutputLine);
       if (StdErrLine<>'') then fLines.Add(StdErrLine);
+
       if (Tool<>nil) and (fLines.Count>0) then
       begin
         Tool.AddOutputLines(fLines);
         fLines.Clear;
       end;
 
-      if (Tool<>nil) and (Tool.FStage=etsWaitingForStop) then
-      begin
-        Tool.Process.Terminate(AbortedExitCode);
-        {$IF FPC_FULLVERSION < 30300}
-        Tool.Process.WaitOnExit;
-        {$ELSE}
-        Tool.Process.WaitOnExit(5000);
-        {$ENDIF}
-      end;
-
-      {$ifndef THREADEDEXECUTE}
-      {$ifdef LCL}
-      // Show normal cursor again, if needed
-      if Application.MainForm.Cursor=crHourGlass then
-      begin
-        Application.MainForm.Cursor:=crDefault;
-        try
-          Application.ProcessMessages;
-        except
-          Application.HandleException(Application);
-        end;
-      end;
-     {$endif}
-     {$endif}
+      if (Tool<>nil) and (poRunIdle in Tool.Process.Options) and Assigned(Tool.Process.OnRunCommandEvent) then
+         Tool.Process.OnRunCommandEvent(self,Nil,RunCommandFinished,'');
 
       try
         if Tool.Stage>=etsStopped then exit;
@@ -1089,6 +1039,37 @@ begin
   FTool:=nil;
   inherited Destroy;
 end;
+
+procedure ThreadLog(const aMsg: string;const aEvent:TEventType);
+{$ifdef LCL}
+const
+  WM_THREADINFO = LM_USER + 2010;
+var
+  aMessage:string;
+  PInfo: PChar;
+begin
+  if aEvent=etError then
+    aMessage:=BeginSnippet+' '+'ERROR: '+aMsg
+  else
+  if aEvent=etWarning then
+    aMessage:=BeginSnippet+' '+'WARNING: '+aMsg
+  else
+  if aEvent=etCustom then
+    aMessage:=BeginSnippet+' '+aMsg
+  else
+    aMessage:=aMsg;
+  PInfo := StrAlloc(Length(aMessage)+1);
+  StrCopy(PInfo, PChar(aMessage));
+  if (Assigned(Application) AND Assigned(Application.MainForm)) then PostMessage(Application.MainForm.Handle, WM_THREADINFO, {%H-}NativeUInt(PInfo), 0);
+end;
+{$else}
+begin
+  if aEvent=etError then write(BeginSnippet+' '+'ERROR: ');
+  if aEvent=etWarning then write(BeginSnippet+' '+'WARNING: ');
+  if aEvent=etCustom then write(BeginSnippet+' ');
+  writeln(aMsg);
+end;
+{$endif}
 
 end.
 

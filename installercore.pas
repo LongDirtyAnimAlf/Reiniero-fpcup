@@ -145,6 +145,8 @@ const
     );
   {$endif}
 
+  Seriousness: array [TEventType] of string = ('custom:', 'info:', 'WARNING:', 'ERROR:', 'debug:');
+
   SnipMagicBegin='# begin fpcup do not remove '; //look for this/add this in fpc.cfg cross-compile snippet. Note: normally followed by FPC CPU-os code
   SnipMagicEnd='# end fpcup do not remove'; //denotes end of fpc.cfg cross-compile snippet
   FPCSnipMagic='# If you don''t want so much verbosity use'; //denotes end of standard fpc.cfg
@@ -285,6 +287,7 @@ type
     procedure SetSourceDirectory(value:string);
     function GetShell: string;
     function GetMake: string;
+    procedure SetVerbosity(aValue:boolean);
     procedure SetHTTPProxyHost(AValue: string);
     procedure SetHTTPProxyPassword(AValue: string);
     procedure SetHTTPProxyPort(AValue: integer);
@@ -478,7 +481,7 @@ type
     property SoftFloat: boolean write FSoftFloat;
     property OnlinePatching: boolean write FOnlinePatching;
     // display and log in temp log file all sub process output
-    property Verbose: boolean write FVerbose;
+    property Verbose: boolean write SetVerbosity;
     // use wget as downloader ??
     property UseWget: boolean write FUseWget;
     // get cross-installer
@@ -516,6 +519,11 @@ type
     // Uninstall module
     function UnInstallModule(ModuleName: string): boolean; virtual;
     procedure infoln(Message: string; const Level: TEventType=etInfo);
+    function ExecuteCommand(Commandline: string; Verbosity:boolean): integer; overload;
+    function ExecuteCommand(Commandline: string; out Output:string; Verbosity:boolean): integer; overload;
+    function ExecuteCommandInDir(Commandline, Directory: string; Verbosity:boolean): integer; overload;
+    function ExecuteCommandInDir(Commandline, Directory: string; out Output:string; Verbosity:boolean): integer; overload;
+    function ExecuteCommandInDir(Commandline, Directory: string; out Output:string; PrependPath: string; Verbosity:boolean): integer; overload;
     constructor Create;
     destructor Destroy; override;
   end;
@@ -532,10 +540,11 @@ uses
   {$ifdef LCL}
   //For messaging to MainForm: no writeln
   Forms,
-  LMessages,
+  //LMessages,
   LCLIntf,
   {$endif}
-  FileUtil
+  FileUtil,
+  process
   {$IFDEF UNIX}
   ,LazFileUtils
   {$ENDIF UNIX}
@@ -757,6 +766,11 @@ begin
   Result := FShell;
 end;
 
+procedure TInstaller.SetVerbosity(aValue:boolean);
+begin
+  FVerbose:=aValue;
+  if Assigned(Processor) then Processor.Verbose:=FVerbose;
+end;
 
 procedure TInstaller.SetHTTPProxyHost(AValue: string);
 begin
@@ -1112,7 +1126,7 @@ begin
       if RepoExecutable <> EmptyStr then
       begin
         // check exe, but do not fail: GIT is not 100% essential !
-        CheckExecutable(RepoExecutable, '--version', '');
+        CheckExecutable(RepoExecutable, ['--version'], '');
       end;
       // do not fail: GIT is not 100% essential !
       OperationSucceeded:=True;
@@ -1174,7 +1188,7 @@ begin
       if RepoExecutable <> EmptyStr then
       begin
         // check exe, but do not fail: HG is not 100% essential !
-        CheckExecutable(RepoExecutable, '--version', '');
+        CheckExecutable(RepoExecutable, ['--version'], '');
       end;
       // do not fail: HG is not 100% essential !
       OperationSucceeded:=True;
@@ -1255,7 +1269,7 @@ begin
         { Used to use bunzip2 --version, but on e.g. Fedora Core
         that returns an error message e.g. can't read from cp
         }
-        OperationSucceeded := CheckExecutable(FBunzip2, '--help', '');
+        OperationSucceeded := CheckExecutable(FBunzip2, ['--help'], '');
         if (NOT OperationSucceeded) then infoln(localinfotext+FBunzip2+' not found.',etDebug);
       end;
     end;
@@ -1265,7 +1279,7 @@ begin
       // Check for valid tar executable, if it is needed
       if FTar <> EmptyStr then
       begin
-        OperationSucceeded := CheckExecutable(FTar, '--version', '');
+        OperationSucceeded := CheckExecutable(FTar, ['--version'], '');
         if (NOT OperationSucceeded) then infoln(localinfotext+FTar+' not found.',etDebug);
       end;
     end;
@@ -1273,7 +1287,7 @@ begin
     {$IFNDEF MSWINDOWS}
     if OperationSucceeded then
     begin
-      OperationSucceeded := CheckExecutable(Make, '-v', '');
+      OperationSucceeded := CheckExecutable(Make, ['-v'], '');
       if (NOT OperationSucceeded) then infoln(localinfotext+Make+' not found.',etError);
     end;
     {$ENDIF}
@@ -1648,6 +1662,12 @@ begin
       writelnlog(localinfotext+'Local directory: ' + aClient.LocalRepository, true);
       infoln(localinfotext+'Have you specified the wrong directory or a directory with an old repository checkout?',etDebug);
     end;
+    AbortedExitCode:
+    begin
+      FRepositoryUpdated := false;
+      Result := false;
+      writelnlog(etError, localinfotext+'Download aborted.', true);
+    end;
     else
     begin
       // For now, assume it worked even with non-zero result code. We can because
@@ -1831,6 +1851,12 @@ begin
       writelnlog(etError, localinfotext+'Repository URL in local directory and remote repository don''t match.', true);
       writelnlog(localinfotext+'Local directory: ' + FSVNClient.LocalRepository, true);
       infoln(localinfotext+'Have you specified the wrong directory or a directory with an old repository checkout?',etDebug);
+    end;
+    AbortedExitCode:
+    begin
+      FRepositoryUpdated := false;
+      Result := false;
+      writelnlog(etError, localinfotext+'Download aborted.', true);
     end;
     else
     begin
@@ -3510,6 +3536,7 @@ end;
 
 function TInstaller.GetSanityCheck:boolean;
 begin
+  result:=false;
   if IsFPCInstaller then
   begin
 
@@ -3644,6 +3671,106 @@ begin
     end;
 end;
 
+
+function TInstaller.ExecuteCommand(Commandline: string; Verbosity: boolean): integer;
+var
+  s:string='';
+begin
+  Result:=ExecuteCommandInDir(Commandline,'',s,Verbosity);
+end;
+
+function TInstaller.ExecuteCommand(Commandline: string; out Output: string;
+  Verbosity: boolean): integer;
+begin
+  Result:=ExecuteCommandInDir(Commandline,'',Output,Verbosity);
+end;
+
+function TInstaller.ExecuteCommandInDir(Commandline, Directory: string; Verbosity: boolean
+  ): integer;
+var
+  s:string='';
+begin
+  Result:=ExecuteCommandInDir(Commandline,Directory,s,Verbosity);
+end;
+
+function TInstaller.ExecuteCommandInDir(Commandline, Directory: string;
+  out Output: string; Verbosity: boolean): integer;
+begin
+  Result:=ExecuteCommandInDir(CommandLine,Directory,Output,'',Verbosity);
+end;
+
+function TInstaller.ExecuteCommandInDir(Commandline, Directory: string;
+  out Output: string; PrependPath: string; Verbosity: boolean): integer;
+var
+  OldPath: string;
+  OldVerbosity:boolean;
+  i:integer;
+  aTool:TExternalTool;
+  FParameters:TStrings;
+begin
+
+  result:=0;
+
+  if Assigned(Processor) then
+    aTool:=Processor
+  else
+    aTool:=TExternalTool.Create(nil);
+
+  try
+    aTool.Process.Executable:='';
+    aTool.Process.Parameters.Clear;
+
+    //aTool.Process.CommandLine:=Commandline;
+
+    FParameters:=TStringList.Create;
+    try
+      CommandToList(Commandline,FParameters);
+      if FParameters.Count>0 then
+      begin
+        aTool.Process.Executable:=FParameters[0];
+        repeat
+          i:=FParameters.IndexOf('emptystring');
+          if (i<>-1) then FParameters[i]:='""';
+        until (i=-1);
+        for i:=1 to Pred(FParameters.Count) do
+          aTool.Process.Parameters.Add(FParameters[i]);
+      end;
+    finally
+      FParameters.Free;
+    end;
+
+    if (Length(aTool.Process.Executable)>0) then
+    begin
+      OldVerbosity:=aTool.Verbose;
+      aTool.Verbose:=Verbosity;
+
+      if Directory<>'' then
+        aTool.Process.CurrentDirectory:=Directory;
+
+      // Prepend specified PrependPath if needed:
+      if PrependPath<>'' then
+      begin
+        OldPath:=aTool.Environment.GetVar(PATHVARNAME);
+        if OldPath<>'' then
+           aTool.Environment.SetVar(PATHVARNAME, PrependPath+PathSeparator+OldPath)
+        else
+          aTool.Environment.SetVar(PATHVARNAME, PrependPath);
+      end;
+
+      result:=aTool.ExecuteAndWait;
+
+      Output:=aTool.WorkerOutput.Text;
+
+      aTool.Environment.SetVar(PATHVARNAME, OldPath);
+      aTool.Verbose:=OldVerbosity;
+    end;
+
+  finally
+    if NOT Assigned(Processor) then
+      aTool.Free;
+  end;
+end;
+
 constructor TInstaller.Create;
 begin
   inherited Create;
@@ -3655,9 +3782,9 @@ begin
 
   FCPUCount  := GetLogicalCpuCount;
 
-  FSVNClient := TSVNClient.Create;
-  FGitClient := TGitClient.Create;
-  FHGClient  := THGClient.Create;
+  FSVNClient := TSVNClient.Create(Self);
+  FGitClient := TGitClient.Create(Self);
+  FHGClient  := THGClient.Create(Self);
 
   FShell := '';
 

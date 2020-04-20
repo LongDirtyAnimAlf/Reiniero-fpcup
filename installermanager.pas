@@ -424,11 +424,8 @@ type
 implementation
 
 uses
-  strutils
-  {$ifdef linux}
-  ,processutils
-  {$endif}
-  ;
+  StrUtils,
+  processutils;
 
 { TFPCupManager }
 
@@ -924,6 +921,7 @@ begin
   FModuleEnabledList:=TStringList.Create;
   FModulePublishedList:=TStringList.Create;
   FSequencer:=TSequencer.Create(Self);
+
   FLog:=TLogger.Create;
   // Log filename will be set on first log write
 end;
@@ -1855,6 +1853,7 @@ end;
 
 constructor TSequencer.Create(aParent:TFPCupManager);
 begin
+  inherited Create;
   FParent:=aParent;
 end;
 
