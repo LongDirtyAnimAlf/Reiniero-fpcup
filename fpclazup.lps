@@ -2,8 +2,8 @@
 <CONFIG>
   <ProjectSession>
     <PathDelim Value="\"/>
-    <Version Value="12"/>
-    <BuildModes Count="3" Active="win32">
+    <Version Value="11"/>
+    <BuildModes Count="3" Active="linuxarmhf">
       <Item1 Name="linuxarmhf">
         <MacroValues Count="1">
           <Macro1 Name="LCLWidgetType" Value="nogui"/>
@@ -16,7 +16,7 @@
           </Target>
           <SearchPaths>
             <IncludeFiles Value="$(ProjOutDir)"/>
-            <OtherUnitFiles Value="synaser"/>
+            <OtherUnitFiles Value="synaser;crossinstallers"/>
             <UnitOutputDirectory Value="libfpclazup\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <CodeGeneration>
@@ -60,9 +60,9 @@
             <OtherUnitFiles Value="synaser"/>
             <UnitOutputDirectory Value="libfpclazup\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
-          <Conditionals Value="if TargetOS = &apos;darwin&apos; then begin
-  UsageCustomOptions += &apos; -k-macosx_version_min -k10.6&apos;;
-  UsageCustomOptions += &apos; -XR/Developer/SDKs/MacOSX10.6.sdk/&apos;;
+          <Conditionals Value="if TargetOS = 'darwin' then begin
+  UsageCustomOptions += ' -k-macosx_version_min -k10.6';
+  UsageCustomOptions += ' -XR/Developer/SDKs/MacOSX10.6.sdk/';
 end;"/>
           <CodeGeneration>
             <SmartLinkUnit Value="True"/>
@@ -102,9 +102,9 @@ end;"/>
             <OtherUnitFiles Value="synaser"/>
             <UnitOutputDirectory Value="libfpclazup\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
-          <Conditionals Value="if TargetOS = &apos;darwin&apos; then begin
-  UsageCustomOptions += &apos; -k-macosx_version_min -k10.6&apos;;
-  UsageCustomOptions += &apos; -XR/Developer/SDKs/MacOSX10.6.sdk/&apos;;
+          <Conditionals Value="if TargetOS = 'darwin' then begin
+  UsageCustomOptions += ' -k-macosx_version_min -k10.6';
+  UsageCustomOptions += ' -XR/Developer/SDKs/MacOSX10.6.sdk/';
 end;"/>
           <CodeGeneration>
             <SmartLinkUnit Value="True"/>
@@ -136,13 +136,12 @@ end;"/>
         <Item3 Mode="darwin64" Option="233755810855"/>
       </SessionEnabledMatrixOptions>
     </BuildModes>
-    <ManyBuildModesSelection Value="win32,win64,linuxi386,linux64,linuxaarch64,freebsdi386,freebsdx64,linuxppc64,linuxarmhf,darwin32,darwin64"/>
     <Units Count="47">
       <Unit0>
         <Filename Value="fpclazup.lpr"/>
         <IsPartOfProject Value="True"/>
-        <TopLine Value="190"/>
-        <CursorPos X="18" Y="199"/>
+        <TopLine Value="139"/>
+        <CursorPos Y="157"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
       </Unit0>
@@ -150,8 +149,8 @@ end;"/>
         <Filename Value="svnclient.pas"/>
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="-1"/>
-        <TopLine Value="874"/>
-        <CursorPos X="32" Y="900"/>
+        <TopLine Value="154"/>
+        <CursorPos X="69" Y="170"/>
         <UsageCount Value="200"/>
       </Unit1>
       <Unit2>
@@ -172,10 +171,12 @@ end;"/>
         <Filename Value="installercore.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerCore"/>
-        <EditorIndex Value="-1"/>
-        <TopLine Value="753"/>
-        <CursorPos X="8" Y="770"/>
+        <IsVisibleTab Value="True"/>
+        <EditorIndex Value="2"/>
+        <TopLine Value="19"/>
+        <CursorPos X="17" Y="31"/>
         <UsageCount Value="200"/>
+        <Loaded Value="True"/>
       </Unit4>
       <Unit5>
         <Filename Value="installerfpc.pas"/>
@@ -214,7 +215,7 @@ end;"/>
       <Unit9>
         <Filename Value="fpcup.ini"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="1"/>
+        <EditorIndex Value="3"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
         <DefaultSyntaxHighlighter Value="Ini"/>
@@ -265,6 +266,8 @@ end;"/>
         <Filename Value="hgclient.pas"/>
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="-1"/>
+        <TopLine Value="119"/>
+        <CursorPos X="69" Y="130"/>
         <UsageCount Value="200"/>
       </Unit15>
       <Unit16>
@@ -279,8 +282,8 @@ end;"/>
         <Filename Value="gitclient.pas"/>
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="-1"/>
-        <TopLine Value="89"/>
-        <CursorPos Y="120"/>
+        <TopLine Value="129"/>
+        <CursorPos X="69" Y="146"/>
         <UsageCount Value="200"/>
       </Unit17>
       <Unit18>
@@ -318,7 +321,7 @@ end;"/>
       <Unit22>
         <Filename Value="settings.ini"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="2"/>
+        <EditorIndex Value="4"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
         <DefaultSyntaxHighlighter Value="Ini"/>
@@ -467,8 +470,7 @@ end;"/>
       <Unit41>
         <Filename Value="revision.inc"/>
         <IsPartOfProject Value="True"/>
-        <IsVisibleTab Value="True"/>
-        <EditorIndex Value="3"/>
+        <EditorIndex Value="5"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
       </Unit41>
@@ -509,16 +511,7 @@ end;"/>
     </Units>
     <RunParams>
       <FormatVersion Value="2"/>
-      <Modes ActiveMode="default"/>
+      <Modes Count="0" ActiveMode="default"/>
     </RunParams>
-    <HistoryLists Count="3">
-      <List0 Name="LaunchingApplication" Type="File" Count="1">
-        <Item1 Value="C:\WINDOWS\system32\cmd.exe /C ${TargetCmdLine}"/>
-      </List0>
-      <List1 Name="CommandLineParameters" Count="2">
-        <Item1 Value="--verbose"/>
-        <Item2 Value="--verbose --fpcURL=&quot;newpascal&quot; --lazURL=&quot;newpascal&quot; --ostarget=&quot;darwin&quot; --cputarget=&quot;i386&quot; --only=&quot;FPCCleanOnly,FPCBuildOnly&quot; --installdir=&quot;c:\NewPascal\&quot;"/>
-      </List1>
-    </HistoryLists>
   </ProjectSession>
 </CONFIG>

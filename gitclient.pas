@@ -91,12 +91,14 @@ end;
 
 
 function TGitClient.FindRepoExecutable: string;
+var
+  rv:integer;
 begin
   Result := FRepoExecutable;
   // Look in path
   // Windows: will also look for <gitName>.exe
   if not FileExists(FRepoExecutable) then
-    FRepoExecutable := FindDefaultExecutablePath(RepoExecutableName);
+    FRepoExecutable := Which(RepoExecutableName+GetExeExt);
 
   {$IFDEF MSWINDOWS}
   // Git on Windows can be a .cmd file
@@ -139,10 +141,13 @@ begin
   if FileExists(FRepoExecutable) then
   begin
     // Check for valid git executable:
-    if TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' --version', Verbose) <> 0 then
+    //rv:=TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' --version', Verbose);
+    //if rv<>0 then
+    if (NOT CheckExecutable(RepoExecutable, ['--version'], '')) then
     begin
-      // File exists, but is not a valid git client
       FRepoExecutable := '';
+      //ThreadLog('GIT client found, but error code during check: '+InttoStr(rv),etError);
+      ThreadLog('GIT client found, but error code during check !',etError);
     end;
   end
   else
@@ -188,14 +193,14 @@ begin
     {
     TargetFile := SysUtils.GetTempFileName;
     Command := ' archive --format zip --output ' + TargetFile + ' --prefix=/ --remote=' + Repository + ' master';
-    FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + Command, FVerbose);
-    FReturnCode := TInstaller(FParent).ExecuteCommand(FUnzip+' -o -d '+IncludeTrailingPathDelimiter(InstallDir)+' '+TargetFile,FVerbose);
+    FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + Command, Verbose);
+    FReturnCode := TInstaller(FParent).ExecuteCommand(FUnzip+' -o -d '+IncludeTrailingPathDelimiter(InstallDir)+' '+TargetFile,Verbose);
     SysUtils.DeleteFile(TargetFile);
     }
     if DirectoryExists(IncludeTrailingPathDelimiter(LocalRepository)+'.git') then
     begin
-      TInstaller(FParent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + ' fetch --all',LocalRepository, FVerbose);
-      TInstaller(FParent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + ' reset --hard origin/'+aBranch,LocalRepository, FVerbose);
+      TInstaller(FParent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + ' fetch --all',LocalRepository, Verbose);
+      TInstaller(FParent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + ' reset --hard origin/'+aBranch,LocalRepository, Verbose);
     end
     else
     begin
@@ -217,7 +222,7 @@ begin
 
     Command := Command + ' ' +  Repository + ' ' + LocalRepository;
 
-    FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + Command, Output, FVerbose)
+    FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + Command, Output, Verbose)
   end else FReturnCode := 0;
 
   if (ReturnCode=AbortedExitCode) then exit;
@@ -227,11 +232,11 @@ begin
   if (FReturnCode <> 0) then
   begin
     // if we have a proxy, set it now !
-    if Length(GetProxyCommand)>0 then TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) +  GetProxyCommand, Output, FVerbose);
+    if Length(GetProxyCommand)>0 then TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) +  GetProxyCommand, Output, Verbose);
     while (FReturnCode <> 0) and (RetryAttempt < ERRORMAXRETRIES) do
     begin
       Sleep(500); //Give everybody a chance to relax ;)
-      FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + Command, Output, FVerbose); //attempt again
+      FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + Command, Output, Verbose); //attempt again
       if (ReturnCode=AbortedExitCode) then exit;
       RetryAttempt := RetryAttempt + 1;
     end;
@@ -281,9 +286,6 @@ begin
   FReturnCode := 0;
   if ExportOnly then exit;
   if NOT ValidClient then exit;
-
-  RepoInfo:='Getting diff between current sources and online sources of ' + LocalRepository;
-
   //FReturnCode := TInstaller(FParent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + ' diff --git ', LocalRepository, Result, Verbose);
   FReturnCode := TInstaller(FParent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + ' diff --no-prefix -p ', LocalRepository, Result, Verbose);
 end;
@@ -398,18 +400,18 @@ begin
 
   // Actual clone/checkout
   Command := ' remote set-url origin ' +  Repository + ' ' + LocalRepository;
-  FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + Command, Output, FVerbose);
+  FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + Command, Output, Verbose);
 
   // If command fails, e.g. due to misconfigured firewalls blocking ICMP etc, retry a few times
   RetryAttempt := 1;
   if (FReturnCode <> 0) then
   begin
     // if we have a proxy, set it now !
-    if Length(GetProxyCommand)>0 then TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) +  GetProxyCommand, Output, FVerbose);
+    if Length(GetProxyCommand)>0 then TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) +  GetProxyCommand, Output, Verbose);
     while (FReturnCode <> 0) and (RetryAttempt < ERRORMAXRETRIES) do
     begin
       Sleep(500); //Give everybody a chance to relax ;)
-      FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + Command, Output, FVerbose); //attempt again
+      FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + Command, Output, Verbose); //attempt again
       RetryAttempt := RetryAttempt + 1;
     end;
   end;
@@ -558,7 +560,7 @@ begin
   if ExportOnly then exit;
   if NOT ValidClient then exit;
   if NOT DirectoryExists(FLocalRepository) then exit;
-  i:=TInstaller(FParent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + ' log -n 1 --grep=^git-svn-id:',FLocalRepository, Output, FVerbose);
+  i:=TInstaller(FParent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + ' log -n 1 --grep=^git-svn-id:',FLocalRepository, Output, Verbose);
   if (i=0) then
   begin
     OutputSL:=TStringList.Create;

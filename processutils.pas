@@ -13,6 +13,8 @@ uses
   Process;
 
 const
+  Seriousness: array [TEventType] of string = ('custom:', 'info:', 'WARNING:', 'ERROR:', 'debug:');
+
   {$ifdef LCL}
   BeginSnippet='fpcupdeluxe:'; //helps identify messages as coming from fpcupdeluxe instead of make etc
   {$else}
@@ -290,13 +292,21 @@ var
   idx:integer;
   s:string;
 begin
-  if (Length(VarName)=0) OR (Length(VarValue)=0) then exit;
+  if (Length(VarName)=0) then exit;
   idx:=GetVarIndex(VarName);
+  if (idx>=0) AND (Length(VarValue)=0) then
+  begin
+    FEnvironmentList.Delete(idx);
+  end
+  else
+  if (Length(VarValue)>0) then
+  begin
   s:=trim(Varname)+'='+trim(VarValue);
   if idx>=0 then
     FEnvironmentList[idx]:=s
   else
     FEnvironmentList.Add(s);
+end;
 end;
 
 constructor TProcessEnvironment.Create;
@@ -311,7 +321,7 @@ begin
   {$endif WINDOWS}
   // GetEnvironmentVariableCount is 1 based
   for i:=1 to GetEnvironmentVariableCount do
-    EnvironmentList.Add(trim(GetEnvironmentString(i)));
+    EnvironmentList.Add(TrimLeft(GetEnvironmentString(i)));
 end;
 
 destructor TProcessEnvironment.Destroy;
@@ -791,7 +801,7 @@ begin
       EnterCriticalSection;
       try
         if Stage=etsDestroying then break;
-        if (Stage=etsStopped) then break;
+        if Stage=etsStopped then break;
         // still running => wait a bit to prevent cpu cycle burning
       finally
         LeaveCriticalSection;
@@ -839,7 +849,7 @@ begin
   result:=false;
 
   // skip stray empty lines
-  //if (Length(line)=0) then exit;
+  if (Length(line)=0) then exit;
 
   {$ifdef Darwin}
   // suppress all setfocus errors on Darwin, always
@@ -863,6 +873,8 @@ begin
     if AnsiContainsText(line,'only for runtime') then exit;
     if AnsiContainsText(line,'lpk file expected') then exit;
   end;
+
+  if AnsiStartsText('TExternalTool',line) then exit;
 
   result:=(NOT aVerbosity);
 
@@ -919,6 +931,9 @@ begin
       // When building a java cross-compiler
       if AnsiContainsText(line,'Generated: ') then exit;
 
+      //Linker warning
+      if AnsiContainsText(line,'did you forget -T') then exit;
+
       // filter warnings
       if AnsiContainsText(line,'warning: ') then
       begin
@@ -932,7 +947,6 @@ begin
         if AnsiContainsText(line,'an inherited method is hidden') then exit;
         if AnsiContainsText(line,'with abstract method') then exit;
         if AnsiContainsText(line,'comment level 2 found') then exit;
-        if AnsiContainsText(line,'did you forget -T') then exit;
         if AnsiContainsText(line,'is not recommended') then exit;
         if AnsiContainsText(line,'were not initialized') then exit;
         if AnsiContainsText(line,'which is not available for the') then exit;
@@ -950,12 +964,16 @@ begin
         if AnsiContainsText(line,'ignoring old recipe for target') then exit;
         if AnsiContainsText(line,'Case statement does not handle all possible cases') then exit;
 
+        if AnsiContainsText(line,'(5059)') then exit; //function result not initialized
+
         if AnsiContainsText(line,'unreachable code') then exit;
         if AnsiContainsText(line,'Fix implicit pointer conversions') then exit;
         if AnsiContainsText(line,'are not related') then exit;
         if AnsiContainsText(line,'Constructor should be public') then exit;
         if AnsiContainsText(line,'is experimental') then exit;
         if AnsiContainsText(line,'This code is not thread-safe') then exit;
+
+        if AnsiContainsText(line,'Range check error while') then exit;
 
         // when generating help
         if AnsiContainsText(line,'is unknown') then exit;
@@ -1261,6 +1279,14 @@ var
   aMessage:string;
   PInfo: PChar;
 begin
+  if (Length(aMsg)>0) then
+  begin
+    {
+    if aEvent<>etCustom then
+      aMessage:=BeginSnippet+' '+Seriousness[aEvent]+' '+ aMsg
+    else
+      aMessage:=BeginSnippet+' '+aMsg;
+    }
   if aEvent=etError then
     aMessage:=BeginSnippet+' '+'ERROR: '+aMsg
   else
@@ -1271,9 +1297,15 @@ begin
     aMessage:=BeginSnippet+' '+aMsg
   else
     aMessage:=aMsg;
+  end else aMessage:='';
+
   PInfo := StrAlloc(Length(aMessage)+1);
   StrCopy(PInfo, PChar(aMessage));
-  if (Assigned(Application) AND Assigned(Application.MainForm)) then PostMessage(Application.MainForm.Handle, WM_THREADINFO, {%H-}NativeUInt(PInfo), 0);
+  if (Assigned(Application) AND Assigned(Application.MainForm)) then
+  begin
+    PostMessage(Application.MainForm.Handle, WM_THREADINFO, {%H-}NativeUInt(PInfo), 0);
+    //Application.ProcessMessages;
+  end;
 end;
 {$else}
 begin

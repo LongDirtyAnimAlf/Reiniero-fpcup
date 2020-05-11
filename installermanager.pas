@@ -479,7 +479,7 @@ end;
 procedure TFPCupManager.SetFPCURL(AValue: string);
 begin
   if FFPCURL=AValue then Exit;
-  if pos('://',AValue)>0 then
+  if Pos('://',AValue)>0 then
     FFPCURL:=AValue
   else
     FFPCURL:=installerUniversal.GetAlias('fpcURL',AValue);
@@ -507,7 +507,7 @@ end;
 procedure TFPCupManager.SetLazarusURL(AValue: string);
 begin
   if FLazarusURL=AValue then Exit;
-  if pos('://',AValue)>0 then
+  if Pos('://',AValue)>0 then
     FLazarusURL:=AValue
   else
     FLazarusURL:=installerUniversal.GetAlias('lazURL',AValue);
@@ -550,13 +550,15 @@ end;
 procedure TFPCupManager.WritelnLog(msg: string; ToConsole: boolean);
 begin
   // Set up log if it doesn't exist yet
-  FLog.WriteLog(msg,ToConsole);
+  FLog.WriteLog(msg);
+  if ToConsole then if Assigned(Sequencer.Installer) then Sequencer.Installer.Infoln(msg);
 end;
 
 procedure TFPCupManager.WritelnLog(EventType: TEventType; msg: string; ToConsole: boolean);
 begin
   // Set up log if it doesn't exist yet
-  FLog.WriteLog(EventType,msg,ToConsole);
+  FLog.WriteLog(EventType,msg);
+  if ToConsole then if Assigned(Sequencer.Installer) then Sequencer.Installer.Infoln(msg,EventType);
 end;
 
 
@@ -841,8 +843,8 @@ begin
   end;
 
   try
-    WritelnLog(DateTimeToStr(now)+': '+BeginSnippet+' V'+RevisionStr+' ('+VersionDate+') started.',true);
-    WritelnLog('FPCUPdeluxe V'+DELUXEVERSION+' for '+GetTargetCPUOS+' running on '+GetDistro,true);
+    WritelnLog(DateTimeToStr(now)+': '+BeginSnippet+' V'+RevisionStr+' ('+VersionDate+') started.',false);
+    WritelnLog('FPCUPdeluxe V'+DELUXEVERSION+' for '+GetTargetCPUOS+' running on '+GetDistro,false);
   except
     // Writing to log failed, probably duplicate run. Inform user and get out.
     RunInfo:='***ERROR***';
@@ -869,11 +871,11 @@ begin
       aSequence:=_DEFAULT;
       {$ifdef win32}
       // Run Windows specific cross compiler or regular version
-      if pos(_CROSSWIN,SkipModules)=0 then aSequence:='Defaultwin32';
+      if Pos(_CROSSWIN,SkipModules)=0 then aSequence:='Defaultwin32';
       {$endif}
       {$ifdef win64}
       //not yet
-      //if pos(_CROSSWIN,SkipModules)=0 then aSequence:='Defaultwin64';
+      //if Pos(_CROSSWIN,SkipModules)=0 then aSequence:='Defaultwin64';
       {$endif}
       {$IF defined(CPUAARCH64) or defined(CPUARM) or defined(CPUARMHF) or defined(HAIKU) or defined(CPUPOWERPC64)}
       aSequence:=_DEFAULTSIMPLE;
@@ -993,7 +995,7 @@ function TSequencer.DoExec(FunctionName: string): boolean;
     result:=true;
     if FParent.ShortCutNameLazarus<>EmptyStr then
     begin
-      //infoln('TSequencer.DoExec (Lazarus): creating desktop shortcut:',etInfo);
+      //Infoln('TSequencer.DoExec (Lazarus): creating desktop shortcut:',etInfo);
       try
         // Create shortcut; we don't care very much if it fails=>don't mess with OperationSucceeded
         InstalledLazarus:=IncludeTrailingPathDelimiter(FParent.LazarusDirectory)+'lazarus'+GetExeExt;
@@ -1012,7 +1014,7 @@ function TSequencer.DoExec(FunctionName: string): boolean;
         FParent.FShortcutCreated:=true;
       except
         // Ignore problems creating shortcut
-        //infoln('CreateLazarusScript: Error creating shortcuts/links to Lazarus. Continuing.',etWarning);
+        //Infoln('CreateLazarusScript: Error creating shortcuts/links to Lazarus. Continuing.',etWarning);
       end;
     end;
   end;
@@ -1021,7 +1023,7 @@ function TSequencer.DoExec(FunctionName: string): boolean;
   result:=true;
   if FParent.ShortCutNameLazarus<>EmptyStr then
   begin
-    //infoln('TSequencer.DoExec (Lazarus): deleting desktop shortcut:',etInfo);
+    //Infoln('TSequencer.DoExec (Lazarus): deleting desktop shortcut:',etInfo);
     try
       //Delete shortcut; we don't care very much if it fails=>don't mess with OperationSucceeded
       {$IFDEF MSWINDOWS}
@@ -1439,7 +1441,7 @@ begin
       CrossCompiling:=false;
       if assigned(FInstaller) then
       begin
-        if (FInstaller is TUniversalInstaller) and
+        if (FInstaller.InheritsFrom(TUniversalInstaller)) and
           (FCurrentModule=ModuleName) then
         begin
           exit; //all fine, continue with current FInstaller
@@ -1447,7 +1449,12 @@ begin
         else
           FInstaller.free; // get rid of old FInstaller
       end;
+
+      if ModuleName='mORMotPXL' then
+        FInstaller:=TmORMotPXLInstaller.Create
+      else
       FInstaller:=TUniversalInstaller.Create;
+
       FCurrentModule:=ModuleName;
       //assign properties
       (FInstaller as TUniversalInstaller).FPCInstallDir:=FParent.FPCInstallDirectory;
