@@ -77,13 +77,17 @@ uses
   typinfo,
   zipper,
   fphttpclient, // for github api file list and others
+
   {$ifdef darwin}
   ns_url_request,
   {$endif}
   {$ifndef USEONLYCURL}
   {$IF NOT DEFINED(MORPHOS) AND NOT DEFINED(AROS)}
   {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30000)}
+  //fpopenssl,
   opensslsockets,
+  //gnutls,
+  //gnutlssockets,
   {$ENDIF}
   openssl,
   {$ENDIF}
@@ -93,47 +97,15 @@ uses
 
 Const
   MAXCONNECTIONRETRIES=2;
+  {$ifdef Windows}
+  GetExeExt='.exe';
+  {$else}
+  GetExeExt='';
+  {$endif}
+
 
 type
-  //callback = class
-  //  class procedure Status (Sender: TObject; Reason: THookSocketReason; const Value: String);
-  //end;
-
-  {TThreadedUnzipper}
-
-  TOnZipProgress = procedure(Sender: TObject; FPercent: double) of object;
-  TOnZipFile = procedure(Sender: TObject; AFileName : string; FileCount,TotalFileCount:cardinal) of object;
-  TOnZipCompleted = TNotifyEvent;
-
-  TThreadedUnzipper = class(TThread)
-  private
-    FStarted: Boolean;
-    FErrMsg: String;
-    FUnZipper: TUnZipper;
-    FPercent: double;
-    FFileCount: cardinal;
-    FFileList:TStrings;
-    FTotalFileCount: cardinal;
-    FCurrentFile: string;
-    FOnZipProgress: TOnZipProgress;
-    FOnZipFile: TOnZipFile;
-    FOnZipCompleted: TOnZipCompleted;
-    procedure DoOnProgress(Sender : TObject; Const Pct : Double);
-    procedure DoOnFile(Sender : TObject; Const AFileName : string);
-    procedure DoOnZipProgress;
-    procedure DoOnZipFile;
-    procedure DoOnZipCompleted;
-  protected
-    procedure Execute; override;
-  public
-    constructor Create;
-    destructor Destroy; override;
-    function DoUnZip(const ASrcFile, ADstDir: String; Files:array of string):boolean;
-  published
-    property OnZipProgress: TOnZipProgress read FOnZipProgress write FOnZipProgress;
-    property OnZipFile: TOnZipFile read FOnZipFile write FOnZipFile;
-    property OnZipCompleted: TOnZipCompleted read FOnZipCompleted write FOnZipCompleted;
-  end;
+  {TNormalUnzipper}
 
   TNormalUnzipper = class(TObject)
   private
@@ -147,6 +119,7 @@ type
     procedure DoOnProgressEx(Sender : TObject; Const ATotPos, ATotSize: Int64);
   public
     function DoUnZip(const ASrcFile, ADstDir: String; Files: array of string):boolean;
+    function DoBUnZip2(const SourceFile, TargetFile: string):boolean;
     property Flat:boolean read FFlat write FFlat default False;
   end;
 
@@ -283,16 +256,16 @@ type
     TNativeDownloader = TUseWGetDownloader;
     TWGetDownloader = TUseWGetDownloader;
   {$else}
-  {$ifdef ENABLENATIVE}
-  TNativeDownloader = TUseNativeDownLoader;
-  {$else}
-  TNativeDownloader = TUseWGetDownloader;
-  {$endif}
-  {$ifdef ENABLEWGET}
-  TWGetDownloader = TUseWGetDownloader;
-  {$else}
-  TWGetDownloader = TUseNativeDownLoader;
-  {$endif}
+    {$ifdef ENABLENATIVE}
+    TNativeDownloader = TUseNativeDownLoader;
+    {$else}
+    TNativeDownloader = TUseWGetDownloader;
+    {$endif}
+    {$ifdef ENABLEWGET}
+    TWGetDownloader = TUseWGetDownloader;
+    {$else}
+    TWGetDownloader = TUseNativeDownLoader;
+    {$endif}
   {$endif USEONLYCURL}
 
 // Create shortcut on desktop to Target file
@@ -330,7 +303,7 @@ function ReleaseCandidateFromUrl(aURL:string): integer;
 // HTTP download can work with http proxy
 function Download(UseWget:boolean; URL, TargetFile: string; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''): boolean;overload;
 function Download(UseWget:boolean; URL: string; aDataStream:TStream; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''): boolean;overload;
-function GetGitHubFileList(aURL:string;fileurllist:TStringList; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''):boolean;
+function GetGitHubFileList(aURL:string;fileurllist:TStringList; bWGet:boolean=false; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''):boolean;
 function GetSVNFileList(aURL:string;fileurllist:TStringList; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''):boolean;
 {$IFDEF MSWINDOWS}
 function CheckFileSignature(aFilePath: string): boolean;
@@ -400,7 +373,9 @@ function CheckExecutable(Executable:string;Parameters:array of string;ExpectOutp
 function GetJava: string;
 function GetJavac: string;
 function CheckJava: boolean;
-function ExtractFileNameOnly(const AFilename: string): string;
+function FileNameWithoutExt(const AFilename: string): string;
+function FileNameWithoutAllExt(const AFilename: string): string;
+function FileNameAllExt(const AFilename: string): string;
 function DoubleQuoteIfNeeded(s: string): string;
 function UppercaseFirstChar(s: String): String;
 function DirectoryIsEmpty(Directory: string): Boolean;
@@ -416,7 +391,6 @@ Function Pos(Const Substr : string; Const Source : string; Offset : Sizeint = 1)
 {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION < 30000)}
 Function CharInSet(Ch:AnsiChar;Const CSet : TSysCharSet) : Boolean; inline;
 {$ENDIF}
-
 
 implementation
 
@@ -463,6 +437,7 @@ uses
   {$ENDIF ENABLEWGET}
   ,process
   ,processutils
+  ,bzip2stream
   ,NumCPULib  in './numcpulib/NumCPULib.pas'
   ;
 
@@ -802,7 +777,7 @@ begin
     result:=SysConfigDir
   else
   begin
-    result:=GetEnvironmentVariable('HOME');
+    result:=SysUtils.GetEnvironmentVariable('HOME');
     if (result='') then
       result:=SafeExpandFileName('~/.config')
     else
@@ -859,7 +834,7 @@ begin
     result:=SysConfigDir
   else
   begin
-    result:=GetEnvironmentVariable('HOME');
+    result:=SysUtils.GetEnvironmentVariable('HOME');
     if (result='') then
       result:=SafeExpandFileName('~/.cache')
     else
@@ -1054,7 +1029,7 @@ begin
     {$endif}
     XdgDesktopContent.Add('Name='+ShortcutName);
     XdgDesktopContent.Add('GenericName=Lazarus IDE with Free Pascal Compiler');
-    XdgDesktopContent.Add('Category=Application;IDE;Development;GUIDesigner;');
+    XdgDesktopContent.Add('Category=Application;IDE;Development;GUIDesigner;Programming;');
     XdgDesktopContent.Add('Keywords=editor;Pascal;IDE;FreePascal;fpc;Design;Designer;');
     //XdgDesktopContent.Add('StartupWMClass=Lazarus');
     //XdgDesktopContent.Add('MimeType=text/x-pascal;');
@@ -1301,15 +1276,18 @@ begin
     while (i > 0) and (not CharInSet(VersionSnippet[i],['\','/'])) do Dec(i);
     VersionSnippet := Copy(VersionSnippet, i + 1, MaxInt);
 
-    // find first occurence of _# and delete everything before it
     // if url contains a version, this version always starts with first _#
-
     i:=0;
     repeat
       Inc(i);
-    until (i>=(Length(VersionSnippet)-1)) OR ((VersionSnippet[i]='_') AND (CharInSet(VersionSnippet[i+1],['0'..'9'])));
+      if (CharInSet(VersionSnippet[i],['0'..'9'])) then
+      begin
+        if (i>1) AND (VersionSnippet[i-1]='_') then break;
+      end;
+      if (i=Length(VersionSnippet)) then break;
+    until false;
 
-    Delete(VersionSnippet,1,i);
+    Delete(VersionSnippet,1,(i-1));
     // ignore release candidate numbering
     i := Pos('_RC',VersionSnippet);
     if i>0 then Delete(VersionSnippet,i,MaxInt);
@@ -1441,7 +1419,7 @@ begin
   if aDirectory='' then exit;
   if aDirectory=DirectorySeparator then exit;
   {$ifndef Windows}
-  s:=LowerCase(IncludeTrailingPathDelimiter(GetEnvironmentVariable('HOME')));
+  s:=LowerCase(IncludeTrailingPathDelimiter(SysUtils.GetEnvironmentVariable('HOME')));
   if s=aDirectory then exit;
   s:=IncludeTrailingPathDelimiter(s);
   if s=aDirectory then exit;
@@ -1728,7 +1706,7 @@ function DownloadBase(aDownLoader:TBasicDownloader;URL: string; aDataStream:TStr
 begin
   result:=false;
 
-  if (Length(aDownloader.FilenameOnly)>0) then ThreadLog('Using native downloader to download '+aDownloader.FilenameOnly);
+  //if (Length(aDownloader.FilenameOnly)>0) then ThreadLog('Using native downloader to download '+aDownloader.FilenameOnly);
 
   {$ifdef mswindows}
   if (Pos('/openssl',URL)>0) AND (Pos('.zip',URL)>0) then
@@ -2106,17 +2084,16 @@ begin
   if (NOT result) then SysUtils.Deletefile(TargetFile);
 end;
 
-function GetGitHubFileList(aURL:string;fileurllist:TStringList; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''):boolean;
+function GetGitHubFileList(aURL:string;fileurllist:TStringList; bWGet:boolean=false; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''):boolean;
 var
-  Http: TFPHTTPClient;
-  Ms: TMemoryStream;
-  JSONFileList:TStringList;
+  Ss: TStringStream;
   Content : string;
   Json : TJSONData;
   JsonObject : TJSONObject;
   JsonArray: TJSONArray;
   i:integer;
   aStore:TGitHubStore;
+  localwget:boolean;
 begin
   result:=false;
 
@@ -2149,61 +2126,62 @@ begin
 
   if (NOT result) then
   begin
-    Ms := TMemoryStream.Create;
-    try
-      result:=Download(
-            False,
+    localwget:=bWGet;
+    repeat
+      Ss := TStringStream.Create('');
+      try
+        Ss.Clear;
+        Ss.Position:=0;
+        Ss.Size:=0;
+        result:=
+          Download(
+            localwget,
             aURL,
-            Ms,
+            Ss,
             HTTPProxyHost,
             HTTPProxyPort,
             HTTPProxyUser,
-            HTTPProxyPassword);
-
-      if (NOT result) then
-      begin
-        //retry
-        Ms.Clear;
-        result:=Download(
-              true,
-              aURL,
-              Ms,
-              HTTPProxyHost,
-              HTTPProxyPort,
-              HTTPProxyUser,
-              HTTPProxyPassword);
+            HTTPProxyPassword
+          );
+        Content:='';
+        if result then Content:=Ss.DataString;
+      finally
+        Ss.Free;
       end;
+
+      result:=(Length(Content)>0);
+
       if result then
       begin
-        JSONFileList:=TStringList.Create;
         try
-          Ms.Position:=0;
-          JSONFileList.LoadFromStream(Ms);
-          Content:=JSONFileList.Text;
-        finally
-          JSONFileList.Free;
+          Json:=GetJSON(Content);
+        except
+          Json:=nil;
         end;
       end;
-    finally
-      Ms.Free;
-    end;
-  end;
 
-  if (Length(Content)=0) OR (NOT result) then exit;
-  Json:=GetJSON(Content);
-  try
-    if Json=Nil then exit;
-    JsonArray:=Json.FindPath('assets') as TJSONArray;
-    i:=JsonArray.Count;
-    while (i>0) do
-    begin
-      Dec(i);
-      JsonObject := JsonArray.Objects[i];
-      fileurllist.Add(JsonObject.Get('browser_download_url'));
-      with GitHubFileListCache[High(GitHubFileListCache)] do FileList.Add(fileurllist[(fileurllist.Count-1)]);
-    end;
-  finally
-    Json.Free;
+      result:=Assigned(Json);
+
+      if result then
+      begin
+        try
+          JsonArray:=Json.FindPath('assets') as TJSONArray;
+          i:=JsonArray.Count;
+          while (i>0) do
+          begin
+            Dec(i);
+            JsonObject := JsonArray.Objects[i];
+            fileurllist.Add(JsonObject.Get('browser_download_url'));
+            with GitHubFileListCache[High(GitHubFileListCache)] do FileList.Add(fileurllist[(fileurllist.Count-1)]);
+          end;
+        finally
+          Json.Free;
+        end;
+      end;
+
+      localwget:=(NOT localwget);
+    until ((NOT localwget) OR (result));
+
   end;
 
 end;
@@ -3069,34 +3047,36 @@ function LibWhich(aLibrary: string): boolean;
 var
   Output: string;
 begin
-  RunCommand('sh -c "ldconfig -p | grep '+aLibrary+'"', Output);
+  //RunCommand('sh -c "ldconfig -p | grep '+aLibrary+'"', Output);
+  RunCommand('sh',['-c','"ldconfig -p | grep '+aLibrary+'"'],Output,[poUsePipes, poStderrToOutPut],swoHide);
   result:=(Pos(aLibrary,Output)>0);
 end;
 
 function Which(const Executable: string): string;
 var
+  ExeName,FoundExe:string;
+  {$IFDEF UNIX}
   Output: string;
+  {$ENDIF}
 begin
-  (*
-  {$IFDEF Windows}
-  if ExtractFileExt(Executable)='' then
-     result:=ExeSearch(Executable+'.exe',SysUtils.GetEnvironmentVariable('PATH'))
-  else
-  {$ENDIF}
-  result:=ExeSearch(Executable,SysUtils.GetEnvironmentVariable('PATH'));
-  *)
+  result:='';
 
-  result:=FindDefaultExecutablePath(Executable);
+  ExeName:=Executable;
 
-  (*
-  {$IFDEF MsWindows}
-  if ExtractFileExt(Executable)='' then begin
-    Result:=Executable+'.exe';
-    if FileExists(Result) then exit;
+  {$ifdef Windows}
+  if ExtractFileExt(ExeName)='' then ExeName:=ExeName+'.exe';
+  {$endif}
+
+  if FileExists(ExeName) then result:=ExeName else
+  begin
+    FoundExe := ExeSearch(ExeName, '');
+    if (NOT FileExists(FoundExe)) then
+      FoundExe:=ExeSearch(ExeName,SysUtils.GetEnvironmentVariable(PATHVARNAME));
+    if FileExists(FoundExe) then
+      result:=FoundExe
+    else
+      result:=FindDefaultExecutablePath(ExeName);
   end;
-  {$ENDIF}
-  *)
-
 
   {$IFNDEF FREEBSD}
   if (NOT FileIsExecutable(result)) then result:='';
@@ -3105,7 +3085,7 @@ begin
   {$IFDEF UNIX}
   if (NOT FileExists(result)) then
   begin
-    RunCommand('which',[Executable],Output,[poUsePipes, poStderrToOutPut],swoHide);
+    RunCommand('which',[ExeName],Output,[poUsePipes, poStderrToOutPut],swoHide);
     Output:=Trim(Output);
     if ((Output<>'') and FileExists(Output)) then result:=Output;
   end;
@@ -3183,7 +3163,7 @@ Function XdgConfigHome: String;
   Always ends with PathDelim. }
 begin
   {$ifdef UNIX}
-  Result:=GetEnvironmentVariable('XDG_CONFIG_HOME');
+  Result:=SysUtils.GetEnvironmentVariable('XDG_CONFIG_HOME');
   if (Result='') then
     Result:=IncludeTrailingPathDelimiter(SafeExpandFileName('~'))+'.config'+DirectorySeparator
   else
@@ -3226,10 +3206,6 @@ begin
       // This is not a warning/error message as sometimes we can use multiple different versions of executables
       if Level<>etCustom then ThreadLog(Executable + ' is not a valid ' + ExeName + ' application (' + 'Exception: ' + E.ClassName + '/' + E.Message + ')', Level);
     end;
-  end;
-  if ExeName='wget' then
-  begin
-    ExeName:='';
   end;
   if Result then
     ThreadLog('Found valid ' + ExeName + ' application.',etDebug);
@@ -3374,23 +3350,42 @@ begin
   {$endif}
 end;
 
+function FileNameWithoutExt(const AFilename: string): string;
+var
+  s1,s2:string;
+begin
+  result:='';
+  s1:=ExtractFileName(AFilename);
+  s2:=ExtractFileExt(AFilename);
+  result:=copy(s1,1,Length(s1)-Length(s2));
+end;
 
-function ExtractFileNameOnly(const AFilename: string): string;
+function FileNameWithoutAllExt(const AFilename: string): string;
 var
   StartPos: Integer;
   ExtPos: Integer;
 begin
-  StartPos:=length(AFilename)+1;
-  while (StartPos>1)
-  and not (AFilename[StartPos-1] in AllowDirectorySeparators)
-  {$IFDEF Windows}and (AFilename[StartPos-1]<>':'){$ENDIF}
+  result:='';
+  StartPos:=length(AFilename);
+  while (StartPos>0)
+  and not (AFilename[StartPos] in (AllowDirectorySeparators+AllowDriveSeparators))
   do
     dec(StartPos);
-  ExtPos:=length(AFilename);
-  while (ExtPos>=StartPos) and (AFilename[ExtPos]<>'.') do
-    dec(ExtPos);
-  if (ExtPos<StartPos) then ExtPos:=length(AFilename)+1;
-  Result:=copy(AFilename,StartPos,ExtPos-StartPos);
+  Inc(StartPos);
+  ExtPos:=(StartPos);
+  while (ExtPos<=length(AFilename)) and (AFilename[ExtPos]<>ExtensionSeparator) do
+    inc(ExtPos);
+  result:=copy(AFilename,StartPos,ExtPos-StartPos);
+end;
+
+function FileNameAllExt(const AFilename: string): string;
+var
+  s1,s2:string;
+begin
+  result:='';
+  s1:=ExtractFileName(AFilename);
+  s2:=FileNameWithoutAllExt(AFilename);
+  result:=copy(s1,Length(s2)+1,MaxInt);
 end;
 
 function DoubleQuoteIfNeeded(s: string): string;
@@ -3598,92 +3593,86 @@ var
   Releases     : TJSONArray;
   NewVersion   : boolean;
   i            : integer;
-  Ms           : TMemoryStream;
-  JSONFileList : TStringList;
+  Ss           : TStringStream;
   Content      : string;
-  Success:boolean;
-
+  Success      : boolean;
 begin
   Success:=false;
   NewVersion:=false;
   result:='';
   if (Length(aURL)>0) then
   begin
-    Ms := TMemoryStream.Create;
+    Ss := TStringStream.Create('');
     try
-      Success:=Download(False,aURL,Ms);
-      if Success then
+      Success:=Download(False,aURL,Ss);
+      if (NOT Success) then
       begin
-        JSONFileList:=TStringList.Create;
-        try
-          Ms.Position:=0;
-          JSONFileList.LoadFromStream(Ms);
-          Content:=JSONFileList.Text;
-        finally
-          JSONFileList.Free;
-        end;
+        Ss.Clear;
+        Ss.Position:=0;
+        Success:=Download(True,aURL,Ss);
       end;
+      if Success then Content:=Ss.DataString;
     finally
-      Ms.Free;
+      Ss.Free;
     end;
 
     if Success then
     begin
       if (Length(Content)>0) then
       begin
-        Json:=GetJSON(Content);
         try
-          if JSON=Nil then exit;
-          try
-            JsonObject := TJSONObject(Json);
-            // Example ---
-            // tag_name: "1.6.2b"
-            // name: "Release v1.6.2b of fpcupdeluxe"
-            s:=JsonObject.Get('tag_name');
-            if CalculateNumericalVersion(s)>CalculateNumericalVersion(DELUXEVERSION) then NewVersion:=True;
-            if CalculateNumericalVersion(s)=CalculateNumericalVersion(DELUXEVERSION) then
+          Json:=GetJSON(Content);
+        except
+          Json:=nil;
+        end;
+        if JSON=nil then exit;
+        try
+          JsonObject := TJSONObject(Json);
+          // Example ---
+          // tag_name: "1.6.2b"
+          // name: "Release v1.6.2b of fpcupdeluxe"
+          s:=JsonObject.Get('tag_name');
+          if CalculateNumericalVersion(s)>CalculateNumericalVersion(DELUXEVERSION) then NewVersion:=True;
+          if CalculateNumericalVersion(s)=CalculateNumericalVersion(DELUXEVERSION) then
+          begin
+            if Ord(s[Length(s)])>Ord(DELUXEVERSION[Length(DELUXEVERSION)]) then NewVersion:=True;
+          end;
+          if NewVersion then
+          begin
+            s:=JsonObject.Get('prerelease');//Should be False
+            NewVersion:=(s='False');
+          end;
+          //YES !!!
+          if NewVersion then
+          begin
+            //Assets is an array of binaries belonging to a release
+            Releases:=JsonObject.Get('assets',TJSONArray(nil));
+            for i:=0 to (Releases.Count-1) do
             begin
-              if Ord(s[Length(s)])>Ord(DELUXEVERSION[Length(DELUXEVERSION)]) then NewVersion:=True;
-            end;
-            if NewVersion then
-            begin
-              s:=JsonObject.Get('prerelease');//Should be False
-              NewVersion:=(s='False');
-            end;
-            //YES !!!
-            if NewVersion then
-            begin
-              //Assets is an array of binaries belonging to a release
-              Releases:=JsonObject.Get('assets',TJSONArray(nil));
-              for i:=0 to (Releases.Count-1) do
+              JsonObject := TJSONObject(Releases[i]);
+              // Example ---
+              // browser_download_url: "https://github.com/newpascal/fpcupdeluxe/releases/download/1.6.2b/fpcupdeluxe-aarch64-linux"
+              // name: "fpcupdeluxe-aarch64-linux"
+              // created_at: "2018-10-14T06:58:44Z"
+              s:=JsonObject.Get('name');
+              aFile:='fpcupdeluxe-'+GetTargetCPUOS;
+              {$ifdef Darwin}
+              {$ifdef LCLCARBON}
+              aFile:=aFile+'-carbon';
+              {$endif}
+              {$ifdef LCLCOCOA}
+              aFile:=aFile+'-cocoa';
+              {$endif}
+              {$endif}
+              {$if defined(LCLQT) or defined(LCLQT5)}
+              aFile:=aFile+'-qt5';
+              {$endif}
+              if (Pos(aFile,s)=1) then
               begin
-                JsonObject := TJSONObject(Releases[i]);
-                // Example ---
-                // browser_download_url: "https://github.com/newpascal/fpcupdeluxe/releases/download/1.6.2b/fpcupdeluxe-aarch64-linux"
-                // name: "fpcupdeluxe-aarch64-linux"
-                // created_at: "2018-10-14T06:58:44Z"
-                s:=JsonObject.Get('name');
-                aFile:='fpcupdeluxe-'+GetTargetCPUOS;
-                {$ifdef Darwin}
-                {$ifdef LCLCARBON}
-                aFile:=aFile+'-carbon';
-                {$endif}
-                {$ifdef LCLCOCOA}
-                aFile:=aFile+'-cocoa';
-                {$endif}
-                {$endif}
-                {$if defined(LCLQT) or defined(LCLQT5)}
-                aFile:=aFile+'-qt5';
-                {$endif}
-                if (Pos(aFile,s)=1) then
-                begin
-                  result:=JsonObject.Get('browser_download_url');
-                  break;
-                end;
+                result:=JsonObject.Get('browser_download_url');
+                break;
               end;
             end;
-          except
-            //Swallow exceptions in case of failures: not important
           end;
         finally
           Json.Free;
@@ -3736,160 +3725,6 @@ begin
   {$ENDIF}
 end;
 
-{TThreadedUnzipper}
-
-procedure TThreadedUnzipper.DoOnZipProgress;
-begin
-  if Assigned(FOnZipProgress) then
-    FOnZipProgress(Self, FPercent);
-end;
-
-procedure TThreadedUnzipper.DoOnZipFile;
-begin
-  if Assigned(FOnZipFile) then
-    FOnZipFile(Self, FCurrentFile, FFileCount, FTotalFileCount);
-end;
-
-procedure TThreadedUnzipper.DoOnZipCompleted;
-begin
-  if Assigned(FOnZipCompleted) then
-    FOnZipCompleted(Self);
-end;
-
-procedure TThreadedUnzipper.Execute;
-var
-  x:cardinal;
-  s:string;
-begin
-  try
-    FUnZipper.Examine;
-
-    {$ifdef MSWINDOWS}
-    // on windows, .files (hidden files) cannot be created !!??
-    // still to check on non-windows
-    if FFileList.Count=0 then
-    begin
-      for x:=0 to FUnZipper.Entries.Count-1 do
-      begin
-        { UTF8 features are only available in FPC >= 3.1 }
-        {$IF FPC_FULLVERSION > 30100}
-        if FUnZipper.UseUTF8
-          then s:=FUnZipper.Entries.Entries[x].UTF8ArchiveFileName
-          else
-        {$endif}
-          s:=FUnZipper.Entries.Entries[x].ArchiveFileName;
-
-        if (Pos('/.',s)>0) OR (Pos('\.',s)>0) then continue;
-        if (Length(s)>0) AND (s[1]='.') then continue;
-        FFileList.Append(s);
-      end;
-    end;
-    {$endif}
-
-    if FFileList.Count=0
-      then FTotalFileCount:=FUnZipper.Entries.Count
-      else FTotalFileCount:=FFileList.Count;
-
-    if FFileList.Count=0
-      then FUnZipper.UnZipAllFiles
-      else FUnZipper.UnZipFiles(FFileList);
-
-  except
-    on E: Exception do
-    begin
-      FErrMsg := E.Message;
-      //Synchronize(@DoOnZipError);
-    end;
-  end;
-  Synchronize(@DoOnZipCompleted);
-end;
-
-constructor TThreadedUnzipper.Create;
-begin
-  inherited Create(True);
-  FreeOnTerminate := True;
-  FUnZipper := TUnZipper.Create;
-  FFileList := TStringList.Create;
-  FStarted := False;
-end;
-
-destructor TThreadedUnzipper.Destroy;
-begin
-  if Assigned(FFileList) then
-  begin
-    FFileList.Destroy;
-    FFileList:=nil;
-  end;
-  if Assigned(FUnZipper) then
-  begin
-    FUnZipper.Destroy;
-    FUnZipper:=nil;
-  end;
-  inherited Destroy;
-end;
-
-
-procedure TThreadedUnzipper.DoOnProgress(Sender : TObject; Const Pct : Double);
-begin
-  FPercent:=Pct;
-  if FTotalFileCount<=100 then Synchronize(@DoOnZipProgress);
-end;
-
-procedure TThreadedUnzipper.DoOnFile(Sender : TObject; Const AFileName : String);
-begin
-  Inc(FFileCount);
-  if FTotalFileCount>100
-     then FCurrentFile:='files'
-     else FCurrentFile:=ExtractFileName(AFileName);
-  if FTotalFileCount>50000 then
-  begin
-    if (FFileCount MOD 1000)=0 then Synchronize(@DoOnZipFile);
-  end
-  else
-  if FTotalFileCount>5000 then
-  begin
-    if (FFileCount MOD 100)=0 then Synchronize(@DoOnZipFile);
-  end
-  else
-  if FTotalFileCount>500 then
-  begin
-    if (FFileCount MOD 10)=0 then Synchronize(@DoOnZipFile);
-  end
-  else
-  if FTotalFileCount>100 then
-  begin
-    if (FFileCount MOD 2)=0 then Synchronize(@DoOnZipFile);
-  end
-  else
-    Synchronize(@DoOnZipFile);
-end;
-
-
-function TThreadedUnzipper.DoUnZip(const ASrcFile, ADstDir: String; Files:array of string):boolean;
-var
-  i:word;
-begin
-  result:=true;
-  if FStarted then exit;
-  FUnZipper.Clear;
-  FUnZipper.OnPercent:=10;
-  FUnZipper.FileName := ASrcFile;
-  FUnZipper.OutputPath := ADstDir;
-  FUnZipper.OnProgress := @DoOnProgress;
-  FUnZipper.OnStartFile:= @DoOnFile;
-  if Length(Files)>0 then
-  begin
-    FFileList := TStringList.Create;
-    for i := 0 to high(Files) do
-      FFileList.Append(Files[i]);
-  end;
-  FPercent:=0;
-  FFileCount:=0;
-  FTotalFileCount:=0;
-  FStarted := True;
-  Start;
-end;
-
 {TNormalUnzipper}
 
 procedure TNormalUnzipper.DoOnFile(Sender : TObject; Const AFileName : String);
@@ -3922,10 +3757,10 @@ begin
   else
   begin
     ThreadLog('Extracted #'+InttoStr(FFileCnt)+'. File '+FCurrentFile+' out of #'+InttoStr(FTotalFileCnt));
-  {$ifdef LCL}
-  Application.ProcessMessages;
-  {$endif}
-end;
+    {$ifdef LCL}
+    Application.ProcessMessages;
+    {$endif}
+  end;
 
   if ProcessInfo then
   begin
@@ -3948,6 +3783,51 @@ begin
     // Do this once ...
     if Assigned(FUnZipper) then FUnZipper.OnProgressEx:=nil;
   end;
+end;
+
+function TNormalUnzipper.DoBUnZip2(const SourceFile, TargetFile: string):boolean;
+var
+  InFile:TFileStream;
+  Decompressed:TDecompressBzip2Stream;
+  OutFile:TDownloadStream;
+  Buffer: Pointer;
+  i: integer;
+const buffersize=$2000;
+begin
+  result:=false; //fail by default
+
+  ThreadLog('TNormalUnzipper: Unzipping (bunzip2) '+ExtractFileName(SourceFile));
+
+  InFile:=TFileStream.Create(SourceFile, fmOpenRead);
+  try
+    try
+      Decompressed:=TDecompressBzip2Stream.Create(InFile);
+    except
+      // So[5mething went wrong, e.g. invalid format
+      // Now get out of function with result false
+      exit;
+    end;
+    OutFile:=TDownloadStream.Create(TargetFile,fmCreate);
+    try
+      //We don't have seek on the TDecompressBzip2stream, so can't use
+      //CopyFrom...
+      //Decompressed.CopyFrom(InFile, InFile.Size);
+      GetMem(Buffer,BufferSize);
+      repeat
+        i:=Decompressed.Read(buffer^,BufferSize);
+        if i>0 then
+          OutFile.WriteBuffer(buffer^,i);
+      until i<BufferSize;
+      result:=true;
+    finally
+      Decompressed.Free;
+      OutFile.Free;
+    end;
+  finally
+    InFile.Free;
+  end;
+
+  ThreadLog('TNormalUnzipper: Unzipping (bunzip2) '+ExtractFileName(SourceFile)+' ready.');
 end;
 
 function TNormalUnzipper.DoUnZip(const ASrcFile, ADstDir: String; Files:array of string):boolean;
@@ -4245,8 +4125,8 @@ begin
     ThreadLog('Download progress '+FileNameOnly+': download ready !');
   end
   else
-  //Show progress only every 2 seconds
-  if GetUpTickCount>StoredTickCount+2000 then
+  //Show progress only every 5 seconds
+  if GetUpTickCount>StoredTickCount+5000 then
   begin
     if StoredTickCount=0 then
       ThreadLog('Download progress '+FileNameOnly+': Starting download.')
@@ -4254,15 +4134,18 @@ begin
       ThreadLog('Download progress '+FileNameOnly+': '+KB(APos));
     StoredTickCount:=GetUpTickCount;
   end;
-    {$ifdef LCL}
-    Application.ProcessMessages;
-    {$endif}
-  end;
+  {$ifdef LCL}
+  Application.ProcessMessages;
+  {$endif}
+end;
 
 {$ifdef ENABLENATIVE}
 constructor TUseNativeDownLoader.Create;
 begin
   Inherited;
+
+  ThreadLog('Native downloader created.',etDebug);
+
   FMaxRetries:=MAXCONNECTIONRETRIES;
   {$ifdef Darwin}
   // GitHub needs TLS 1.2 .... native FPC client does not support this (through OpenSSL)
@@ -4721,6 +4604,8 @@ constructor TUseWGetDownloader.Create;
 begin
   Inherited;
 
+  ThreadLog('WGet downloader created.',etDebug);
+
   FCURLOk:=False;
   {$ifdef ENABLECURL}
   FCURLOk:=LoadCurlLibrary;
@@ -4731,7 +4616,6 @@ begin
   begin
     WGETBinary:='wget';
   end;
-
   FWGETOk:=CheckExecutable(WGETBinary,['-V'], '', etCustom);
 
   {$ifdef MSWINDOWS}
@@ -4887,7 +4771,7 @@ begin
 
     try
       try
-       hCurl:= curl_easy_init();
+       hCurl:=curl_easy_init();
        if Assigned(hCurl) then
        begin
         res:=CURLE_OK;
@@ -4913,7 +4797,7 @@ begin
         {$ifdef MSWINDOWS}
         if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_SSL_VERIFYPEER,False);
         {$else}
-        if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
+        if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_HTTP_VERSION,CURL_HTTP_VERSION_2TLS);
         {$endif}
 
         if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_URL,PChar(URL));
@@ -4921,7 +4805,7 @@ begin
 
         if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_WRITEFUNCTION,@DoWrite);
         if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_WRITEDATA,Pointer(aDataStream));
-        if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_WRITEHEADER,Pointer(aDataStream));
+        //if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_WRITEHEADER,Pointer(aDataStream));
 
         //if res=CURLE_OK then res:=curl_easy_setopt(hCurl,CURLOPT_SSLVERSION,6);
 

@@ -301,12 +301,12 @@ begin
   else
   if (Length(VarValue)>0) then
   begin
-  s:=trim(Varname)+'='+trim(VarValue);
-  if idx>=0 then
-    FEnvironmentList[idx]:=s
-  else
-    FEnvironmentList.Add(s);
-end;
+    s:=trim(Varname)+'='+trim(VarValue);
+    if idx>=0 then
+      FEnvironmentList[idx]:=s
+    else
+      FEnvironmentList.Add(s);
+  end;
 end;
 
 constructor TProcessEnvironment.Create;
@@ -644,7 +644,7 @@ begin
     exit;
   end;
 
-  //Do we have something FPC like. If so, apply some filtering when not Verbose
+  //Do we have something FPC or Lazarus or fpcupdeluxe like. If so, apply some filtering when not Verbose
   //Filtering is dome here to limit the amount of thread message traffic
   //Bit tricky ... ;-)
   FFPCMagic:=False;
@@ -652,13 +652,15 @@ begin
   begin
     ExeFile:=LowerCase(ExtractFileName(Process.Executable));
     if
-      ((Pos('fpc',ExeFile)=1)
-      OR
-      (Pos('ppc',ExeFile)=1)
-      OR
-      (Pos('lazbuild',ExeFile)=1)
-      OR
-      (Pos('make',ExeFile)=1))
+      (
+      (Pos('fpc',ExeFile)=1)
+      OR (Pos('ppc',ExeFile)=1)
+      OR (Pos('lazbuild',ExeFile)=1)
+      OR (Pos('make',ExeFile)=1)
+      OR (Pos('gmake',ExeFile)=1)
+      //OR (Pos('svn',ExeFile)=1)
+      //OR (Pos('git',ExeFile)=1)
+      )
     then
     begin
       FFPCMagic:=True;
@@ -874,9 +876,21 @@ begin
     if AnsiContainsText(line,'lpk file expected') then exit;
   end;
 
-  if AnsiStartsText('TExternalTool',line) then exit;
+  //Makefile error we are not interested in
+  if AnsiContainsText(line,'CreateProcess(') then exit;
 
   result:=(NOT aVerbosity);
+
+  if (NOT result) then
+  begin
+    //Harmless Jasmin error(s)
+    if AnsiContainsText(line,'Badly formatted number') then exit;
+    if AnsiContainsText(line,'system.j:') then exit;
+    if AnsiStartsText('^',line) then exit;
+
+    //Harmless linker warning
+    if AnsiContainsText(line,'did you forget -T') then exit;
+  end;
 
   if (NOT result) then
   begin
@@ -894,6 +908,9 @@ begin
 
     if (NOT result) then
     begin
+      //Exttools debugging
+      if AnsiStartsText('TExternalTool',line) then exit;
+
       // remove hints and other "trivial"* warnings from output
       // these line are not that interesting for the average user of fpcupdeluxe !
       if AnsiContainsText(line,'hint: ') then exit;
@@ -906,6 +923,7 @@ begin
       if AnsiContainsText(line,'illegal XML element: ') then exit;
       if AnsiContainsText(line,'parsing used unit ') then exit;
       if AnsiContainsText(line,'extracting ') then exit;
+      if AnsiContainsText(line,'directory not found for option') then exit;
 
       // during building of lazarus components, default compiler switches cause version and copyright info to be shown
       // do not know if this is allowed, but this version / copyright info is very redundant as it is shown everytime the compiler is called ...
@@ -931,11 +949,8 @@ begin
       // When building a java cross-compiler
       if AnsiContainsText(line,'Generated: ') then exit;
 
-      //Linker warning
-      if AnsiContainsText(line,'did you forget -T') then exit;
-
       // filter warnings
-      if AnsiContainsText(line,'warning: ') then
+      if AnsiContainsText(line,'warning:') then
       begin
         if AnsiContainsText(line,'is not portable') then exit;
         if AnsiContainsText(line,'is deprecated') then exit;
@@ -1020,7 +1035,6 @@ begin
 
       // Some prehistoric FPC errors.
       if AnsiContainsText(line,'Unknown option.') then exit;
-      if AnsiContainsText(line,'CreateProcess(') then exit;
 
       // found modified files
       result:=true;
@@ -1106,11 +1120,11 @@ var
       if Buf[i] in [#10,#13] then
       begin
         LineBuf:=LineBuf+copy(Buf,StartPos,i-StartPos);
-        if IsStdErr then
-          fLines.AddObject(LineBuf,fLines)
-        else
+        if GetFilter(LineBuf,Tool.FFPCMagic) then
         begin
-          if GetFilter(LineBuf,Tool.FFPCMagic) then
+          if IsStdErr then
+            fLines.AddObject(LineBuf,fLines)
+          else
             fLines.Add(LineBuf);
         end;
         LineBuf:='';
@@ -1287,16 +1301,16 @@ begin
     else
       aMessage:=BeginSnippet+' '+aMsg;
     }
-  if aEvent=etError then
-    aMessage:=BeginSnippet+' '+'ERROR: '+aMsg
-  else
-  if aEvent=etWarning then
-    aMessage:=BeginSnippet+' '+'WARNING: '+aMsg
-  else
-  if aEvent=etCustom then
-    aMessage:=BeginSnippet+' '+aMsg
-  else
-    aMessage:=aMsg;
+    if aEvent=etError then
+      aMessage:=BeginSnippet+' '+'ERROR: '+aMsg
+    else
+    if aEvent=etWarning then
+      aMessage:=BeginSnippet+' '+'WARNING: '+aMsg
+    else
+    if aEvent=etCustom then
+      aMessage:=BeginSnippet+' '+aMsg
+    else
+      aMessage:=aMsg;
   end else aMessage:='';
 
   PInfo := StrAlloc(Length(aMessage)+1);

@@ -2,8 +2,8 @@
 <CONFIG>
   <ProjectSession>
     <PathDelim Value="\"/>
-    <Version Value="11"/>
-    <BuildModes Count="3" Active="linuxarmhf">
+    <Version Value="12"/>
+    <BuildModes Count="3" Active="Default">
       <Item1 Name="linuxarmhf">
         <MacroValues Count="1">
           <Macro1 Name="LCLWidgetType" Value="nogui"/>
@@ -57,12 +57,12 @@
           </Target>
           <SearchPaths>
             <IncludeFiles Value="$(ProjOutDir)"/>
-            <OtherUnitFiles Value="synaser"/>
+            <OtherUnitFiles Value="synaser;crossinstallers"/>
             <UnitOutputDirectory Value="libfpcup\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
-          <Conditionals Value="if TargetOS = 'darwin' then begin
-  UsageCustomOptions += ' -k-macosx_version_min -k10.6';
-  UsageCustomOptions += ' -XR/Developer/SDKs/MacOSX10.6.sdk/';
+          <Conditionals Value="if TargetOS = &apos;darwin&apos; then begin
+  UsageCustomOptions += &apos; -k-macosx_version_min -k10.6&apos;;
+  UsageCustomOptions += &apos; -XR/Developer/SDKs/MacOSX10.6.sdk/&apos;;
 end;"/>
           <CodeGeneration>
             <SmartLinkUnit Value="True"/>
@@ -101,12 +101,12 @@ end;"/>
           </Target>
           <SearchPaths>
             <IncludeFiles Value="$(ProjOutDir)"/>
-            <OtherUnitFiles Value="synaser"/>
+            <OtherUnitFiles Value="synaser;crossinstallers"/>
             <UnitOutputDirectory Value="libfpcup\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
-          <Conditionals Value="if TargetOS = 'darwin' then begin
-  UsageCustomOptions += ' -k-macosx_version_min -k10.6';
-  UsageCustomOptions += ' -XR/Developer/SDKs/MacOSX10.6.sdk/';
+          <Conditionals Value="if TargetOS = &apos;darwin&apos; then begin
+  UsageCustomOptions += &apos; -k-macosx_version_min -k10.6&apos;;
+  UsageCustomOptions += &apos; -XR/Developer/SDKs/MacOSX10.6.sdk/&apos;;
 end;"/>
           <CodeGeneration>
             <SmartLinkUnit Value="True"/>
@@ -139,6 +139,7 @@ end;"/>
         <Item3 Mode="darwin64" Option="233755810855"/>
       </SessionEnabledMatrixOptions>
     </BuildModes>
+    <ManyBuildModesSelection Value="win32,win64,linuxi386,linux64,linuxaarch64,freebsdi386,freebsdx64,linuxppc64,linuxarmhf"/>
     <Units Count="46">
       <Unit0>
         <Filename Value="fpcup.lpr"/>
@@ -172,7 +173,7 @@ end;"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerCore"/>
         <EditorIndex Value="-1"/>
-        <TopLine Value="19"/>
+        <TopLine Value="22"/>
         <CursorPos X="17" Y="31"/>
         <UsageCount Value="200"/>
       </Unit4>
@@ -490,7 +491,7 @@ end;"/>
     </Units>
     <RunParams>
       <FormatVersion Value="2"/>
-      <Modes Count="0" ActiveMode="default"/>
+      <Modes ActiveMode="default"/>
     </RunParams>
   </ProjectSession>
 </CONFIG>

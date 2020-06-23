@@ -295,7 +295,7 @@ begin
       end;
       {$ENDIF defined(BSD) and not defined(Darwin)}
       FManager.LazarusDesiredRevision:=Options.GetOption('','lazrevision','',false);
-      FManager.CrossLCL_Platform:=Options.GetOption('','lclplatform','');
+      FManager.LCL_Platform:=Options.GetOption('','lclplatform','');
       {$endif}
       FManager.IncludeModules:=Options.GetOption('','include','',false);
       FManager.SkipModules:=Options.GetOption('','skip','',false);

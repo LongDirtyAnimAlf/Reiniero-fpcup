@@ -89,7 +89,6 @@ type
 implementation
 
 uses
-  FileUtil {Requires LCL},
   {$IFDEF UNIX}
   BaseUnix,Unix,
   {$ENDIF}
@@ -114,7 +113,6 @@ begin
 
   while True do
   begin
-
     // Look in path
     // Windows: will also look for <SVNName>.exe
     if not FileExists(FRepoExecutable) then
@@ -967,31 +965,40 @@ begin
     // Could have used svnversion but that would have meant calling yet another command...
     // Get the part after "Revision:"...
     // unless we're in a branch/tag where we need "Last Changed Rev: "
-    if FReturnCode = 0 then
+    if (FReturnCode=0) then
     begin
       // Use regex to try and extract from localized SVNs:
       // match exactly 2 occurences of the revision regex.
       RevCount := 0;
-      RevExtr := TRegExpr.Create;
-      try
-        RevExtr.Expression := RevExpression;
-        if RevExtr.Exec(Output) then
-        begin
-          Inc(RevCount);
-          FLocalRevisionWholeRepo := RevExtr.Match[1];
-          if FLocalRevisionWholeRepo = '' then
-            FLocalRevisionWholeRepo := FRET_UNKNOWN_REVISION;
-          if RevExtr.ExecNext then
+      if (Length(Output)>0) then
+      begin
+        RevExtr := TRegExpr.Create;
+        try
+          RevExtr.Expression := RevExpression;
+          if RevExtr.Exec(Output) then
           begin
-            Inc(RevCount); //we only have valid revision info when we get both repo and branch revision...
-            FLocalRevision := RevExtr.Match[1];
-            if FLocalRevision = '' then
-              FLocalRevision := FRET_UNKNOWN_REVISION;
+            Inc(RevCount);
+            FLocalRevisionWholeRepo := RevExtr.Match[1];
+            if FLocalRevisionWholeRepo = '' then
+              FLocalRevisionWholeRepo := FRET_UNKNOWN_REVISION;
+            if RevExtr.ExecNext then
+            begin
+              Inc(RevCount); //we only have valid revision info when we get both repo and branch revision...
+              FLocalRevision := RevExtr.Match[1];
+              if FLocalRevision = '' then
+                FLocalRevision := FRET_UNKNOWN_REVISION;
+            end;
           end;
+        finally
+          RevExtr.Free;
         end;
-      finally
-        RevExtr.Free;
       end;
+      if RevCount=0 then
+      begin
+        FLocalRevision := FRET_UNKNOWN_REVISION;
+        FLocalRevisionWholeRepo := FRET_UNKNOWN_REVISION;
+      end
+      else
       if RevCount <> 2 then
       begin
         // Regex failed; trying for English revision message (though this may be

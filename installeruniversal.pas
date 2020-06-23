@@ -30,6 +30,9 @@ Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 }
 
 {$mode objfpc}{$H+}
+
+{$DEFINE DISABLELAZBUILDJOBS}
+
 {$modeswitch advancedrecords}
 
 interface
@@ -125,7 +128,7 @@ type
     property LazarusSourceDir:string read FLazarusSourceDir write FLazarusSourceDir;
     property LazarusInstallDir:string read FLazarusInstallDir write FLazarusInstallDir;
     // LCL widget set to be built
-    property LCL_Platform: string read FLCL_Platform write FLCL_Platform;
+    property LCL_Platform: string write FLCL_Platform;
     {$endif}
     // Build module
     function BuildModule(ModuleName:string): boolean; override;
@@ -180,7 +183,9 @@ Const
 implementation
 
 uses
-  StrUtils, typinfo,inifiles, FileUtil, fpcuputil, process;
+  StrUtils, typinfo,inifiles, process,
+  FileUtil,
+  fpcuputil;
 
 Const
   MAXSYSMODULES=250;
@@ -293,8 +298,12 @@ begin
 
   if Length(s)>0 then Processor.Process.Parameters.Add('OPT='+s);
 
-  //Processor.Process.Parameters.Add('LAZBUILDJOBS='+IntToStr(FCPUCount));
+  {$ifdef DISABLELAZBUILDJOBS}
   Processor.Process.Parameters.Add('LAZBUILDJOBS=1');//prevent runtime 217 errors
+  {$else}
+  Processor.Process.Parameters.Add('LAZBUILDJOBS='+IntToStr(FCPUCount));
+  {$endif}
+
   Processor.Process.Parameters.Add('useride');
 
   try
@@ -564,7 +573,7 @@ begin
   result:=false;
   localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (InstallPackage): ';
 
-  PackageName:=ExtractFileNameWithoutExt(ExtractFileNameOnly(PackagePath));
+  PackageName:=FileNameWithoutExt(PackagePath);
 
   // Convert any relative path to absolute path, if it's not just a file/package name:
   if ExtractFileName(PackagePath)=PackagePath then
@@ -672,14 +681,17 @@ begin
   Processor.Executable := IncludeTrailingPathDelimiter(LazarusInstallDir)+LAZBUILDNAME+GetExeExt;
 
   RegisterPackageFeature:=false;
-
   // get lazbuild version to see if we can register packages (available from version 1.7 and up)
   Processor.Process.Parameters.Clear;
   Processor.Process.Parameters.Add('--version');
   try
     ProcessorResult:=Processor.ExecuteAndWait;
     result := (ProcessorResult=0);
-    if result then RegisterPackageFeature:=(CalculateNumericalVersion(Processor.WorkerOutput.Text)>=CalculateFullVersion(1,7,0));
+    if result then
+    begin
+      if Processor.WorkerOutput.Count>0 then
+        RegisterPackageFeature:=(CalculateNumericalVersion(Processor.WorkerOutput.Strings[Processor.WorkerOutput.Count-1])>=CalculateFullVersion(1,7,0));
+    end;
   except
     on E: Exception do
     begin
@@ -706,10 +718,16 @@ begin
   {$ELSE}
   Processor.Process.Parameters.Add('--quiet');
   {$ENDIF}
+
+  {$ifdef DISABLELAZBUILDJOBS}
+  if (True) then
+  {$else}
   if (FNoJobs) then
+  {$endif}
     Processor.Process.Parameters.Add('--max-process-count=1')
   else
     Processor.Process.Parameters.Add('--max-process-count='+InttoStr(FCPUCount));
+
   Processor.Process.Parameters.Add('--pcp=' + DoubleQuoteIfNeeded(FLazarusPrimaryConfigPath));
   Processor.Process.Parameters.Add('--cpu=' + GetTargetCPU);
   Processor.Process.Parameters.Add('--os=' + GetTargetOS);
@@ -1210,10 +1228,15 @@ begin
       s:='--quiet';
       {$ENDIF}
 
+      {$ifdef DISABLELAZBUILDJOBS}
+      if (True) then
+      {$else}
       if (FNoJobs) then
+      {$endif}
         s:=s+' --max-process-count=1'
       else
         s:=s+' --max-process-count='+InttoStr(FCPUCount);
+
       if FLCL_Platform<>'' then s:=s+' --ws=' + FLCL_Platform;
       exec:=StringReplace(exec,LAZBUILDNAME+GetExeExt,LAZBUILDNAME+GetExeExt+' '+s,[rfIgnoreCase]);
     end;
@@ -1292,7 +1315,7 @@ var
 begin
   result:=false;
 
-  PackageName:=ExtractFileNameWithoutExt(ExtractFileNameOnly(PackagePath));
+  PackageName:=FileNameWithoutExt(PackagePath);
 
   localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (UnInstallPackage: '+PackageName+'): ';
 
@@ -1717,7 +1740,7 @@ end;
 // Download from SVN, hg, git for module
 function TUniversalInstaller.GetModule(ModuleName: string): boolean;
 var
-  idx,i,j:integer;
+  idx,i:integer;
   PackageSettings:TStringList;
   RemoteURL:string;
   BeforeRevision: string='';
@@ -1727,9 +1750,7 @@ var
   aFile:string;
   ResultCode: longint;
   SourceOK:boolean;
-  PackageName:string;
   aName:string;
-  Direction:string;
 begin
   result:=inherited;
   result:=InitModule;
@@ -1765,7 +1786,7 @@ begin
           GitClient.ModuleName:=ModuleName;
           GitClient.ExportOnly:=FExportOnly;
           result:=DownloadFromGit(ModuleName,BeforeRevision,AfterRevision,UpdateWarnings);
-          SourceOK:=result;
+          SourceOK:=(result) AND (DirectoryExists(IncludeTrailingPathDelimiter(FSourceDirectory)+'.git') OR FExportOnly);
           if UpdateWarnings.Count>0 then
           begin
             WritelnLog(UpdateWarnings.Text);
@@ -1790,7 +1811,7 @@ begin
           SVNClient.UserName   := GetValueFromKey('UserName',PackageSettings);
           SVNClient.Password   := GetValueFromKey('Password',PackageSettings);
           result:=DownloadFromSVN(ModuleName,BeforeRevision,AfterRevision,UpdateWarnings);
-          SourceOK:=(result) AND (DirectoryExists(IncludeTrailingPathDelimiter(FSourceDirectory+'.svn')) OR FExportOnly);
+          SourceOK:=(result) AND (DirectoryExists(IncludeTrailingPathDelimiter(FSourceDirectory)+'.svn') OR FExportOnly);
           if UpdateWarnings.Count>0 then
           begin
             WritelnLog(UpdateWarnings.Text);
@@ -2237,7 +2258,7 @@ begin
         FilesList.Clear;
         FindAllFiles(FilesList,Workingdir, 'local.properties', true);
         for idx:=0 to Pred(FilesList.Count) do
-begin
+        begin
           aFile:=FilesList[idx];
           Infoln(infotext+'Processing file: '+aFile,etInfo);
           FileContents:=TStringList.Create;
@@ -2253,18 +2274,18 @@ begin
               s:=StringReplace(s,':','\:',[]);
               {$endif}
               FileContents.Values['sdk.dir']:=s;
-end;
+            end;
 
             //Process NDK settings
             if DirectoryExists(NDKDir) then
-begin
+            begin
               s:=IncludeTrailingPathDelimiter(NDKDir);
               {$ifdef MSWindows}
               s:=StringReplace(s,'\','\\',[rfReplaceAll]);
               s:=StringReplace(s,':','\:',[]);
               {$endif}
               FileContents.Values['ndk.dir']:=s;
-end;
+            end;
 
             FileContents.SaveToFile(aFile);
           finally
@@ -2291,7 +2312,6 @@ function GetKeyword(aDictionary,aAlias: string): string;
 var
   ini:TMemIniFile;
   sl:TStringList;
-  e:Exception;
   i:integer;
 begin
   result:='';

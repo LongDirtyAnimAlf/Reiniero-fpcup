@@ -27,18 +27,20 @@ interface
 
 uses
   Classes, SysUtils,
+  FileUtil,
+  fpcuputil,
   repoclient, GitClient, HGClient, SvnClient,
-  processutils, m_crossinstaller,
-  fpcuputil;
+  processutils, m_crossinstaller;
 
 {$i revision.inc}
 
 const
-  DEFAULTFPCVERSION     = '3.0.4';
-  DEFAULTLAZARUSVERSION = '2.0.6';
+  DEFAULTFPCVERSION     = '3.2.0';
+  DEFAULTLAZARUSVERSION = '2.0.8';
 
   FPCTRUNKVERSION       = '3.3.1';
   FPCTRUNKBOOTVERSION   = '3.0.4';
+  //FPCTRUNKBOOTVERSION   = '3.2.0';
   LAZARUSTRUNKVERSION   = '2.1.0';
 
   DEFAULTFREEBSDVERSION = 11;
@@ -346,7 +348,7 @@ type
     FVerbose: boolean;
     FUseWget: boolean;
     FTar: string;
-    FBunzip2: string;
+    FGunzip: string;
     F7zip: string;
     FWget: string;
     FUnrar: string;
@@ -512,7 +514,9 @@ type
     function CheckModule(ModuleName: string): boolean; virtual;
     // Patch sources
     function PatchModule(ModuleName: string): boolean;
+    //Source revision
     function CreateRevision(ModuleName,aRevision:string): boolean;
+    function GetRevision(ModuleName:string): string;
     // Uninstall module
     function UnInstallModule(ModuleName: string): boolean; virtual;
     procedure Infoln(Message: string; const Level: TEventType=etInfo);
@@ -545,7 +549,6 @@ uses
   //LMessages,
   LCLIntf,
   {$endif}
-  FileUtil,
   process
   {$IFDEF UNIX}
   ,LazFileUtils
@@ -599,7 +602,8 @@ var
   FPCCfg,aDir,s   : string;
   ConfigText      : TStringList;
   SnipBegin,i     : integer;
-  aCPU,aOS,aArch  : string;
+  aCPU,aOS        : string;
+  aArch           : string;
 begin
   result:=false;
 
@@ -723,19 +727,20 @@ begin
 end;
 
 function TInstaller.GetMake: string;
+const
+  {$if (defined(BSD) and not defined(DARWIN)) or (defined(Solaris))}
+  GNUMake='gmake';
+  {$else}
+  GNUMake='make';
+  {$endif}
 begin
   if FMake = '' then
     {$IFDEF MSWINDOWS}
-    FMake := IncludeTrailingPathDelimiter(FMakeDir) + 'make' + GetExeExt;
+    //Only use our own make !!
+    FMake := IncludeTrailingPathDelimiter(FMakeDir) + GNUMake + '.exe';
     {$ELSE}
-    {$IF (defined(BSD) and not defined(DARWIN)) or (defined(Solaris))}
-    FMake := 'gmake'; //GNU make; assume in path
-    //FMake := FindDefaultExecutablePath('gmake');
-    {$else}
-    // Linux, OSX
-    FMake := 'make'; //assume in path
-    //FMake := FindDefaultExecutablePath('make');
-    {$ENDIF}
+    FMake:=Which(GNUMake);
+    if FMake='' then raise Exception.CreateFmt('%s not found. Please install GNU make.',[GNUMake]);
     {$ENDIF MSWINDOWS}
   Result := FMake;
 end;
@@ -833,15 +838,18 @@ begin
 
     {$IFDEF MSWINDOWS}
     // Need to do it here so we can pick up make path.
-    FBunzip2 := '';
+    FGunzip := '';
     FTar := '';
     FUnrar := '';
     F7zip := '';
     FWget := '';
     {$ENDIF MSWINDOWS}
     {$IFDEF LINUX}
-    FBunzip2 := 'bunzip2';
-    if FMUSL then FBunzip2 := 'unzip';
+    FGunzip := 'gunzip';
+    if FMUSL then
+    begin
+      FGunzip := 'unzip';
+    end;
     FTar := 'tar';
     F7zip := '7za';
     FWget := 'wget';
@@ -849,13 +857,13 @@ begin
     {$ENDIF LINUX}
     {$IFDEF BSD} //OSX, *BSD
     {$IFDEF DARWIN}
-    FBunzip2 := ''; //not really necessary now
+    FGunzip := ''; //not really necessary now
     FTar := 'bsdtar'; //gnutar is not available by default on Mavericks
     F7zip := '7za';
     FWget := 'wget';
     FUnrar := 'unrar';
     {$ELSE} //FreeBSD, OpenBSD, NetBSD
-    FBunzip2 := 'bunzip2';
+    FGunzip := 'gunzip';
     FTar := 'tar'; //At least FreeBSD tar apparently takes some gnu tar options nowadays.
     F7zip := '7za';
     FWget := 'wget';
@@ -1262,14 +1270,23 @@ begin
 
     if OperationSucceeded then
     begin
-      // Check for valid bunzip2 executable, if it is needed
-      if FBunzip2 <> EmptyStr then
+      // Check for valid gunzip executable, if it is needed
+      if FGunzip <> EmptyStr then
       begin
-        { Used to use bunzip2 --version, but on e.g. Fedora Core
-        that returns an error message e.g. can't read from cp
-        }
-        OperationSucceeded := CheckExecutable(FBunzip2, ['--help'], '');
-        if (NOT OperationSucceeded) then Infoln(localinfotext+FBunzip2+' not found.',etDebug);
+        if (NOT FMUSL) then
+        begin
+          OperationSucceeded := CheckExecutable(FGunzip, ['--help'], '');
+          if (NOT OperationSucceeded) then
+          begin
+            Infoln(localinfotext+FGunzip+' not found.',etDebug);
+            FGunzip:='gzip';
+            OperationSucceeded := CheckExecutable(FGunzip, ['--help'], '');
+            if (NOT OperationSucceeded) then
+            begin
+              Infoln(localinfotext+'No .gz uncompressor found.',etInfo);
+            end;
+          end;
+        end;
       end;
     end;
 
@@ -1364,9 +1381,9 @@ begin
       if (NOT CheckExecutable(Make, ['-v'], 'GNU Make')) then
       begin
         if CheckExecutable(Make, ['-v'], '') then
-      begin
+        begin
           Infoln(s2+'Found make binary here: '+Make+'. But it is not GNU Make.',etError);
-        OperationSucceeded := false;
+          OperationSucceeded := false;
         end;
       end;
     except
@@ -1758,8 +1775,8 @@ begin
     exit;
   end;
 
-  aBeforeRevision              := 'failure';
-  aAfterRevision               := 'failure';
+  aBeforeRevision             := 'failure';
+  aAfterRevision              := 'failure';
   SVNClient.ModuleName        := ModuleName;
   SVNClient.LocalRepository   := FSourceDirectory;
   SVNClient.Repository        := FURL;
@@ -1984,7 +2001,7 @@ begin
   Infoln(localinfotext+'Getting '+ModuleName+' sources.',etInfo);
 
   FPCArchive := GetTempFileNameExt('FPCUPTMP','zip');
-  result:=GetFile(FURL,FPCArchive,true);
+  result:=GetFile(FURL,FPCArchive);
   if (result AND (NOT FileExists(FPCArchive))) then result:=false;
 
   if result then
@@ -2248,6 +2265,8 @@ var
   OpenSSLFileName,aSourceURL: string;
   i:integer;
 begin
+
+
   result:=false;
   OperationSucceeded := false;
 
@@ -2361,7 +2380,7 @@ begin
   end;
 
   result := OperationSucceeded;
- end;
+end;
 {$endif}
 
 function TInstaller.DownloadWget: boolean;
@@ -2370,14 +2389,16 @@ const
   NewSourceURL : array [0..0] of string = (
     //'https://github.com/LongDirtyAnimAlf/fpcupdeluxe/releases/download/zlib/wget-64.zip',
     //'https://eternallybored.org/misc/wget/1.19.4/64/wget.exe'
-    'https://eternallybored.org/misc/wget/1.20/64/wget.exe'
+    //'https://eternallybored.org/misc/wget/1.20/64/wget.exe'
+    'https://eternallybored.org/misc/wget/1.20.3/64/wget.exe'
     );
   {$endif}
   {$ifdef win32}
   NewSourceURL : array [0..0] of string = (
     //'https://github.com/LongDirtyAnimAlf/fpcupdeluxe/releases/download/zlib/wget-32.zip',
     //'https://eternallybored.org/misc/wget/1.19.4/32/wget.exe'
-    'https://eternallybored.org/misc/wget/1.20/32/wget.exe'
+    //'https://eternallybored.org/misc/wget/1.20/32/wget.exe'
+    'https://eternallybored.org/misc/wget/1.20.3/32/wget.exe'
     );
   {$endif}
 var
@@ -2595,11 +2616,12 @@ function TInstaller.DownloadJasmin: boolean;
 const
   JASMINVERSION = '2.4';
   TARGETNAME='jasmin.jar';
-  SOURCEURL : array [0..1] of string = (
+  SOURCEURL : array [0..4] of string = (
+    'ftp://ftp.freepascal.org/pub/fpc/contrib/jvm/fpcjvmutilities.zip',
     'https://sourceforge.net/projects/jasmin/files/jasmin/jasmin-'+JASMINVERSION+'/jasmin-'+JASMINVERSION+'.zip/download',
-    'https://github.com/davidar/jasmin/archive/'+JASMINVERSION+'.zip'
-    //http://www.java2s.com/Code/JarDownload/jasmin/jasmin.jar.zip
-    //http://www.java2s.com/Code/JarDownload/jasmin/jasmin-3.0.3.jar.zip
+    'https://github.com/davidar/jasmin/archive/'+JASMINVERSION+'.zip',
+    'https://www.java2s.com/Code/JarDownload/jasmin/jasmin.jar.zip',
+    'https://www.java2s.com/Code/JarDownload/jasmin/jasmin-3.0.3.jar.zip'
     );
 var
   OperationSucceeded: boolean;
@@ -2652,7 +2674,8 @@ begin
     with TNormalUnzipper.Create do
     begin
       try
-        OperationSucceeded:=DoUnZip(SourceZip,ZipDir,[]);
+        //OperationSucceeded:=DoUnZip(SourceZip,ZipDir,[]);
+        OperationSucceeded:=DoUnZip(SourceZip,ZipDir,[TARGETNAME]);
       finally
         Free;
       end;
@@ -2661,7 +2684,7 @@ begin
     if OperationSucceeded then
     begin
       //MoveFile
-      SourceBin:=ZipDir+DirectorySeparator+'jasmin-' + JASMINVERSION + DirectorySeparator+TARGETNAME;
+      SourceBin:=ZipDir{+DirectorySeparator+'jasmin-' + JASMINVERSION} + DirectorySeparator+TARGETNAME;
       OperationSucceeded := MoveFile(SourceBin,TargetBin);
       if (NOT OperationSucceeded) then
       begin
@@ -2669,10 +2692,12 @@ begin
       end
       else OperationSucceeded := FileExists(TargetBin);
     end;
+
+    SysUtils.Deletefile(SourceZip);
+    DeleteDirectoryEx(ZipDir+DirectorySeparator);
+
   end;
 
-  SysUtils.Deletefile(SourceZip);
-  DeleteDirectoryEx(ZipDir+DirectorySeparator);
   Result:=true; //never fail
 end;
 
@@ -3083,7 +3108,7 @@ begin
     try
       PatchList.Clear;
       try
-        GetGitHubFileList(FPCUPGITREPOSOURCEPATCHESAPI,PatchList,HTTPProxyHost,HTTPProxyPort,HTTPProxyUser,HTTPProxyPassword);
+        GetGitHubFileList(FPCUPGITREPOSOURCEPATCHESAPI,PatchList,FUseWget,HTTPProxyHost,HTTPProxyPort,HTTPProxyUser,HTTPProxyPassword);
       except
         on E : Exception do
         begin
@@ -3118,7 +3143,7 @@ begin
         if NOT PatchUniversal then
         begin
           s:=FileNameFromURL(PatchFilePath);
-          s:=ExtractFileNameOnly(s);
+          s:=FileNameWithoutExt(s);
           s:=VersionFromUrl(s);
           PatchVersion:=CalculateNumericalVersion(s);
 
@@ -3129,13 +3154,6 @@ begin
           end;
 
           Infoln(localinfotext+'Found online patch: '+PatchFilePath+' with version '+InttoStr(PatchVersion),etDebug);
-
-          {$if defined(Darwin) and defined(LCLQT5)}
-          //disable big hack for now
-          if Pos('lazpatch_darwin_qt5hack',PatchFilePath)>0 then PatchAccepted:=False;
-          {$else}
-          if Pos('darwin_qt5',PatchFilePath)>0 then PatchAccepted:=False;
-          {$endif}
 
           {$if not defined(MSWindows) and not defined(Haiku)}
           //only patch the Haiku build process on Windows and Haiku itself
@@ -3441,7 +3459,7 @@ begin
   RevFileName:='';
 
   if ModuleName=_LAZARUS then RevFileName:=IncludeTrailingPathDelimiter(FSourceDirectory)+'ide'+PathDelim+REVINCFILENAME;
-  if ModuleName=_FPC then RevFileName:=IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+PathDelim+REVINCFILENAME;
+  //if ModuleName=_FPC then RevFileName:=IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+PathDelim+REVINCFILENAME;
 
   if Length(RevFileName)>0 then
   begin
@@ -3487,6 +3505,40 @@ begin
     *)
   end;
 
+end;
+
+function TInstaller.GetRevision(ModuleName:string): string;
+const
+  ConstName = 'RevisionStr';
+var
+  RevFileName,RevString: string;
+  RevisionStringList:TStringList;
+begin
+  result:='';
+
+  RevFileName:='';
+
+  //if ModuleName=_LAZARUS then RevFileName:=IncludeTrailingPathDelimiter(FSourceDirectory)+'ide'+PathDelim+REVINCFILENAME;
+  if ModuleName=_FPC then RevFileName:=IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+PathDelim+REVINCFILENAME;
+
+  if FileExists(RevFileName) then
+  begin
+    RevisionStringList:=TStringList.Create;
+    try
+      RevisionStringList.LoadFromFile(RevFileName);
+      if (RevisionStringList.Count>0) then
+      begin
+        if ModuleName=_FPC then
+        begin
+          RevString:=Trim(RevisionStringList.Strings[0]);
+          RevString:=AnsiDequotedStr(RevString,'''');
+          result:=AnsiDequotedStr(RevString,'"');
+        end;
+      end;
+    finally
+      RevisionStringList.Free;
+    end;
+  end;
 end;
 
 function TInstaller.UnInstallModule(ModuleName: string): boolean;
@@ -3634,26 +3686,25 @@ procedure TInstaller.Infoln(Message: string; const Level: TEventType=etInfo);
 begin
   // Note: these strings should remain as is so any fpcupgui highlighter can pick it up
   if (Level<>etDebug) then
-    begin
-      if AnsiPos(LineEnding, Message)>0 then ThreadLog(''); //Write an empty line before multiline messagse
-      ThreadLog(BeginSnippet+' '+Seriousness[Level]+' '+ Message); //we misuse this for info output
-    end
+  begin
+    if AnsiPos(LineEnding, Message)>0 then ThreadLog(''); //Write an empty line before multiline messagse
+    ThreadLog(BeginSnippet+' '+Seriousness[Level]+' '+ Message); //we misuse this for info output
+  end
   else
-    begin
+  begin
     {$IFDEF DEBUG}
     {DEBUG conditional symbol is defined using
     Project Options/Other/Custom Options using -dDEBUG}
     if AnsiPos(LineEnding, Message)>0 then ThreadLog(''); //Write an empty line before multiline messagse
     ThreadLog(BeginSnippet+' '+Seriousness[Level]+' '+ Message); //we misuse this for info output
     {$ENDIF}
-    end;
+  end;
  {$ifdef LCL}
  Application.ProcessMessages;
  {$else}
  Sleep(0);
  {$endif}
 end;
-
 
 function TInstaller.ExecuteCommand(Commandline: string; Verbosity: boolean): integer;
 var
@@ -3747,7 +3798,7 @@ begin
       begin
         OldPath:=aTool.Environment.GetVar(PATHVARNAME);
         if OldPath<>'' then
-           aTool.Environment.SetVar(PATHVARNAME, PrependPath+PathSeparator+OldPath)
+          aTool.Environment.SetVar(PATHVARNAME, PrependPath+PathSeparator+OldPath)
         else
           aTool.Environment.SetVar(PATHVARNAME, PrependPath);
       end;
@@ -3817,7 +3868,7 @@ begin
       Output:=aTool.WorkerOutput.Text;
 
       if PrependPath<>'' then
-      aTool.Environment.SetVar(PATHVARNAME, OldPath);
+        aTool.Environment.SetVar(PATHVARNAME, OldPath);
 
       aTool.Verbose:=OldVerbosity;
     end;

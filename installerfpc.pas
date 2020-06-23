@@ -207,9 +207,9 @@ implementation
 
 uses
   StrUtils,
+  FileUtil,
   fpcuputil,
-  repoclient,
-  FileUtil
+  repoclient
   {$IFDEF UNIX}
     ,baseunix
     ,LazFileUtils
@@ -704,10 +704,17 @@ begin
             //Add config snippet
             if (MakeCycle=High(TSTEPS)) then
             begin
+              s1:='';
               Infoln(infotext+'Adding '+FPCCONFIGFILENAME+' config snippet for target '+CrossInstaller.RegisterName,etInfo);
-              if CrossInstaller.FPCCFGSnippet<>''
-                 then s1:=CrossInstaller.FPCCFGSnippet+LineEnding
-                 else s1:='# Dummy (blank) config for auto-detect cross-compilers'+LineEnding;
+
+              if CrossInstaller.FPCCFGSnippet<>'' then
+                s1:=s1+CrossInstaller.FPCCFGSnippet+LineEnding;
+
+              if (CrossInstaller.TargetOS=TOS.java) then
+                //s1:=s1+'-Fu'+ConcatPaths([FInstallDirectory,'units','$FPCTARGET','rtl','org','freepascal','rtl'])+LineEnding;
+                s1:=s1+'-Fu'+ConcatPaths([FInstallDirectory,'units',CrossInstaller.RegisterName,'rtl','org','freepascal','rtl'])+LineEnding;
+
+              if (Length(s1)=0) then s1:='# Dummy (blank) config for auto-detect cross-compilers'+LineEnding;
             end;
 
             //Edit dedicated settings of config snippet
@@ -723,6 +730,18 @@ begin
               '#ENDIF'+LineEnding+
               '#ENDIF'+LineEnding+
               SnipMagicEnd);
+
+            {$ifdef UNIX}
+            //Correct for some case errors on Unixes
+            if (CrossInstaller.TargetOS=TOS.java) then
+            begin
+              s1:=ConcatPaths([FInstallDirectory,'units',CrossInstaller.RegisterName,'rtl','org','freepascal','rtl']);
+              s2:=IncludeTrailingPathDelimiter(s1)+'System.class';
+              s1:=IncludeTrailingPathDelimiter(s1)+'system.class';
+              if (NOT FileExists(s1)) then FileUtil.CopyFile(s2,s1);
+            end;
+            {$endif}
+
           end;
 
           Processor.Executable := Make;
@@ -795,7 +814,7 @@ begin
               begin
                 // copy over the [cross-]compiler
                 s1:=IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler/'+GetCompilerName(CrossInstaller.TargetCPU);
-                s2:=IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler/'+GetCrossCompilerName(CrossInstaller.TargetCPU);
+                s2:=IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler/'+CrossCompilerName;
                 if FileExists(s1) then
                 begin
                   Infoln(infotext+'Copy [cross-]compiler ('+ExtractFileName(s1)+') into: '+ExtractFilePath(s2),etInfo);
@@ -813,14 +832,20 @@ begin
             end;
             st_Rtl:
             begin
-              s1:=GetCrossCompilerName(CrossInstaller.TargetCPU);
-              Processor.Process.Parameters.Add('FPC='+IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+DirectorySeparator+s1);
+              s1:=CrossCompilerName;
+              s2:=IncludeTrailingPathDelimiter(FBinPath)+s1;
+              if (NOT FileExists(s2)) then
+                s2:=IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+DirectorySeparator+s1;
+              Processor.Process.Parameters.Add('FPC='+s2);
               Processor.Process.Parameters.Add('rtl');
             end;
             st_RtlInstall:
             begin
-              s1:=GetCrossCompilerName(CrossInstaller.TargetCPU);
-              Processor.Process.Parameters.Add('FPC='+IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+DirectorySeparator+s1);
+              s1:=CrossCompilerName;
+              s2:=IncludeTrailingPathDelimiter(FBinPath)+s1;
+              if (NOT FileExists(s2)) then
+                s2:=IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+DirectorySeparator+s1;
+              Processor.Process.Parameters.Add('FPC='+s2);
               Processor.Process.Parameters.Add('rtl_install');
             end;
             st_Packages:
@@ -828,31 +853,37 @@ begin
               {$ifdef Darwin}
               if Length(Minimum_OSX)>0 then Options:=Options+' '+Minimum_OSX;
               {$endif}
-              s1:=GetCrossCompilerName(CrossInstaller.TargetCPU);
-              Processor.Process.Parameters.Add('FPC='+IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+DirectorySeparator+s1);
+              s1:=CrossCompilerName;
+              s2:=IncludeTrailingPathDelimiter(FBinPath)+s1;
+              if (NOT FileExists(s2)) then
+                s2:=IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+DirectorySeparator+s1;
+              Processor.Process.Parameters.Add('FPC='+s2);
               Processor.Process.Parameters.Add('packages');
             end;
             st_PackagesInstall:
             begin
-              s1:=GetCrossCompilerName(CrossInstaller.TargetCPU);
-              Processor.Process.Parameters.Add('FPC='+IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+DirectorySeparator+s1);
+              s1:=CrossCompilerName;
+              s2:=IncludeTrailingPathDelimiter(FBinPath)+s1;
+              if (NOT FileExists(s2)) then
+                s2:=IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+DirectorySeparator+s1;
+              Processor.Process.Parameters.Add('FPC='+s2);
               Processor.Process.Parameters.Add('packages_install');
             end;
             st_NativeCompiler:
             begin
               {$ifdef buildnative}
               if (
-                //Only native compiler if we have libs !!
-                (CrossInstaller.LibsPath<>'')
+                //Only native compiler if we have libs of if we do not need libs !!
+                ( (CrossInstaller.LibsPath<>'') OR (CrossInstaller.TargetOS=TOS.win32) OR (CrossInstaller.TargetOS=TOS.win64))
                 AND
                 //Only native compiler for these OS
-                (AnsiIndexText(CrossInstaller.TargetOS,['win32','win64','linux','freebsd','netbsd','openbsd','darwin','haiku','qnx','beos','solaris','aix'])<>-1)
+                (CrossInstaller.TargetOS in [TOS.win32,TOS.win64,TOS.linux,TOS.darwin,TOS.freebsd,TOS.openbsd,TOS.aix,TOS.haiku,TOS.solaris,TOS.dragonfly,TOS.netbsd])
                 )
                 then
               begin
-                Infoln(infotext+'Building native compiler for '+CrossInstaller.TargetCPU+'-'+CrossInstaller.TargetOS+'.',etInfo);
+                Infoln(infotext+'Building native compiler for '+CrossInstaller.TargetCPUName+'-'+CrossInstaller.TargetOSName+'.',etInfo);
                 Processor.Process.Parameters.Add('FPC='+ChosenCompiler);
-                //s1:=GetCrossCompilerName(CrossInstaller.TargetCPU);
+                //s1:=CrossCompilerName;
                 //Processor.Process.Parameters.Add('FPC='+IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+DirectorySeparator+s1);
                 Processor.Process.Parameters.Add('-C');
                 Processor.Process.Parameters.Add('compiler');
@@ -870,8 +901,8 @@ begin
           begin
             if (MakeCycle in [st_Packages,st_PackagesInstall,st_NativeCompiler]) then
             begin
-              Infoln(infotext+'Skipping build step '+GetEnumNameSimple(TypeInfo(TSTEPS),Ord(MakeCycle))+' for '+CrossInstaller.TargetCPUName+'.',etInfo);
-              continue;
+              //Infoln(infotext+'Skipping build step '+GetEnumNameSimple(TypeInfo(TSTEPS),Ord(MakeCycle))+' for '+CrossInstaller.TargetCPUName+'.',etInfo);
+              //continue;
             end;
           end;
 
@@ -923,14 +954,17 @@ begin
                Options:=Options+' -dFPC_USE_LIBC';
           {$endif}
 
-          {
-          s2:=IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+DirectorySeparator+REVINCFILENAME;
-          if FileExists(s2) then
+          if (Length(ActualRevision)=0) OR (ActualRevision='failure') then
+          begin
+            s2:=GetRevision(ModuleName);
+            if Length(s2)>0 then FActualRevision:=s2;
+          end;
+
+          if (Length(ActualRevision)>0) AND (ActualRevision<>'failure') then
           begin
             Processor.Process.Parameters.Add('REVSTR='+ActualRevision);
-            Options:=Options+' -dREVINC';
+            Processor.Process.Parameters.Add('REVINC=force');
           end;
-          }
 
           {$ifdef solaris}
           {$IF defined(CPUX64) OR defined(CPUX86)}
@@ -1098,13 +1132,41 @@ begin
 
             if ProcessorResult=AbortedExitCode then break;
 
+            {$ifndef crosssimple}
             if ((NOT result) AND (MakeCycle=st_Packages)) then
             begin
               //Sometimes rerun gives good results (on AIX 32bit especially).
-              Infoln(infotext+'Running '+Processor.Executable+' stage again ... could work !',etInfo);
-              ProcessorResult:=Processor.ExecuteAndWait;
-              result:=(ProcessorResult=0);
+              //Infoln(infotext+'Running '+Processor.Executable+' stage again ... could work !',etInfo);
+              //ProcessorResult:=Processor.ExecuteAndWait;
+              //result:=(ProcessorResult=0);
             end;
+
+            {$IFDEF UNIX}
+            if (result) AND (MakeCycle=st_CompilerInstall) then
+            begin
+              s2:=ConcatPaths([FSourceDirectory,'compiler',CrossCompilerName]);
+              //The compiler gets installed here
+              //s2:=ConcatPaths([FInstallDirectory,'lib','bin',GetFPCVersion,CrossCompilerName]);
+              {$ifdef Darwin}
+              // on Darwin, the normal compiler names are used for the final cross-target compiler !!
+              // very tricky !
+              s1:=ConcatPaths([FBinPath,GetCompilerName(CrossInstaller.TargetCPU)]);
+              {$else}
+              s1:=ConcatPaths([FBinPath,CrossCompilerName]);
+              {$endif}
+
+              //fpSymlink(pchar(s2),pchar(s1));
+
+              // copy over the cross-compiler towards the FPC bin-directory, with the right compilername.
+              if FileExists(s2) then
+              begin
+                Infoln(infotext+'Copy cross-compiler ('+CrossCompilerName+') into: '+FBinPath,etInfo);
+                FileUtil.CopyFile(s2,s1);
+                fpChmod(s1,&755);
+              end;
+            end;
+            {$ENDIF UNIX}
+            {$endif crosssimple}
 
           except
             on E: Exception do
@@ -1118,10 +1180,9 @@ begin
 
           if (not result) then break;
 
-          if MakeCycle=st_NativeCompiler then
-             Infoln(infotext+'Building native compiler for finished.',etInfo)
-
         end;// loop over MakeCycle
+
+        if result then Infoln(infotext+'Building native compiler for '+GetFPCTarget(false)+' finished.',etInfo);
 
         if (not result) then
         begin
@@ -1145,26 +1206,27 @@ begin
         end
         else
         begin
-          {$IFDEF UNIX}
 
+          {$ifdef crosssimple}
+          {$IFDEF UNIX}
+          s2:=ConcatPaths([FSourceDirectory,'compiler',CrossCompilerName]);
+          //s2:=ConcatPaths([FInstallDirectory,'lib','bin',GetFPCVersion,CrossCompilerName]);
           {$ifdef Darwin}
           // on Darwin, the normal compiler names are used for the final cross-target compiler !!
           // very tricky !
-          s1:=GetCompilerName(CrossInstaller.TargetCPU);
+          s1:=ConcatPaths([FBinPath,GetCompilerName(CrossInstaller.TargetCPU)]);
           {$else}
-          s1:=GetCrossCompilerName(CrossInstaller.TargetCPU);
+          s1:=ConcatPaths([FBinPath,CrossCompilerName]);
           {$endif}
-
           // copy over the cross-compiler towards the FPC bin-directory, with the right compilername.
-          if FileExists(IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler/'+CrossCompilerName) then
+          if FileExists(s2) then
           begin
             Infoln(infotext+'Copy cross-compiler ('+CrossCompilerName+') into: '+FBinPath,etInfo);
-            FileUtil.CopyFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler/'+CrossCompilerName,
-              IncludeTrailingPathDelimiter(FBinPath)+s1);
-            fpChmod(IncludeTrailingPathDelimiter(FBinPath)+s1,&755);
+            FileUtil.CopyFile(s2,s1);
+            fpChmod(s1,&755);
           end;
-
           {$ENDIF}
+          {$endif crosssimple}
 
           // delete cross-compiler in source-directory
           SysUtils.DeleteFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+DirectorySeparator+CrossCompilerName);
@@ -1408,7 +1470,7 @@ begin
     if (NOT FileExists(s1)) then FileUtil.CopyFile(s2+DirectorySeparator+YYPARSE,s1);
 
     {$IFDEF UNIX}
-    s1:=IncludeTrailingPathDelimiter(FInstallDirectory)+'lib/fpc/'+GetFPCVersion;
+    s1:=ConcatPaths([FInstallDirectory,'lib','fpc',GetFPCVersion]);
     ForceDirectoriesSafe(s1);
     s1:=s1+'/lexyacc';
     DeleteFile(s1);
@@ -1523,13 +1585,11 @@ begin
   end;
   {$ENDIF}
 
-  //Always add/use the revision.inc file (if it is there)
-  //However, the Makefile forces the setting of REVSTR
-  //So, use our own REVSTR while the Makefile itself does not do its job properly
-  Processor.Process.Parameters.Add('REVSTR='+ActualRevision);
-  s2:=IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+DirectorySeparator+REVINCFILENAME;
-  if FileExists(s2) then
-    s1:=s1+' -dREVINC';
+  if (Length(ActualRevision)>0) AND (ActualRevision<>'failure') then
+  begin
+    Processor.Process.Parameters.Add('REVSTR='+ActualRevision);
+    Processor.Process.Parameters.Add('REVINC=force');
+  end;
 
   {$if (NOT defined(FPC_HAS_TYPE_EXTENDED)) AND (defined (CPUX86_64))}
   if FSoftFloat then
@@ -2068,7 +2128,7 @@ end;
 function TFPCInstaller.DownloadBootstrapCompiler: boolean;
 var
   BootstrapFileArchiveDir: string;
-  BootstrapFilePath: string;
+  BootstrapFilePath,BootstrapFileExt: string;
   CompilerName:string;
   OperationSucceeded: boolean;
 begin
@@ -2099,7 +2159,7 @@ begin
 
     // Delete old compiler in archive directory (if any)
     SysUtils.DeleteFile(BootstrapFileArchiveDir+CompilerName);
-    if (NOT FileExists(BootstrapFilePath)) then OperationSucceeded:=GetFile(FBootstrapCompilerURL,BootstrapFilePath,true);
+    if (NOT FileExists(BootstrapFilePath)) then OperationSucceeded:=GetFile(FBootstrapCompilerURL,BootstrapFilePath);
     if OperationSucceeded then OperationSucceeded:=FileExists(BootstrapFilePath);
   end;
 
@@ -2108,8 +2168,9 @@ begin
     //Download was successfull
     //Process result
 
-    case ExtractFileExt(BootstrapFilePath) of
+    BootstrapFileExt:=FileNameAllExt(BootstrapFilePath);
 
+    case BootstrapFileExt of
         '.zip':
         begin
           with TNormalUnzipper.Create do
@@ -2123,8 +2184,21 @@ begin
           end;
         end;
 
+        '.bz2':
+        begin
+          with TNormalUnzipper.Create do
+          begin
+            try
+              OperationSucceeded:=DoBUnZip2(BootstrapFilePath,IncludeTrailingPathDelimiter(BootstrapFileArchiveDir)+CompilerName);
+              if OperationSucceeded then BootstrapFilePath:=IncludeTrailingPathDelimiter(BootstrapFileArchiveDir)+CompilerName;
+            finally
+              Free;
+            end;
+          end;
+        end;
+
         {$ifdef MSWINDOWS}
-        '.gz','.bz2':
+        '.tar.gz','.tar.bz2':
         begin
           //& cmd.exe '/C 7z x "somename.tar.gz" -so | 7z e -aoa -si -ttar -o"somename"'
           OperationSucceeded:=(ExecuteCommand(F7zip+' x -o"'+BootstrapFileArchiveDir+'" '+BootstrapFilePath,FVerbose)=0);
@@ -2135,7 +2209,7 @@ begin
             BootstrapFilePath:=StringReplace(BootstrapFilePath,'.bz2','',[]);
             if ExtractFileExt(BootstrapFilePath)='.tar' then
             begin
-              OperationSucceeded:=(ExecuteCommand(F7zip+' e -aoa -ttar -o"'+BootstrapFileArchiveDir+'" '+BootstrapFilePath+' '+CompilerName+GetExeExt+' -r',FVerbose)=0);
+              OperationSucceeded:=(ExecuteCommand(F7zip+' e -aoa -ttar -o"'+BootstrapFileArchiveDir+'" '+BootstrapFilePath+' '+CompilerName+' -r',FVerbose)=0);
               if OperationSucceeded then BootstrapFilePath:=StringReplace(BootstrapFilePath,'.tar','',[]);
             end;
           end;
@@ -2143,31 +2217,33 @@ begin
         {$endif MSWINDOWS}
 
         {$ifdef UNIX}
-        '.bz2':
+
+        '.tbz2','.tbz','.tar.bz2':
         begin
           {$ifdef BSD}
-          OperationSucceeded:=(ExecuteCommand(FTar,['-xjf',BootstrapFilePath,'-C',BootstrapFileArchiveDir,'-O','*'+CompilerName+GetExeExt],FVerbose)=0);
+          OperationSucceeded:=(ExecuteCommand(FTar,['-jxf',BootstrapFilePath,'-C',BootstrapFileArchiveDir,'-O','*'+CompilerName],FVerbose)=0);
           {$else}
-          if Pos('.tar.',BootstrapFilePath)>0 then
-          begin
-            OperationSucceeded:=(ExecuteCommand(FTar,['-xjf',BootstrapFilePath,'-C',BootstrapFileArchiveDir,'--wildcards','--no-anchored',CompilerName+GetExeExt],FVerbose)=0);
-          end
-          else
-          begin
-            OperationSucceeded:=(ExecuteCommand(FBunzip2,['-dfkq',BootstrapFilePath],FVerbose)=0);
-            if OperationSucceeded then BootstrapFilePath:=StringReplace(BootstrapFilePath,'.bz2','',[]);
-          end;
+          OperationSucceeded:=(ExecuteCommand(FTar,['-jxf',BootstrapFilePath,'-C',BootstrapFileArchiveDir,'--wildcards','--no-anchored',CompilerName],FVerbose)=0);
           {$endif}
         end;
+
+        '.tar.gz':
+        begin
+          {$ifdef BSD}
+          OperationSucceeded:=(ExecuteCommand(FTar,['-zxf',BootstrapFilePath,'-C',BootstrapFileArchiveDir,'-O','*'+CompilerName],FVerbose)=0);
+          {$else}
+          OperationSucceeded:=(ExecuteCommand(FTar,['-zxf',BootstrapFilePath,'-C',BootstrapFileArchiveDir,'--wildcards','--no-anchored',CompilerName],FVerbose)=0);
+          {$endif}
+        end;
+
         '.gz':
         begin
-          {$ifdef BSD}
-          OperationSucceeded:=(ExecuteCommand(FTar,['-xzf',BootstrapFilePath,'-C',BootstrapFileArchiveDir,'-O','*'+CompilerName+GetExeExt],FVerbose)=0);
-          {$else}
-          OperationSucceeded:=(ExecuteCommand(FTar,['-xzf',BootstrapFilePath,'-C',BootstrapFileArchiveDir,'--wildcards','--no-anchored',CompilerName+GetExeExt],FVerbose)=0);
-          {$endif}
+         OperationSucceeded:=(ExecuteCommand(FGunzip,['-d',BootstrapFilePath],FVerbose)=0);
+         if OperationSucceeded then BootstrapFilePath:=StringReplace(BootstrapFilePath,'.gz','',[]);
         end;
+
         {$endif UNIX}
+
     end;
 
     // Find a bootstrapper somewhere inside the download directory
@@ -2366,7 +2442,6 @@ begin
             aCompilerList.Clear;
 
             result:=aDownLoader.getFTPFileList(s,aCompilerList);
-
             if (NOT result) then
             begin
               Infoln(localinfotext+'Could not get compiler list from ' + s + '. Trying again. Final try.',etInfo);
@@ -2491,7 +2566,7 @@ begin
         try
           aCompilerList.Clear;
           try
-            GetGitHubFileList(FPCUPGITREPOBOOTSTRAPPERAPI,aCompilerList,HTTPProxyHost,HTTPProxyPort,HTTPProxyUser,HTTPProxyPassword);
+            GetGitHubFileList(FPCUPGITREPOBOOTSTRAPPERAPI,aCompilerList,FUseWget,HTTPProxyHost,HTTPProxyPort,HTTPProxyUser,HTTPProxyPassword);
           except
             on E : Exception do
             begin
@@ -3245,7 +3320,7 @@ begin
             {$ifdef MSWINDOWS}
             Processor.Process.Parameters.Add('GlobalPath='+IncludeTrailingPathDelimiter(FInstallDirectory));
             {$ELSE}
-            Processor.Process.Parameters.Add('GlobalPath='+ConcatPaths([FInstallDirectory,'lib','fpc','{CompilerVersion}'])+PathDelim);
+            Processor.Process.Parameters.Add('GlobalPath='+ConcatPaths([FInstallDirectory,'lib','fpc'])+PathDelim+'{CompilerVersion}'+PathDelim);
             {$ENDIF}
 
             Processor.Process.Parameters.Add('-d');
@@ -3544,7 +3619,6 @@ begin
         end;
         {$endif Darwin}
 
-
         {$ifndef FPCONLY}
         {$ifdef LCLQT5}
         ConfigText.Append('#IFNDEF FPC_CROSSCOMPILING');
@@ -3552,10 +3626,32 @@ begin
         {$ifdef Darwin}
         ConfigText.Append('-Fl'+IncludeTrailingPathDelimiter(FBaseDirectory)+'Frameworks');
         ConfigText.Append('-k-F'+IncludeTrailingPathDelimiter(FBaseDirectory)+'Frameworks');
+
         ConfigText.Append('-k-rpath');
         ConfigText.Append('-k@executable_path/../Frameworks');
+
         ConfigText.Append('-k-rpath');
         ConfigText.Append('-k'+IncludeTrailingPathDelimiter(FBaseDirectory)+'Frameworks');
+
+        (*
+        ConfigText.Append('-k-framework');
+        ConfigText.Append('-kQt5Pas');
+        ConfigText.Append('-k-framework');
+        ConfigText.Append('-kQtPrintSupport');
+        ConfigText.Append('-k-framework');
+        ConfigText.Append('-kQtWidgets');
+        ConfigText.Append('-k-framework');
+        ConfigText.Append('-kQtGui');
+        ConfigText.Append('-k-framework');
+        ConfigText.Append('-kQtNetwork');
+        ConfigText.Append('-k-framework');
+        ConfigText.Append('-kQtCore');
+        ConfigText.Append('-k-framework');
+        ConfigText.Append('-kOpenGL');
+        ConfigText.Append('-k-framework');
+        ConfigText.Append('-kAGL');
+        *)
+
         {$else Darwin}
         {$ifdef Unix}
         //ConfigText.Append('-k"-rpath=./"');
@@ -3659,51 +3755,51 @@ begin
 
   if FileExists(aCleanupCompiler) then
   begin
-      Processor.Executable:=Make;
-      Processor.Process.Parameters.Clear;
-      {$IFDEF MSWINDOWS}
-      if Length(Shell)>0 then Processor.Process.Parameters.Add('SHELL='+Shell);
-      {$ENDIF}
-      Processor.Process.CurrentDirectory:=ExcludeTrailingPathDelimiter(FSourceDirectory);
-      if (NOT FNoJobs) then
+    Processor.Executable:=Make;
+    Processor.Process.Parameters.Clear;
+    {$IFDEF MSWINDOWS}
+    if Length(Shell)>0 then Processor.Process.Parameters.Add('SHELL='+Shell);
+    {$ENDIF}
+    Processor.Process.CurrentDirectory:=ExcludeTrailingPathDelimiter(FSourceDirectory);
+    if (NOT FNoJobs) then
       Processor.Process.Parameters.Add('--jobs='+IntToStr(FCPUCount));
-      Processor.Process.Parameters.Add('FPC='+aCleanupCompiler);
-      Processor.Process.Parameters.Add('--directory='+ExcludeTrailingPathDelimiter(FSourceDirectory));
-      Processor.Process.Parameters.Add('FPCMAKE=' + IncludeTrailingPathDelimiter(FBinPath)+'fpcmake'+GetExeExt);
-      Processor.Process.Parameters.Add('PPUMOVE=' + IncludeTrailingPathDelimiter(FBinPath)+'ppumove'+GetExeExt);
-      Processor.Process.Parameters.Add('FPCDIR=' + ExcludeTrailingPathDelimiter(FSourceDirectory));
-      Processor.Process.Parameters.Add('PREFIX='+ExcludeTrailingPathDelimiter(FInstallDirectory));
-      Processor.Process.Parameters.Add('INSTALL_PREFIX='+ExcludeTrailingPathDelimiter(FInstallDirectory));
-      {$IFDEF UNIX}
-      Processor.Process.Parameters.Add('INSTALL_BINDIR='+FBinPath);
-      {$ENDIF}
-      {$IFDEF MSWINDOWS}
-      Processor.Process.Parameters.Add('UPXPROG=echo'); //Don't use UPX
-      Processor.Process.Parameters.Add('COPYTREE=echo'); //fix for examples in Win svn, see build FAQ
-      Processor.Process.Parameters.Add('CPU_SOURCE='+GetTargetCPU);
-      Processor.Process.Parameters.Add('OS_SOURCE='+GetTargetOS);
-      {$ENDIF}
-      if Self is TFPCCrossInstaller then
-      begin  // clean out the correct compiler
-        Processor.Process.Parameters.Add('OS_TARGET='+CrossInstaller.TargetOSName);
-        Processor.Process.Parameters.Add('CPU_TARGET='+CrossInstaller.TargetCPUName);
-        //if Length(CrossInstaller.SubArch)>0 then Processor.Process.Parameters.Add('SUBARCH='+CrossInstaller.SubArch);
-        if Length(CrossOS_SubArch)>0 then Processor.Process.Parameters.Add('SUBARCH='+CrossOS_SubArch);
-      end
-      else
-      begin
-        Processor.Process.Parameters.Add('CPU_TARGET='+GetTargetCPU);
-        Processor.Process.Parameters.Add('OS_TARGET='+GetTargetOS);
-      end;
-      Processor.Process.Parameters.Add('distclean');
+    Processor.Process.Parameters.Add('FPC='+aCleanupCompiler);
+    Processor.Process.Parameters.Add('--directory='+ExcludeTrailingPathDelimiter(FSourceDirectory));
+    Processor.Process.Parameters.Add('FPCMAKE=' + IncludeTrailingPathDelimiter(FBinPath)+'fpcmake'+GetExeExt);
+    Processor.Process.Parameters.Add('PPUMOVE=' + IncludeTrailingPathDelimiter(FBinPath)+'ppumove'+GetExeExt);
+    Processor.Process.Parameters.Add('FPCDIR=' + ExcludeTrailingPathDelimiter(FSourceDirectory));
+    Processor.Process.Parameters.Add('PREFIX='+ExcludeTrailingPathDelimiter(FInstallDirectory));
+    Processor.Process.Parameters.Add('INSTALL_PREFIX='+ExcludeTrailingPathDelimiter(FInstallDirectory));
+    {$IFDEF UNIX}
+    Processor.Process.Parameters.Add('INSTALL_BINDIR='+FBinPath);
+    {$ENDIF}
+    {$IFDEF MSWINDOWS}
+    Processor.Process.Parameters.Add('UPXPROG=echo'); //Don't use UPX
+    Processor.Process.Parameters.Add('COPYTREE=echo'); //fix for examples in Win svn, see build FAQ
+    Processor.Process.Parameters.Add('CPU_SOURCE='+GetTargetCPU);
+    Processor.Process.Parameters.Add('OS_SOURCE='+GetTargetOS);
+    {$ENDIF}
+    if Self is TFPCCrossInstaller then
+    begin  // clean out the correct compiler
+      Processor.Process.Parameters.Add('OS_TARGET='+CrossInstaller.TargetOSName);
+      Processor.Process.Parameters.Add('CPU_TARGET='+CrossInstaller.TargetCPUName);
+      //if Length(CrossInstaller.SubArch)>0 then Processor.Process.Parameters.Add('SUBARCH='+CrossInstaller.SubArch);
+      if Length(CrossOS_SubArch)>0 then Processor.Process.Parameters.Add('SUBARCH='+CrossOS_SubArch);
+    end
+    else
+    begin
+      Processor.Process.Parameters.Add('CPU_TARGET='+GetTargetCPU);
+      Processor.Process.Parameters.Add('OS_TARGET='+GetTargetOS);
+    end;
+    Processor.Process.Parameters.Add('distclean');
 
     for RunTwice in boolean do
     begin
       if (NOT RunTwice) then
       begin
-      if (NOT CrossCompiling) then
+        if (NOT CrossCompiling) then
           Infoln(infotext+'Running '+Processor.Executable+' distclean twice',etInfo)
-      else
+        else
           Infoln(infotext+'Running '+Processor.Executable+' distclean twice for target '+CrossInstaller.RegisterName,etInfo);
       end;
       try
@@ -3722,6 +3818,7 @@ begin
         end;
       end;
     end;
+    if result then FCleanModuleSuccess:=true;
   end
   else
   begin
@@ -3729,84 +3826,82 @@ begin
     Infoln(infotext+'Running '+Processor.Executable+' distclean failed: could not find cleanup compiler. Will try again later',etInfo);
   end;
 
-  if result then FCleanModuleSuccess:=true;
-
   if FCleanModuleSuccess then
   begin
-  if (NOT CrossCompiling) then
-  begin
-      Infoln(infotext+'Deleting some FPC package config files.', etInfo);
-    //DeleteFile(IncludeTrailingPathDelimiter(FBaseDirectory)+PACKAGESCONFIGDIR+DirectorySeparator+FPCPKGFILENAME);
-    DeleteFile(IncludeTrailingPathDelimiter(FBaseDirectory)+PACKAGESCONFIGDIR+DirectorySeparator+FPCPKGCOMPILERTEMPLATE);
-    {$IFDEF UNIX}
-    // Delete any fpc.sh shell scripts
-    Sysutils.DeleteFile(IncludeTrailingPathDelimiter(FInstallDirectory)+'bin'+DirectorySeparator+CPUOS_Signature+DirectorySeparator+'fpc.sh');
-    {$ENDIF UNIX}
-  end;
-
-  {$IFDEF UNIX}
-  // Delete units
-  // Alf: does this work and is it still needed: todo check
-  DeleteFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'units');
-  DeleteFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'lib/fpc/'+GetFPCVersion+'/units');
-  {$ENDIF UNIX}
-
-  {$IFDEF MSWINDOWS}
-  // delete the units directory !!
-  // this is needed due to the fact that make distclean will not cleanout this units directory
-  // make distclean will only remove the results of a make, not a make install
-  DeleteDirectoryEx(IncludeTrailingPathDelimiter(FSourceDirectory)+'units'+DirectorySeparator+CPUOS_Signature);
-  {$ENDIF}
-
-
-  // finally ... if something is still still still floating around ... delete it !!
-  DeleteList := TStringList.Create;
-  try
-    (*
-    FindAllFiles(DeleteList,FSourceDirectory, '*.ppu; *.a; *.o', True);
-    if DeleteList.Count > 0 then
-    begin
-      for FileCounter := 0 to (DeleteList.Count-1) do
-      begin
-        if Pos(CPUOS_Signature,DeleteList.Strings[FileCounter])>0 then DeleteFile(DeleteList.Strings[FileCounter]);
-      end;
-    end;
-    *)
-
-    // delete stray unit and (static) object files, if any !!
-    DeleteList.Add('.ppu');
-    DeleteList.Add('.a');
-    DeleteList.Add('.o');
-    DeleteFilesExtensionsSubdirs(FSourceDirectory,DeleteList,CPUOS_Signature);
-
-    DeleteList.Clear;
-
-    // delete stray executables, if any !!
-    FindAllFiles(DeleteList,IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler', '*'+GetExeExt, False);
     if (NOT CrossCompiling) then
     begin
-      FindAllFiles(DeleteList,IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+DirectorySeparator+'utils', '*'+GetExeExt, False);
-      FindAllFiles(DeleteList,IncludeTrailingPathDelimiter(FSourceDirectory)+'utils', '*'+GetExeExt, True);
+      Infoln(infotext+'Deleting some FPC package config files.', etInfo);
+      //DeleteFile(IncludeTrailingPathDelimiter(FBaseDirectory)+PACKAGESCONFIGDIR+DirectorySeparator+FPCPKGFILENAME);
+      DeleteFile(IncludeTrailingPathDelimiter(FBaseDirectory)+PACKAGESCONFIGDIR+DirectorySeparator+FPCPKGCOMPILERTEMPLATE);
+      {$IFDEF UNIX}
+      // Delete any fpc.sh shell scripts
+      Sysutils.DeleteFile(IncludeTrailingPathDelimiter(FInstallDirectory)+'bin'+DirectorySeparator+CPUOS_Signature+DirectorySeparator+'fpc.sh');
+      {$ENDIF UNIX}
     end;
-    if DeleteList.Count > 0 then
-    begin
-      for FileCounter := 0 to (DeleteList.Count-1) do
+
+    {$IFDEF UNIX}
+    // Delete units
+    // Alf: does this work and is it still needed: todo check
+    DeleteFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'units');
+    DeleteFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'lib/fpc/'+GetFPCVersion+'/units');
+    {$ENDIF UNIX}
+
+    {$IFDEF MSWINDOWS}
+    // delete the units directory !!
+    // this is needed due to the fact that make distclean will not cleanout this units directory
+    // make distclean will only remove the results of a make, not a make install
+    DeleteDirectoryEx(IncludeTrailingPathDelimiter(FSourceDirectory)+'units'+DirectorySeparator+CPUOS_Signature);
+    {$ENDIF}
+
+
+    // finally ... if something is still still still floating around ... delete it !!
+    DeleteList := TStringList.Create;
+    try
+      (*
+      FindAllFiles(DeleteList,FSourceDirectory, '*.ppu; *.a; *.o', True);
+      if DeleteList.Count > 0 then
       begin
-        if IsExecutable(DeleteList.Strings[FileCounter]) then
+        for FileCounter := 0 to (DeleteList.Count-1) do
         begin
-          if Pos(MAKEFILENAME,DeleteList.Strings[FileCounter])=0 then
+          if Pos(CPUOS_Signature,DeleteList.Strings[FileCounter])>0 then DeleteFile(DeleteList.Strings[FileCounter]);
+        end;
+      end;
+      *)
+
+      // delete stray unit and (static) object files, if any !!
+      DeleteList.Add('.ppu');
+      DeleteList.Add('.a');
+      DeleteList.Add('.o');
+      DeleteFilesExtensionsSubdirs(FSourceDirectory,DeleteList,CPUOS_Signature);
+
+      DeleteList.Clear;
+
+      // delete stray executables, if any !!
+      FindAllFiles(DeleteList,IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler', '*'+GetExeExt, False);
+      if (NOT CrossCompiling) then
+      begin
+        FindAllFiles(DeleteList,IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+DirectorySeparator+'utils', '*'+GetExeExt, False);
+        FindAllFiles(DeleteList,IncludeTrailingPathDelimiter(FSourceDirectory)+'utils', '*'+GetExeExt, True);
+      end;
+      if DeleteList.Count > 0 then
+      begin
+        for FileCounter := 0 to (DeleteList.Count-1) do
+        begin
+          if IsExecutable(DeleteList.Strings[FileCounter]) then
           begin
+            if Pos(MAKEFILENAME,DeleteList.Strings[FileCounter])=0 then
+            begin
               Infoln(infotext+'Deleting [stray] executable: '+DeleteList.Strings[FileCounter],etInfo);
-            DeleteFile(DeleteList.Strings[FileCounter]);
+              DeleteFile(DeleteList.Strings[FileCounter]);
+            end;
           end;
         end;
       end;
-    end;
 
-  finally
-    DeleteList.Free;
+    finally
+      DeleteList.Free;
+    end;
   end;
-end;
 
 end;
 
@@ -3845,7 +3940,7 @@ begin
 
     UpdateWarnings:=TStringList.Create;
     try
-      if (aRepoClient=FGitClient)
+      if (aRepoClient.ClassType=FGitClient.ClassType)
          then result:=DownloadFromGit(ModuleName, FPreviousRevision, FActualRevision, UpdateWarnings)
          else result:=DownloadFromSVN(ModuleName, FPreviousRevision, FActualRevision, UpdateWarnings);
       if UpdateWarnings.Count>0 then
