@@ -209,7 +209,12 @@ begin
   end
   else
   begin
+    //On Haiku, arm and aarch64, always get a shallow copy of the repo
+    {$if defined(CPUAARCH64) OR defined(CPUARM) OR (defined(CPUPOWERPC64) AND defined(FPC_ABI_ELFV2)) OR defined(Haiku) OR defined(AROS) OR defined(Morphos)}
+    Command := ' clone --recurse-submodules --depth 1 -b ' + aBranch;
+    {$else}
     Command := ' clone --recurse-submodules -b ' + aBranch;
+    {$endif}
   end;
 
 
@@ -221,8 +226,10 @@ begin
 
     Command := Command + ' ' +  Repository + ' ' + LocalRepository;
 
-    FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + Command, Output, Verbose)
-  end else FReturnCode := 0;
+    FReturnCode := TInstaller(FParent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + Command, Output, Verbose);
+    FReturnOutput := Output;
+  end
+  else FReturnCode := 0;
 
   if (ReturnCode=AbortedExitCode) then exit;
 
@@ -313,6 +320,7 @@ end;
 procedure TGitClient.Update;
 var
   Command: string;
+  Output: string = '';
 begin
   FReturnCode := 0;
   if ExportOnly then exit;
@@ -324,7 +332,8 @@ begin
   // Get updates (equivalent to git fetch and git merge)
   // --all: fetch all remotes
   Command := ' pull --all --recurse-submodules=yes';
-  FReturnCode := TInstaller(FParent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + command, FLocalRepository, Verbose);
+  FReturnCode := TInstaller(FParent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + command, FLocalRepository, Output, Verbose);
+  FReturnOutput := Output;
 
   if FReturnCode = 0 then
   begin
@@ -559,6 +568,7 @@ begin
   if ExportOnly then exit;
   if NOT ValidClient then exit;
   if NOT DirectoryExists(FLocalRepository) then exit;
+
   i:=TInstaller(FParent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + ' log -n 1 --grep=^git-svn-id:',FLocalRepository, Output, Verbose);
   if (i=0) then
   begin

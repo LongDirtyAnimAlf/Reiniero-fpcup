@@ -70,7 +70,6 @@ uses
   fpcuputil, commandline, installerUniversal, installerManager,
   m_crossinstaller,
   m_any_to_androidarm,
-  m_any_to_androidmipsel,
   m_any_to_androidjvm,
   m_any_to_androidaarch64,
   m_any_to_androidx64,
@@ -98,6 +97,8 @@ uses
   m_any_to_solarissparc,
   m_any_to_msdosi8086,
   m_any_to_go32v2i386,
+  m_any_to_linuxxtensa,
+  m_any_to_freertosxtensa,
   {$ifdef LINUX}
   //{$ifdef CPUX86}
   m_linux386_to_mips,

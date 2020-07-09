@@ -269,7 +269,7 @@ type
   {$endif USEONLYCURL}
 
 // Create shortcut on desktop to Target file
-procedure CreateDesktopShortCut(Target, TargetArguments, ShortcutName: string) ;
+procedure CreateDesktopShortCut(Target, TargetArguments, ShortcutName: string; AddContext:boolean=false) ;
 // Create shell script in ~ directory that links to Target
 procedure CreateHomeStartLink(Target, TargetArguments, ShortcutName: string);
 {$IFDEF MSWINDOWS}
@@ -947,7 +947,7 @@ begin
 end;
 
 {$IFDEF MSWINDOWS}
-procedure CreateDesktopShortCut(Target, TargetArguments, ShortcutName: string);
+procedure CreateDesktopShortCut(Target, TargetArguments, ShortcutName: string; AddContext:boolean=false);
 var
   IObject: IUnknown;
   ISLink: IShellLink;
@@ -978,7 +978,7 @@ begin
 end;
 {$ELSE}
 {$IFDEF DARWIN}
-procedure CreateDesktopShortCut(Target, TargetArguments, ShortcutName: string);
+procedure CreateDesktopShortCut(Target, TargetArguments, ShortcutName: string; AddContext:boolean=false);
 begin
   // Create shortcut on Desktop and in Applications
   fpSystem(
@@ -1003,14 +1003,19 @@ begin
 end;
 {$ELSE}
 {$IFDEF UNIX}
-procedure CreateDesktopShortCut(Target, TargetArguments, ShortcutName: string);
+procedure CreateDesktopShortCut(Target, TargetArguments, ShortcutName: string; AddContext:boolean=false);
 var
   OperationSucceeded: boolean;
   ResultCode: boolean;
   XdgDesktopContent: TStringList;
-  Output,XdgDesktopFile: string;
+  XdgMimeContent: TStringList;
+  Output,XdgDesktopFile,XdgMimeFile: string;
   aDirectory:string;
 begin
+  {$ifdef Haiku}
+  exit;
+  {$endif}
+
   // Fail by default:
   OperationSucceeded:=false;
   XdgDesktopFile:=IncludeTrailingPathDelimiter(GetTempDir(false))+'fpcup-'+shortcutname+'.desktop';
@@ -1030,36 +1035,44 @@ begin
     XdgDesktopContent.Add('Name='+ShortcutName);
     XdgDesktopContent.Add('GenericName=Lazarus IDE with Free Pascal Compiler');
     XdgDesktopContent.Add('Category=Application;IDE;Development;GUIDesigner;Programming;');
+    XdgDesktopContent.Add('Categories=Application;IDE;Development;GUIDesigner;Programming;');
     XdgDesktopContent.Add('Keywords=editor;Pascal;IDE;FreePascal;fpc;Design;Designer;');
+
+    if AddContext then
+    begin
     //XdgDesktopContent.Add('StartupWMClass=Lazarus');
-    //XdgDesktopContent.Add('MimeType=text/x-pascal;');
+      XdgDesktopContent.Add('MimeType=application/x-lazarus;');
     //XdgDesktopContent.Add('Patterns=*.pas;*.pp;*.p;*.inc;*.lpi;*.lpk;*.lpr;*.lfm;*.lrs;*.lpl;');
-    // We're going to try and call xdg-desktop-icon
+    end;
+
+    // We're going to try and call xdg-desktop-icon/menu
     // this may fail if shortcut exists already
     try
       XdgDesktopContent.SaveToFile(XdgDesktopFile);
       FpChmod(XdgDesktopFile, &711); //rwx--x--x
-      OperationSucceeded:=RunCommand('xdg-desktop-icon' ,['install',XdgDesktopFile],Output,[poUsePipes, poStderrToOutPut],swoHide);
+      OperationSucceeded:=RunCommand('xdg-desktop-icon' ,['install','--novendor',XdgDesktopFile],Output,[poUsePipes, poStderrToOutPut],swoHide);
+      OperationSucceeded:=RunCommand('xdg-desktop-menu' ,['install','--novendor',XdgDesktopFile],Output,[poUsePipes, poStderrToOutPut],swoHide);
     except
       OperationSucceeded:=false;
     end;
 
-    if OperationSucceeded=false then
+    if (NOT OperationSucceeded) then
     begin
-      aDirectory:='/usr/share/applications';
-      if false then // skip global
-      //if DirectoryExists(aDirectory) then
+      aDirectory:=ConcatPaths(['usr','share','applications']);
+      if ( (FpGeteuid=0) AND DirectoryExists(aDirectory) ) then
       begin
-        FileUtil.CopyFile(XdgDesktopFile,aDirectory+'/'+ExtractFileName(XdgDesktopFile));
+        FileUtil.CopyFile(XdgDesktopFile,aDirectory+DirectorySeparator+ExtractFileName(XdgDesktopFile));
       end
       else
       begin
         // Create shortcut directly on User-Desktop
-        aDirectory:=IncludeTrailingPathDelimiter(SafeExpandFileName('~'))+'Desktop';
+        aDirectory:=ConcatPaths([SafeExpandFileName('~'),'Desktop']);
         if DirectoryExists(aDirectory) then
-        begin
-          FileUtil.CopyFile(XdgDesktopFile,aDirectory+'/'+ExtractFileName(XdgDesktopFile));
-        end
+           FileUtil.CopyFile(XdgDesktopFile,aDirectory+DirectorySeparator+ExtractFileName(XdgDesktopFile));
+        // Create user menu item
+        aDirectory:=ConcatPaths([SafeExpandFileName('~'),'.local','share','applications']);
+        if DirectoryExists(aDirectory) then
+          FileUtil.CopyFile(XdgDesktopFile,aDirectory+DirectorySeparator+ExtractFileName(XdgDesktopFile));
       end;
     end;
     // Temp file is no longer needed....
@@ -1070,10 +1083,66 @@ begin
     end;
   finally
     XdgDesktopContent.Free;
+    OperationSucceeded:=true;
   end;
+
+  if (OperationSucceeded) then
+  begin
+    aDirectory:=ConcatPaths([SafeExpandFileName('~'),'.local','share','applications']);
+    OperationSucceeded:=RunCommand('update-desktop-database' ,[aDirectory],Output,[poUsePipes, poStderrToOutPut],swoHide);
+  end;
+
+  if AddContext then
+  begin
+    ThreadLog('Adding context !');
+    {$ifdef LCL}
+    Application.ProcessMessages;
+    {$endif}
+
+    aDirectory:=ConcatPaths([SafeExpandFileName('~'),'.local','share','mime']);
+    ForceDirectoriesSafe(aDirectory);
+
+    //Create mime file associations
+    XdgMimeFile:=IncludeTrailingPathDelimiter(GetTempDir(false))+'fpcup-'+shortcutname+'.xml';
+    XdgMimeContent:=TStringList.Create;
+    try
+      XdgMimeContent.Add('<?xml version="1.0" encoding="UTF-8"?>');
+      XdgMimeContent.Add('<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">');
+      XdgMimeContent.Add('    <mime-type type="application/x-lazarus">');
+      XdgMimeContent.Add('        <comment>Lazarus file</comment>');
+      XdgMimeContent.Add('        <icon name="application-x-lazarus"/>');
+      XdgMimeContent.Add('        <glob-deleteall/>');
+      XdgMimeContent.Add('        <glob pattern="*.lpi"/>');
+      XdgMimeContent.Add('        <glob pattern="*.lpr"/>');
+      XdgMimeContent.Add('        <glob pattern="*.lfm"/>');
+      XdgMimeContent.Add('        <glob pattern="*.pas"/>');
+      XdgMimeContent.Add('        <glob pattern="*.pp"/>');
+      XdgMimeContent.Add('        <glob pattern="*.inc"/>');
+      XdgMimeContent.Add('    </mime-type>');
+      XdgMimeContent.Add('</mime-info>');
+      aDirectory:=ConcatPaths([SafeExpandFileName('~'),'.local','share','mime','packages']);
+      ForceDirectoriesSafe(aDirectory);
+      XdgMimeContent.SaveToFile(XdgMimeFile);
+      OperationSucceeded:=RunCommand('xdg-mime' ,['install','--novendor',XdgMimeFile],Output,[poUsePipes, poStderrToOutPut],swoHide);
+      SysUtils.DeleteFile(XdgMimeFile);
+    finally
+      XdgMimeContent.Free;
+    end;
+
+    //Process icon
+    aDirectory:=ConcatPaths([SafeExpandFileName('~'),'.local','share','icons']);
+    ForceDirectoriesSafe(aDirectory);
+    //OperationSucceeded:=RunCommand('xdg-icon-resource' ,['install','--novendor','--context','mimetypes','--size','64',ExtractFilePath(Target)+'images/icons/lazarus.ico','application-x-lazarus'],Output,[poUsePipes, poStderrToOutPut],swoHide);
+    OperationSucceeded:=RunCommand('xdg-icon-resource' ,['install','--novendor','--context','mimetypes','--size','64',ExtractFilePath(Target)+'images/icons/lazarus64x64.png','application-x-lazarus'],Output,[poUsePipes, poStderrToOutPut],swoHide);
+
+    //Update mime database
+    aDirectory:=ConcatPaths([SafeExpandFileName('~'),'.local','share','mime']);
+    OperationSucceeded:=RunCommand('update-mime-database' ,[aDirectory],Output,[poUsePipes, poStderrToOutPut],swoHide);
+  end;
+
 end;
 {$ELSE}
-procedure CreateDesktopShortCut(Target, TargetArguments, ShortcutName: string);
+procedure CreateDesktopShortCut(Target, TargetArguments, ShortcutName: string; AddContext:boolean=false);
 begin
   ThreadLog('Not creating desktop shortcut: don''t know how to do this.');
 end;
@@ -1260,6 +1329,7 @@ begin
   if Pos('newpascal',URL)>0 then result:='trunk' else
   if Pos('freepascal.git',URL)>0 then result:='trunk' else
   if Pos('lazarus.git',URL)>0 then result:='trunk' else
+  //if Pos('fpcsource_3_2_0.git',URL)>0 then result:='3.2.0' else
   begin
 
     VersionSnippet := UpperCase(URL);
@@ -1269,6 +1339,13 @@ begin
     if (i>0) and CharInSet(VersionSnippet[i],['\','/']) then
     begin
       Dec(i);
+      SetLength(VersionSnippet,i);
+    end;
+
+    // remove git trailer
+    if (i>0) and (RightStr(VersionSnippet,4)='.GIT') then
+    begin
+      Dec(i,4);
       SetLength(VersionSnippet,i);
     end;
 
@@ -1450,13 +1527,14 @@ var
   CurSrcDir: String;
   CurFilename: String;
 begin
-  Result:=false;
+  result:=false;
 
   if CheckDirectory(DirectoryName) then exit;
 
   CurSrcDir:=CleanAndExpandDirectory(DirectoryName);
   if SysUtils.FindFirst(CurSrcDir+GetAllFilesMask,faAnyFile{$ifdef unix} or {%H-}faSymLink {$endif unix},FileInfo)=0 then
   begin
+    result:=true;
     repeat
       // Ignore directories and files without name:
       if (FileInfo.Name<>'.') and (FileInfo.Name<>'..') and (FileInfo.Name<>'') then
@@ -1469,28 +1547,19 @@ begin
         if ((FileInfo.Attr and faDirectory)>0) {$ifdef unix} and ((FileInfo.Attr and {%H-}faSymLink)=0) {$endif unix} then
         begin
           // Directory; exit with failure on error
-          if not DeleteDirectoryEx(CurFilename) then
-          begin
-            SysUtils.FindClose(FileInfo);
-            exit;
-          end;
+          if not DeleteDirectoryEx(CurFilename) then result:=false;
         end
         else
         begin
           // File; exit with failure on error
-          if not SysUtils.DeleteFile(CurFilename) then
-          begin
-            SysUtils.FindClose(FileInfo);
-            exit;
+          if not SysUtils.DeleteFile(CurFilename) then result:=false;
           end;
         end;
+    until (SysUtils.FindNext(FileInfo)<>0) OR (NOT result);
+    SysUtils.FindClose(FileInfo);
       end;
-    until SysUtils.FindNext(FileInfo)<>0;
-  end;
-  SysUtils.FindClose(FileInfo);
   // Remove root directory; exit with failure on error:
-  if (not RemoveDir(DirectoryName)) then exit;
-  Result:=true;
+  if result then result:=RemoveDir(DirectoryName);
 end;
 
 function DeleteFilesSubDirs(const DirectoryName: string;
@@ -1511,7 +1580,7 @@ var
   CurSrcDir: String;
   CurFilename: String;
 begin
-  Result:=false;
+  result:=false;
 
   if CheckDirectory(DirectoryName) then exit;
 
@@ -1519,6 +1588,7 @@ begin
   CurSrcDir:=CleanAndExpandDirectory(DirectoryName);
   if SysUtils.FindFirst(CurSrcDir+GetAllFilesMask,faAnyFile{$ifdef unix} or {%H-}faSymLink {$endif unix},FileInfo)=0 then
   begin
+    result:=true;
     repeat
       // Ignore directories and files without name:
       if (FileInfo.Name<>'.') and (FileInfo.Name<>'..') and (FileInfo.Name<>'') then
@@ -1528,11 +1598,7 @@ begin
         if ((FileInfo.Attr and faDirectory)>0) {$ifdef unix} and ((FileInfo.Attr and {%H-}faSymLink)=0) {$endif unix} then
         begin
           // Directory; call recursively exit with failure on error
-          if not DeleteFilesSubDirs(CurFilename,Names,OnlyIfPathHas) then
-          begin
-            SysUtils.FindClose(FileInfo);
-            exit;
-          end;
+          if not DeleteFilesSubDirs(CurFilename,Names,OnlyIfPathHas) then result:=false;
         end
         else
         begin
@@ -1548,19 +1614,14 @@ begin
               // Remove read-only file attribute so we can delete it:
               if (FileInfo.Attr and faReadOnly)>0 then
                 FileSetAttr(CurFilename, FileInfo.Attr-faReadOnly);
-              if not SysUtils.DeleteFile(CurFilename) then
-              begin
-                SysUtils.FindClose(FileInfo);
-                exit;
+              if not SysUtils.DeleteFile(CurFilename) then result:=false;
               end;
             end;
           end;
         end;
+    until (SysUtils.FindNext(FileInfo)<>0) OR (NOT result);
+    SysUtils.FindClose(FileInfo);
       end;
-    until SysUtils.FindNext(FileInfo)<>0;
-  end;
-  SysUtils.FindClose(FileInfo);
-  Result:=true;
 end;
 
 function DeleteFilesExtensionsSubdirs(const DirectoryName: string; const Extensions:TstringList; const OnlyIfPathHas: string): boolean;
@@ -1583,7 +1644,7 @@ var
   CurFilename: String;
   i: integer;
 begin
-  Result:=false;
+  result:=false;
 
   if CheckDirectory(DirectoryName) then exit;
 
@@ -1596,6 +1657,7 @@ begin
   CurSrcDir:=CleanAndExpandDirectory(DirectoryName);
   if SysUtils.FindFirst(CurSrcDir+GetAllFilesMask,faAnyFile{$ifdef unix} or {%H-}faSymLink {$endif unix},FileInfo)=0 then
   begin
+    result:=true;
     repeat
       // Ignore directories and files without name:
       if (FileInfo.Name<>'.') and (FileInfo.Name<>'..') and (FileInfo.Name<>'') then
@@ -1605,11 +1667,7 @@ begin
         if ((FileInfo.Attr and faDirectory)>0) {$ifdef unix} and ((FileInfo.Attr and {%H-}faSymLink)=0) {$endif unix} then
         begin
           // Directory; call recursively exit with failure on error
-          if not DeleteFilesExtensionsSubdirs(CurFilename, Extensions,OnlyIfPathHas) then
-          begin
-            SysUtils.FindClose(FileInfo);
-            exit;
-          end;
+          if not DeleteFilesExtensionsSubdirs(CurFilename, Extensions,OnlyIfPathHas) then result:=false;
         end
         else
         begin
@@ -1624,19 +1682,14 @@ begin
               // Remove read-only file attribute so we can delete it:
               if (FileInfo.Attr and faReadOnly)>0 then
                 FileSetAttr(CurFilename, FileInfo.Attr-faReadOnly);
-              if not SysUtils.DeleteFile(CurFilename) then
-              begin
-                SysUtils.FindClose(FileInfo);
-                exit;
+              if not SysUtils.DeleteFile(CurFilename) then result:=false;
               end;
             end;
           end;
         end;
+    until (SysUtils.FindNext(FileInfo)<>0) OR (NOT result);
+    SysUtils.FindClose(FileInfo);
       end;
-    until SysUtils.FindNext(FileInfo)<>0;
-  end;
-  SysUtils.FindClose(FileInfo);
-  Result:=true;
 end;
 
 function DeleteFilesNameSubdirs(const DirectoryName: string; const OnlyIfNameHas: string): boolean;
@@ -1654,7 +1707,7 @@ var
   CurSrcDir: String;
   CurFilename: String;
 begin
-  Result:=false;
+  result:=false;
 
   if CheckDirectory(DirectoryName) then exit;
 
@@ -1666,6 +1719,7 @@ begin
   CurSrcDir:=CleanAndExpandDirectory(DirectoryName);
   if SysUtils.FindFirst(CurSrcDir+GetAllFilesMask,faAnyFile{$ifdef unix} or {%H-}faSymLink {$endif unix},FileInfo)=0 then
   begin
+    result:=true;
     repeat
       // Ignore directories and files without name:
       if (FileInfo.Name<>'.') and (FileInfo.Name<>'..') and (FileInfo.Name<>'') then
@@ -1675,11 +1729,7 @@ begin
         if ((FileInfo.Attr and faDirectory)>0) {$ifdef unix} and ((FileInfo.Attr and {%H-}faSymLink)=0) {$endif unix} then
         begin
           // Directory; call recursively exit with failure on error
-          if not DeleteFilesNameSubdirs(CurFilename, OnlyIfNameHas) then
-          begin
-            SysUtils.FindClose(FileInfo);
-            exit;
-          end;
+          if not DeleteFilesNameSubdirs(CurFilename, OnlyIfNameHas) then result:=false;
         end
         else
         begin
@@ -1688,18 +1738,13 @@ begin
             // Remove read-only file attribute so we can delete it:
             if (FileInfo.Attr and faReadOnly)>0 then
               FileSetAttr(CurFilename, FileInfo.Attr-faReadOnly);
-            if not SysUtils.DeleteFile(CurFilename) then
-            begin
-              SysUtils.FindClose(FileInfo);
-              exit;
+            if not SysUtils.DeleteFile(CurFilename) then result:=false;
             end;
           end;
         end;
+    until (SysUtils.FindNext(FileInfo)<>0) OR (NOT result);
+    SysUtils.FindClose(FileInfo);
       end;
-    until SysUtils.FindNext(FileInfo)<>0;
-  end;
-  SysUtils.FindClose(FileInfo);
-  Result:=true;
 end;
 
 function DownloadBase(aDownLoader:TBasicDownloader;URL: string; aDataStream:TStream; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''): boolean;
@@ -2567,6 +2612,42 @@ begin
     end;
   end;
 
+  {$ifdef Haiku}
+  if (NOT FoundLinkFile) then
+  begin
+    s1:='/boot/system/develop/tools/x86/lib';
+    if NOT DirectoryExists(s1) then s1:='/boot/system/develop/tools/lib';
+    if DirectoryExists(s1) then
+    begin
+      LinkFiles := TStringList.Create;
+      try
+        FindAllFiles(LinkFiles, s1, '*.o', true);
+        if (LinkFiles.Count>0) then
+        begin
+          for i:=0 to (LinkFiles.Count-1) do
+          begin
+            if Pos(DirectorySeparator+LINKFILE,LinkFiles[i])>0 then
+            begin
+              result:=ExtractFileDir(LinkFiles[i]);
+              FoundLinkFile:=true;
+              break;
+            end;
+          end;
+        end;
+      finally
+        LinkFiles.Free;
+      end;
+    end;
+    if (NOT FoundLinkFile) then
+    begin
+      s1:='/boot/system/develop/lib/x86/';
+      if NOT DirectoryExists(s1) then s1:='/boot/system/develop/lib/';
+      if FileExists(s1+'crti.o') then FoundLinkFile:=true;
+      if FoundLinkFile then result:=s1;
+    end;
+  end;
+  {$endif}
+
   if FoundLinkFile then exit;
 
   try
@@ -2757,6 +2838,8 @@ begin
       LinkFiles := TStringList.Create;
       try
         FindAllFiles(LinkFiles, result, '*.o', true);
+        if (LinkFiles.Count>0) then
+        begin
         for i:=0 to (LinkFiles.Count-1) do
         begin
           if Pos(DirectorySeparator+LINKFILE,LinkFiles[i])>0 then
@@ -2765,6 +2848,7 @@ begin
             FoundLinkFile:=true;
             break;
           end;
+        end;
         end;
       finally
         LinkFiles.Free;
@@ -3044,12 +3128,62 @@ end;
 
 
 function LibWhich(aLibrary: string): boolean;
+{$ifdef Unix}
+const
+  UNIXSEARCHDIRS : array [0..1] of string = (
+  '/usr/lib',
+  '/usr/local/lib'
+  );
+  {$ifdef Haiku}
+  HAIKUSEARCHDIRS : array [0..3] of string = (
+  '/boot/system/lib/x86',
+  '/boot/system/non-packaged/lib/x86',
+  '/boot/system/lib',
+  '/boot/system/non-packaged/lib'
+  );
+  {$endif}
 var
   Output: string;
+  i:integer;
+  sd:string;
+{$endif}
 begin
-  //RunCommand('sh -c "ldconfig -p | grep '+aLibrary+'"', Output);
+  result:=false;
+
+  {$ifdef Haiku}
+  if NOT result then
+  begin
+    for i:=Low(HAIKUSEARCHDIRS) to High(HAIKUSEARCHDIRS) do
+    begin
+      sd:=HAIKUSEARCHDIRS[i];
+      {$ifndef CPUX86}
+      if (RightStr(sd,4)='/x86') then continue;
+      {$endif}
+      RunCommand('find',[sd,'-type','f','-name',aLibrary],Output,[poUsePipes, poStderrToOutPut],swoHide);
+      result:=(Pos(aLibrary,Output)>0);
+      if result then break;
+    end;
+  end;
+  {$endif}
+
+  {$ifdef Unix}
+  if NOT result then
+  begin
+    for i:=Low(UNIXSEARCHDIRS) to High(UNIXSEARCHDIRS) do
+    begin
+      sd:=UNIXSEARCHDIRS[i];
+      RunCommand('find',[sd,'-type','f','-name',aLibrary],Output,[poUsePipes, poStderrToOutPut],swoHide);
+      result:=(Pos(aLibrary,Output)>0);
+      if result then break;
+    end;
+  end;
+
+  if (NOT result) then
+begin
   RunCommand('sh',['-c','"ldconfig -p | grep '+aLibrary+'"'],Output,[poUsePipes, poStderrToOutPut],swoHide);
   result:=(Pos(aLibrary,Output)>0);
+end;
+  {$endif}
 end;
 
 function Which(const Executable: string): string;
@@ -3148,11 +3282,15 @@ begin
 end;
 
 function ForceDirectoriesSafe(Const Dir: RawByteString): Boolean;
+var
+  aDir:RawByteString;
 begin
   result:=true;
-  if (NOT DirectoryExists(Dir)) then
+  aDir:=ExcludeTrailingPathDelimiter(Dir);
+  if Length(aDir)=0 then exit;
+  if (NOT DirectoryExists(aDir)) then
   begin
-    result:=ForceDirectories(Dir);
+    result:=ForceDirectories(aDir);
   end;
 end;
 
@@ -3193,8 +3331,13 @@ begin
         begin
           // This is not a warning/error message as sometimes we can use multiple different versions of executables
           if Level<>etCustom then
+          begin
+            if (NOT FileExists(Executable)) then
+              ThreadLog(Executable + ' not found.',Level)
+            else
             ThreadLog(Executable + ' is not a valid ' + ExeName + ' application. ' +
             ExeName + ' exists but shows no (' + ExpectOutput + ') in its output.',Level);
+        end;
         end;
       end
       else
@@ -3363,19 +3506,42 @@ end;
 function FileNameWithoutAllExt(const AFilename: string): string;
 var
   StartPos: Integer;
-  ExtPos: Integer;
+  ExtPos,ExPosCounter: Integer;
 begin
   result:='';
   StartPos:=length(AFilename);
+
+  // Remove trailing separators
+  if (AFilename[StartPos] in (AllowDirectorySeparators+AllowDriveSeparators)) then dec(StartPos);
+  ExtPos:=StartPos;
+
+  // Find first separator from the right
   while (StartPos>0)
   and not (AFilename[StartPos] in (AllowDirectorySeparators+AllowDriveSeparators))
   do
     dec(StartPos);
   Inc(StartPos);
-  ExtPos:=(StartPos);
-  while (ExtPos<=length(AFilename)) and (AFilename[ExtPos]<>ExtensionSeparator) do
-    inc(ExtPos);
+  Inc(ExtPos);
+
+  // We now have the filename
   result:=copy(AFilename,StartPos,ExtPos-StartPos);
+
+  StartPos:=length(result);
+  ExtPos:=StartPos;
+  ExPosCounter:=0;
+
+  //Remove at max 2 extension separators
+  //Tricky to say the least
+  repeat
+    if result[StartPos]=ExtensionSeparator then
+    begin
+      ExtPos:=StartPos-1;
+      Inc(ExPosCounter);
+    end;
+    Dec(StartPos);
+  until (ExPosCounter=2) OR (StartPos=0);
+
+  SetLength(result,ExtPos);
 end;
 
 function FileNameAllExt(const AFilename: string): string;
@@ -4144,8 +4310,6 @@ constructor TUseNativeDownLoader.Create;
 begin
   Inherited;
 
-  ThreadLog('Native downloader created.',etDebug);
-
   FMaxRetries:=MAXCONNECTIONRETRIES;
   {$ifdef Darwin}
   // GitHub needs TLS 1.2 .... native FPC client does not support this (through OpenSSL)
@@ -4603,8 +4767,6 @@ end;
 constructor TUseWGetDownloader.Create;
 begin
   Inherited;
-
-  ThreadLog('WGet downloader created.',etDebug);
 
   FCURLOk:=False;
   {$ifdef ENABLECURL}

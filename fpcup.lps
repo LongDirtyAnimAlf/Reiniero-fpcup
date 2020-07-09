@@ -3,7 +3,7 @@
   <ProjectSession>
     <PathDelim Value="\"/>
     <Version Value="12"/>
-    <BuildModes Count="3" Active="Default">
+    <BuildModes Count="3" Active="darwin64">
       <Item1 Name="linuxarmhf">
         <MacroValues Count="1">
           <Macro1 Name="LCLWidgetType" Value="nogui"/>
@@ -145,6 +145,8 @@ end;"/>
         <Filename Value="fpcup.lpr"/>
         <IsPartOfProject Value="True"/>
         <IsVisibleTab Value="True"/>
+        <TopLine Value="91"/>
+        <CursorPos Y="102"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
       </Unit0>
@@ -172,17 +174,21 @@ end;"/>
         <Filename Value="installercore.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerCore"/>
-        <EditorIndex Value="-1"/>
-        <TopLine Value="22"/>
-        <CursorPos X="17" Y="31"/>
+        <EditorIndex Value="2"/>
+        <TopLine Value="3211"/>
+        <CursorPos X="3" Y="3035"/>
         <UsageCount Value="200"/>
+        <Loaded Value="True"/>
       </Unit4>
       <Unit5>
         <Filename Value="installerfpc.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerFpc"/>
-        <EditorIndex Value="-1"/>
+        <EditorIndex Value="1"/>
+        <TopLine Value="3995"/>
+        <CursorPos X="13" Y="4000"/>
         <UsageCount Value="200"/>
+        <Loaded Value="True"/>
       </Unit5>
       <Unit6>
         <Filename Value="installerlazarus.pas"/>
@@ -214,7 +220,9 @@ end;"/>
       <Unit9>
         <Filename Value="fpcup.ini"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="1"/>
+        <EditorIndex Value="3"/>
+        <TopLine Value="21"/>
+        <CursorPos Y="40"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
         <DefaultSyntaxHighlighter Value="Ini"/>
@@ -319,7 +327,7 @@ end;"/>
       <Unit23>
         <Filename Value="settings.ini"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="2"/>
+        <EditorIndex Value="4"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
         <DefaultSyntaxHighlighter Value="Ini"/>

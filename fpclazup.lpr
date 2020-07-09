@@ -69,7 +69,6 @@ uses
   fpcuputil, commandline, installerUniversal, installerManager,
   m_crossinstaller,
   m_any_to_androidarm,
-  m_any_to_androidmipsel,
   m_any_to_androidjvm,
   m_any_to_androidaarch64,
   m_any_to_androidx64,

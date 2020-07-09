@@ -280,9 +280,10 @@ begin
       {$ifdef LCLQT5}
         // Did we copy the QT5 libs ??
         // If so, add some linker help.
-        if (FileExists(IncludeTrailingPathDelimiter(LazarusInstallDir)+QT5LIBNAME)) then
+        if (NOT LibWhich(LIBQT5)) AND (FileExists(IncludeTrailingPathDelimiter(LazarusInstallDir)+LIBQT5)) then
         begin
           s:=s+' -k"-rpath=./"';
+          s:=s+' -k"-rpath=$$ORIGIN"';
           s:=s+' -k"-rpath=\\$$$$$\\ORIGIN"';
           s:=s+' -Fl'+ExcludeTrailingPathDelimiter(LazarusInstallDir);
         end;
@@ -307,8 +308,6 @@ begin
   Processor.Process.Parameters.Add('useride');
 
   try
-    WritelnLog(infotext+Processor.GetExeInfo, true);
-
     {$ifdef MSWindows}
     //Prepend FPC binary directory to PATH to prevent pickup of strange tools
     OldPath:=Processor.Environment.GetVar(PATHVARNAME);
@@ -739,7 +738,6 @@ begin
     Processor.Process.Parameters.Add('--add-package');
   Processor.Process.Parameters.Add(DoubleQuoteIfNeeded(PackageAbsolutePath));
   try
-    WritelnLog(infotext+Processor.GetExeInfo, true);
     ProcessorResult:=Processor.ExecuteAndWait;
     result := (ProcessorResult=0);
     // runtime packages will return false, but output will have info about package being "only for runtime"
@@ -1261,7 +1259,6 @@ begin
 
       Processor.Process.CurrentDirectory:=Workingdir;
 
-      WritelnLog(infotext+Processor.GetExeInfo, true);
       ProcessorResult:=Processor.ExecuteAndWait;
       s:=Processor.WorkerOutput.Text;
       j:=ProcessorResult;

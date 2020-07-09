@@ -215,6 +215,7 @@ function THelpInstaller.InitModule: boolean;
 var
   BinPath: string; //path where compiler is
   PlainBinPath: string; //the directory above e.g. c:\development\fpc\bin\i386-win32
+  SVNPath:string;
 begin
   localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (InitModule): ';
   Infoln(localinfotext+'Entering ...',etDebug);
@@ -232,11 +233,18 @@ begin
     // at least one ; to be present in the path. If you only have one entry, you
     // can add PathSeparator without problems.
     // https://www.mail-archive.com/fpc-devel@lists.freepascal.org/msg27351.html
-    SetPath(BinPath+PathSeparator+
+
+    SVNPath:='';
+    if Length(FSVNDirectory)>0
+       then SVNPath:=PathSeparator+ExcludeTrailingPathDelimiter(FSVNDirectory);
+
+    SetPath(
+      BinPath+PathSeparator+
       PlainBinPath+PathSeparator+
       FMakeDir+PathSeparator+
-      FSVNDirectory+PathSeparator+
-      FInstallDirectory,false,false);
+      SVNPath+
+      ExcludeTrailingPathDelimiter(FInstallDirectory),
+      false,false);
     {$ENDIF MSWINDOWS}
     {$IFDEF UNIX}
     SetPath(BinPath+PathSeparator+
@@ -662,7 +670,6 @@ begin
             Processor.Process.Parameters.Add(FBuildLCLDocsExeDirectory+'build_lcl_docs.lpr');
             Infoln(ModuleName+': compiling build_lcl_docs help compiler:',etInfo);
             WritelnLog('Building help compiler (also time consuming generation of documents) !!!!!!', true);
-            WritelnLog(infotext+Processor.GetExeInfo, true);
             ProcessorResult:=Processor.ExecuteAndWait;
             WritelnLog('Execute: '+Processor.Executable+' exit code: '+InttoStr(ProcessorResult), true);
             if ProcessorResult <> 0 then
@@ -746,7 +753,6 @@ begin
         which is picked up by the default Lazarus settings.
         The generated .xct file is an index file for fpdoc cross file links,
         used if you want to link to the chm from other chms.}
-        WritelnLog(Processor.GetExeInfo, true);
         ProcessorResult:=Processor.ExecuteAndWait;
         BuildResult:=ProcessorResult;
         if BuildResult <> 0 then

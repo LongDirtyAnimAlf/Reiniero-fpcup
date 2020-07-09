@@ -758,9 +758,15 @@ begin
           Processor.Process.Parameters.Add('--directory='+ ExcludeTrailingPathDelimiter(FSourceDirectory));
           Processor.Process.Parameters.Add('FPCMAKE=' + IncludeTrailingPathDelimiter(FBinPath)+'fpcmake'+GetExeExt);
           Processor.Process.Parameters.Add('PPUMOVE=' + IncludeTrailingPathDelimiter(FBinPath)+'ppumove'+GetExeExt);
-          Processor.Process.Parameters.Add('FPCDIR=' + ExcludeTrailingPathDelimiter(FSourceDirectory));
           Processor.Process.Parameters.Add('PREFIX='+ExcludeTrailingPathDelimiter(FInstallDirectory));
           Processor.Process.Parameters.Add('INSTALL_PREFIX='+ExcludeTrailingPathDelimiter(FInstallDirectory));
+
+          {$IFDEF UNIX}
+          s1:=ConcatPaths([FInstallDirectory,'lib','fpc',GetFPCVersion]);
+          {$ELSE}
+          s1:=ExcludeTrailingPathDelimiter(FSourceDirectory);
+          {$ENDIF UNIX}
+          Processor.Process.Parameters.Add('FPCDIR=' + s1);
 
           {$IFDEF MSWINDOWS}
           if ChosenCompiler=GetCompilerInDir(FInstallDirectory) then
@@ -1306,7 +1312,11 @@ begin
       end;
     end;
 
-    if result then RemoveStaleBuildDirectories(FSourceDirectory,CrossInstaller.TargetCPUName,CrossInstaller.TargetOSName);
+    if result then
+    begin
+      RemoveStaleBuildDirectories(FSourceDirectory,CrossInstaller.TargetCPUName,CrossInstaller.TargetOSName);
+      Infoln(infotext+'Removal of stale build files and directories ready.');
+    end;
 
   end
   else
@@ -1508,7 +1518,17 @@ begin
   {$ENDIF}
   Processor.Process.Parameters.Add('FPCMAKE=' + IncludeTrailingPathDelimiter(FBinPath)+'fpcmake'+GetExeExt);
   Processor.Process.Parameters.Add('PPUMOVE=' + IncludeTrailingPathDelimiter(FBinPath)+'ppumove'+GetExeExt);
-  Processor.Process.Parameters.Add('FPCDIR=' + ExcludeTrailingPathDelimiter(FSourceDirectory));
+  Processor.Process.Parameters.Add('PREFIX='+ExcludeTrailingPathDelimiter(FInstallDirectory));
+  Processor.Process.Parameters.Add('INSTALL_PREFIX='+ExcludeTrailingPathDelimiter(FInstallDirectory));
+
+  //Sometimes, during build, we get an error about missing yylex.cod and yyparse.cod.
+  //The paths are fixed in the FPC sources. Try to set the default path here [FPCDIR], so yylex.cod and yyparse.cod can be found.
+  {$IFDEF UNIX}
+  s1:=ConcatPaths([FInstallDirectory,'lib','fpc',GetFPCVersion]);
+  {$ELSE}
+  s1:=ExcludeTrailingPathDelimiter(FSourceDirectory);
+  {$ENDIF UNIX}
+  Processor.Process.Parameters.Add('FPCDIR=' + s1);
 
   //Makefile could pickup FPCDIR setting, so try to set it for fpcupdeluxe
   //FPCDirStore:=Processor.Environment.GetVar('FPCDIR');
@@ -1518,8 +1538,6 @@ begin
   //Todo: to be investigated
   //Processor.Process.Parameters.Add('FPCFPMAKE='+ChosenCompiler);
 
-  Processor.Process.Parameters.Add('PREFIX='+ExcludeTrailingPathDelimiter(FInstallDirectory));
-  Processor.Process.Parameters.Add('INSTALL_PREFIX='+ExcludeTrailingPathDelimiter(FInstallDirectory));
   {$IFDEF UNIX}
   Processor.Process.Parameters.Add('INSTALL_BINDIR='+FBinPath);
   {$ELSE}
@@ -1609,6 +1627,14 @@ begin
     {$endif}
   {$endif}
 
+  {$ifdef Haiku}
+    s2:='';
+    {$ifdef CPUX86}
+    s2:='/x86';
+    {$endif}
+    s1:=s1+' -XR/boot/system/lib'+s2+' -FD/boot/system/bin'+s2+'/ -Fl/boot/system/develop/lib'+s2;
+  {$endif}
+
   s1:=Trim(s1);
   Processor.Process.Parameters.Add('OPT='+s1);
 
@@ -1650,7 +1676,6 @@ begin
   end;
 
   try
-    WritelnLog(infotext+Processor.GetExeInfo, true);
     ProcessorResult:=Processor.ExecuteAndWait;
     //Restore FPCDIR environment variable ... could be trivial, but batter safe than sorry
     //Processor.Environment.SetVar('FPCDIR',FPCDirStore);
@@ -1975,8 +2000,8 @@ begin
   {$IFDEF HAIKU}
   {$IFDEF CPUX64}
   // we need at least 3.2.0 for Haiku x86_64
-  //if GetNumericalVersion(result)<GetNumericalVersion('3.2.0') then result:='3.2.0';
-  if CalculateNumericalVersion(result)<CalculateNumericalVersion(FPCTRUNKVERSION) then result:=FPCTRUNKVERSION;
+  if CalculateNumericalVersion(result)<CalculateNumericalVersion('3.2.0') then result:='3.2.0';
+  //if CalculateNumericalVersion(result)<CalculateNumericalVersion(FPCTRUNKVERSION) then result:=FPCTRUNKVERSION;
   {$ENDIF}
   {$IFDEF CPUX32}
   // we need at least 3.0.0 for Haiku x32
@@ -2221,7 +2246,7 @@ begin
         '.tbz2','.tbz','.tar.bz2':
         begin
           {$ifdef BSD}
-          OperationSucceeded:=(ExecuteCommand(FTar,['-jxf',BootstrapFilePath,'-C',BootstrapFileArchiveDir,'-O','*'+CompilerName],FVerbose)=0);
+          OperationSucceeded:=(ExecuteCommand(FTar,['-jxf',BootstrapFilePath,'-C',BootstrapFileArchiveDir,'--include','*'+CompilerName],FVerbose)=0);
           {$else}
           OperationSucceeded:=(ExecuteCommand(FTar,['-jxf',BootstrapFilePath,'-C',BootstrapFileArchiveDir,'--wildcards','--no-anchored',CompilerName],FVerbose)=0);
           {$endif}
@@ -2230,7 +2255,7 @@ begin
         '.tar.gz':
         begin
           {$ifdef BSD}
-          OperationSucceeded:=(ExecuteCommand(FTar,['-zxf',BootstrapFilePath,'-C',BootstrapFileArchiveDir,'-O','*'+CompilerName],FVerbose)=0);
+          OperationSucceeded:=(ExecuteCommand(FTar,['-zxf',BootstrapFilePath,'-C',BootstrapFileArchiveDir,'--include','*'+CompilerName],FVerbose)=0);
           {$else}
           OperationSucceeded:=(ExecuteCommand(FTar,['-zxf',BootstrapFilePath,'-C',BootstrapFileArchiveDir,'--wildcards','--no-anchored',CompilerName],FVerbose)=0);
           {$endif}
@@ -2429,6 +2454,7 @@ begin
             if aLocalBootstrapVersion='2.6.4' then aCompilerArchive:='universal-macosx-10.5-ppcuniversal.tar.bz2'; //ppcuniversal
             {$IF defined(CPUX86_64) OR defined(CPUPOWERPC64)}
             if aLocalBootstrapVersion='3.0.0' then aCompilerArchive:='x86_64-macosx-10.7-ppcx64.tar.bz2'; // ppcx64
+            if aLocalBootstrapVersion='3.0.4' then aCompilerArchive:='x86_64-macosx-10.9-ppcx64.tar.bz2'; // ppcx64
             {$ENDIF}
             {$ENDIF}
             {$IFDEF win32}
@@ -2911,7 +2937,6 @@ var
     Processor.Process.Parameters.Add('' + aFile + '');
     Infoln(infotext+'Creating '+ExtractFileName(aFile));
     try
-      WritelnLog(infotext+Processor.GetExeInfo, true);
       ProcessorResult:=Processor.ExecuteAndWait;
       result:=(ProcessorResult=0);
     except
@@ -2940,7 +2965,7 @@ begin
 
   s2:=GetVersion;
   s:=GetCompilerInDir(FInstallDirectory);
-  if FileExists(s) then VersionSnippet:=CompilerVersion(s);
+  VersionSnippet:=CompilerVersion(s);
   if VersionSnippet='0.0.0' then VersionSnippet:=s2;
   if VersionSnippet<>'0.0.0' then
   begin
@@ -3109,7 +3134,6 @@ begin
       if FBootstrapCompilerOverrideVersionCheck then
         Processor.Process.Parameters.Add('OVERRIDEVERSIONCHECK=1');
       Infoln(infotext+'Perform compiler cycle for Windows FPC64.',etInfo);
-      WritelnLog(infotext+Processor.GetExeInfo, true);
       ProcessorResult:=Processor.ExecuteAndWait;
       if ProcessorResult <> 0 then
       begin
@@ -3144,7 +3168,6 @@ begin
       if FBootstrapCompilerOverrideVersionCheck then
         Processor.Process.Parameters.Add('OVERRIDEVERSIONCHECK=1');
       Infoln(infotext+'Perform compiler cycle for Darwin.',etInfo);
-      WritelnLog(infotext+Processor.GetExeInfo, true);
       ProcessorResult:=Processor.ExecuteAndWait;
       if ProcessorResult <> 0 then
       begin
@@ -3444,6 +3467,14 @@ begin
 
     OperationSucceeded:=FileExists(FPCCfg);
 
+    if OperationSucceeded then
+    begin
+      Infoln(infotext+'Creating/checking default configuration file(s) success.');
+      Infoln(infotext+'Going to tune fpc.cfg to our needs.');
+    end
+    else
+      Infoln(infotext+'No fpc.cfg file created or found. Should not happen. Severe error !!!',etError);
+
     // at this point, a default fpc.cfg should exist
     // modify it to suit fpcup[deluxe]
     if OperationSucceeded then
@@ -3570,6 +3601,17 @@ begin
         ConfigText.Append('-k"-rpath=/usr/pkg/lib"');
         {$endif}
 
+        {$ifdef Haiku}
+          s:='';
+          {$ifdef CPUX86}
+          s:='/x86';
+          {$endif}
+          ConfigText.Append('-XR/boot/system/lib'+s);
+          ConfigText.Append('-FD/boot/system/bin'+s+'/');
+          ConfigText.Append('-Fl/boot/system/develop/lib'+s);
+          ConfigText.Append('-Fl/boot/system/non-packaged/lib'+s);
+        {$endif}
+
         ConfigText.Append('#ENDIF');
 
         {$ifdef solaris}
@@ -3655,9 +3697,19 @@ begin
         {$else Darwin}
         {$ifdef Unix}
         //ConfigText.Append('-k"-rpath=./"');
+
+        //For runtime
         ConfigText.Append('-k-rpath');
         ConfigText.Append('-k./');
+        ConfigText.Append('-k-rpath');
+        ConfigText.Append('-k$$ORIGIN');
+
+        //For linktime
+        //ConfigText.Append('-k-rpath-link');
+        //ConfigText.Append('-k./');
+
         //ConfigText.Append('-k"-rpath=/usr/local/lib"');
+        //ConfigText.Append('-k"-rpath=$$ORIGIN"');
         //ConfigText.Append('-k"-rpath=\\$$$$$\\ORIGIN"');
         //ConfigText.Append('-k-rpath');
         //ConfigText.Append('-k\\$$$$$\\ORIGIN');
@@ -3688,16 +3740,17 @@ begin
         ConfigTextStore.Free;
       end;
 
+      Infoln(infotext+'Tuning of fpc.cfg ready.');
     end;
 
     // do not build pas2js [yet]: separate install ... use the module with rtl
     // if OperationSucceeded then BuildModuleCustom('PAS2JS');
   end;
 
-  RemoveStaleBuildDirectories(FSourceDirectory,GetTargetCPU,GetTargetOS);
-
   if OperationSucceeded then
   begin
+    RemoveStaleBuildDirectories(FSourceDirectory,GetTargetCPU,GetTargetOS);
+    Infoln(infotext+'Removal of stale build files and directories ready.');
     WritelnLog(infotext+'Update/build/config succeeded.',false);
   end;
   Result := OperationSucceeded;
@@ -3798,12 +3851,11 @@ begin
       if (NOT RunTwice) then
       begin
         if (NOT CrossCompiling) then
-          Infoln(infotext+'Running '+Processor.Executable+' distclean twice',etInfo)
+          Infoln(infotext+'Running make distclean twice',etInfo)
         else
-          Infoln(infotext+'Running '+Processor.Executable+' distclean twice for target '+CrossInstaller.RegisterName,etInfo);
+          Infoln(infotext+'Running make distclean twice for target '+CrossInstaller.RegisterName,etInfo);
       end;
       try
-        WritelnLog(infotext+Processor.GetExeInfo, true);
         ProcessorResult:=Processor.ExecuteAndWait;
         result:=(ProcessorResult=0);
         if result then
@@ -3918,6 +3970,7 @@ var
   UpdateWarnings: TStringList;
   aRepoClient:TRepoClient;
   s:string;
+  SourceVersion:string;
 begin
   result:=inherited;
   result:=InitModule;
@@ -3926,13 +3979,15 @@ begin
 
   FPreviousRevision:='unknown';
 
+  SourceVersion:='0.0.0';
+
   aRepoClient:=GetSuitableRepoClient;
 
   if aRepoClient=nil then
   begin
     Infoln(infotext+'Using FTP for download of ' + ModuleName + ' sources.',etWarning);
     result:=DownloadFromFTP(ModuleName);
-    if result then CreateRevision(ModuleName,'unknown');
+    FActualRevision:=FPreviousRevision;
   end
   else
   begin
@@ -3951,8 +4006,26 @@ begin
       UpdateWarnings.Free;
     end;
 
-    if NOT aRepoClient.ExportOnly then
+  end;
+
+  if result then
+  begin
+    SourceVersion:=GetVersion;
+
+    if (SourceVersion<>'0.0.0') then
     begin
+      s:=GetRevisionFromVersion(ModuleName,SourceVersion);
+      if (Length(s)>0) then
+      begin
+        FActualRevision:=s;
+        FPreviousRevision:=s;
+      end;
+    end
+    else
+    begin
+      Infoln(infotext+'Could not get version of ' + ModuleName + ' sources. Expect severe errors.',etError);
+    end;
+
       if FRepositoryUpdated then
       begin
         Infoln(infotext+ModuleName + ' was at revision: '+PreviousRevision,etInfo);
@@ -3975,34 +4048,23 @@ begin
           UpdateWarnings.Add('Location: '+FBaseDirectory);
           UpdateWarnings.Add('');
         end;
-        UpdateWarnings.Add('FPC update at: '+DateTimeToStr(now));
-        UpdateWarnings.Add('FPC URL: '+aRepoClient.Repository);
-        UpdateWarnings.Add('FPC previous revision: '+PreviousRevision);
-        UpdateWarnings.Add('FPC new revision: '+ActualRevision);
+      UpdateWarnings.Add(ModuleName+' update at: '+DateTimeToStr(now));
+      if aRepoClient<>nil then UpdateWarnings.Add(ModuleName+' URL: '+aRepoClient.Repository);
+      UpdateWarnings.Add(ModuleName+' previous revision: '+PreviousRevision);
+      UpdateWarnings.Add(ModuleName+' new revision: '+ActualRevision);
         UpdateWarnings.Add('');
         UpdateWarnings.SaveToFile(s);
       finally
         UpdateWarnings.Free;
       end;
-    end;
 
-    if (NOT Result) then
-      Infoln(infotext+'Checkout/update of ' + ModuleName + ' sources failure.',etError);
-  end;
-
-  if result then
-  begin
     CreateRevision(ModuleName,ActualRevision);
-    //Version is needed for pathing, so get it here
-    s:=GetVersion;
-    if (s<>'0.0.0') then
-    begin
-      PatchModule(ModuleName);
+
+    if (SourceVersion<>'0.0.0') then PatchModule(ModuleName);
     end
     else
     begin
-      Infoln(infotext+'Could not get version of ' + ModuleName + ' sources. Expect severe errors.',etError);
-    end;
+    Infoln(infotext+'Checkout/update of ' + ModuleName + ' sources failure.',etError);
   end;
 end;
 
@@ -4046,8 +4108,6 @@ begin
   inherited Create;
 
   FCompiler := '';
-  FSVNDirectory := '';
-  FMakeDir :='';
 
   FTargetCompilerName:=GetCompilerName(GetTargetCPU);
 

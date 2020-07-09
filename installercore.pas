@@ -52,7 +52,7 @@ const
 
   FPCMAKECONFIG         = 'fpcmkcfg';
 
-  QT5LIBNAME            = 'libQt5Pas.so.1';
+  LIBQT5                = 'libQt5Pas.so';
 
   FPCPKGFILENAME        = 'fppkg';
   FPCPKGCONFIGFILENAME  = 'fppkg.cfg';
@@ -289,7 +289,7 @@ type
     procedure SetHTTPProxyPassword(AValue: string);
     procedure SetHTTPProxyPort(AValue: integer);
     procedure SetHTTPProxyUser(AValue: string);
-    function DownloadFromBase(aClient:TRepoClient; ModuleName: string; var aBeforeRevision, aAfterRevision: string; UpdateWarnings: TStringList): boolean;
+    function DownloadFromBase(aClient:TRepoClient; aModuleName: string; var aBeforeRevision, aAfterRevision: string; UpdateWarnings: TStringList): boolean;
     // Get fpcup registred cross-compiler, if any, if not, return nil
     function GetCrossInstaller: TCrossInstaller;
     function GetCrossCompilerPresent:boolean;
@@ -371,15 +371,14 @@ type
     procedure CreateStoreRepositoryDiff(DiffFileName: string; UpdateWarnings: TStringList; RepoClass: TObject);
     // Clone/update using HG; use FSourceDirectory as local repository
     // Any generated warnings will be added to UpdateWarnings
-    function DownloadFromHG(ModuleName: string; var aBeforeRevision, aAfterRevision: string; UpdateWarnings: TStringList): boolean;
+    function DownloadFromHG(aModuleName: string; var aBeforeRevision, aAfterRevision: string; UpdateWarnings: TStringList): boolean;
     // Clone/update using Git; use FSourceDirectory as local repository
     // Any generated warnings will be added to UpdateWarnings
-    function DownloadFromGit(ModuleName: string; var aBeforeRevision, aAfterRevision: string; UpdateWarnings: TStringList): boolean;
+    function DownloadFromGit(aModuleName: string; var aBeforeRevision, aAfterRevision: string; UpdateWarnings: TStringList): boolean;
     // Checkout/update using SVN; use FSourceDirectory as local repository
     // Any generated warnings will be added to UpdateWarnings
-    function DownloadFromSVN(ModuleName: string; var aBeforeRevision, aAfterRevision: string; UpdateWarnings: TStringList): boolean;
+    function DownloadFromSVN(aModuleName: string; var aBeforeRevision, aAfterRevision: string; UpdateWarnings: TStringList): boolean;
     function SimpleExportFromSVN(ModuleName: string; aFileURL,aLocalPath:string): boolean;
-    // Download SVN client and set FSVNClient.SVNExecutable if succesful.
     function DownloadFromFTP(ModuleName: string): boolean;
     // Clone/update using Git; use FSourceDirectory as local repository
     // Any generated warnings will be added to UpdateWarnings
@@ -517,6 +516,8 @@ type
     //Source revision
     function CreateRevision(ModuleName,aRevision:string): boolean;
     function GetRevision(ModuleName:string): string;
+    function GetRevisionFromVersion(aModuleName,aVersion:string): string;
+
     // Uninstall module
     function UnInstallModule(ModuleName: string): boolean; virtual;
     procedure Infoln(Message: string; const Level: TEventType=etInfo);
@@ -944,7 +945,11 @@ begin
         OperationSucceeded:=DownloadSVN;
       end;
       {$ENDIF MSWINDOWS}
+      if OperationSucceeded then
+      begin
+        if (RepoExecutable<>EmptyStr) then OperationSucceeded := CheckExecutable(RepoExecutable, ['--version'], '');
       if OperationSucceeded then FSVNDirectory:=ExtractFileDir(RepoExecutable);
+    end;
     end;
 
     // Regardless of platform, SVN should now be either set up correctly or we should give up.
@@ -1588,7 +1593,7 @@ begin
   UpdateWarnings.Add('Diff with last revision stored in ' + DiffFileName);
 end;
 
-function TInstaller.DownloadFromBase(aClient:TRepoClient; ModuleName: string; var aBeforeRevision,
+function TInstaller.DownloadFromBase(aClient:TRepoClient; aModuleName: string; var aBeforeRevision,
   aAfterRevision: string; UpdateWarnings: TStringList): boolean;
 var
   ReturnCode: integer;
@@ -1598,7 +1603,7 @@ var
 begin
   Result := false;
 
-  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' ('+Copy(aClient.ClassName,2,MaxInt)+': '+ModuleName+'): ';
+  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' ('+Copy(aClient.ClassName,2,MaxInt)+': '+aModuleName+'): ';
 
   // check if we do have a client !!
   if NOT aClient.ValidClient then
@@ -1609,13 +1614,15 @@ begin
 
   aBeforeRevision := 'failure';
   aAfterRevision := 'failure';
+  //aClient.Verbose         := FVerbose;
   aClient.LocalRepository := FSourceDirectory;
   aClient.Repository      := FURL;
   aClient.ExportOnly      := FExportOnly;
+  aClient.ModuleName      := aModuleName;
 
   aBeforeRevision:=aClient.LocalRevision;
 
-  if ((ModuleName=_FPC) OR (ModuleName=_LAZARUS)) AND (aClient is TGitClient)  then
+  if ((aModuleName=_FPC) OR (aModuleName=_LAZARUS)) AND (aClient is TGitClient)  then
   begin
     Output:=(aClient as TGitClient).GetSVNRevision;
     if (Length(Output)>0) then
@@ -1629,15 +1636,15 @@ begin
     aClient.LocalModifications(UpdateWarnings); //Get list of modified files
     if UpdateWarnings.Count > 0 then
     begin
-      UpdateWarnings.Insert(0, {BeginSnippet+' '+}ModuleName + ': WARNING: found modified files.');
+      UpdateWarnings.Insert(0, {BeginSnippet+' '+}aModuleName + ': WARNING: found modified files.');
       if FKeepLocalChanges=false then
       begin
         DiffFile:=IncludeTrailingPathDelimiter(FSourceDirectory) + 'REV' + aBeforeRevision + '.diff';
         CreateStoreRepositoryDiff(DiffFile, UpdateWarnings,aClient);
-        UpdateWarnings.Add({BeginSnippet+' '+}ModuleName + ': reverting to original before updating.');
+        UpdateWarnings.Add({BeginSnippet+' '+}aModuleName + ': reverting to original before updating.');
         aClient.Revert; //Remove local changes
       end
-      else UpdateWarnings.Add({BeginSnippet+' '+}ModuleName + ': leaving modified files as is before updating.');
+      else UpdateWarnings.Add({BeginSnippet+' '+}aModuleName + ': leaving modified files as is before updating.');
     end;
   end;
 
@@ -1679,7 +1686,7 @@ begin
       else
       begin
         aAfterRevision := aClient.LocalRevision;
-        if ((ModuleName=_FPC) OR (ModuleName=_LAZARUS)) AND (aClient is TGitClient)  then
+        if ((aModuleName=_FPC) OR (aModuleName=_LAZARUS)) AND (aClient is TGitClient)  then
         begin
           Output:=(aClient as TGitClient).GetSVNRevision;
           if (Length(Output)>0) then
@@ -1698,7 +1705,7 @@ begin
       begin
          Output:='';
 
-         UpdateWarnings.Add(ModuleName + ': reapplying local changes.');
+         UpdateWarnings.Add(aModuleName + ': reapplying local changes.');
 
          // check for default values
          if ((FPatchCmd='patch'+GetExeExt) OR (FPatchCmd='gpatch'+GetExeExt))
@@ -1741,19 +1748,19 @@ begin
   end;
 end;
 
-function TInstaller.DownloadFromHG(ModuleName: string; var aBeforeRevision,
+function TInstaller.DownloadFromHG(aModuleName: string; var aBeforeRevision,
   aAfterRevision: string; UpdateWarnings: TStringList): boolean;
 begin
-  result:=DownloadFromBase(HGClient,ModuleName,aBeforeRevision,aAfterRevision,UpdateWarnings);
+  result:=DownloadFromBase(HGClient,aModuleName,aBeforeRevision,aAfterRevision,UpdateWarnings);
 end;
 
-function TInstaller.DownloadFromGit(ModuleName: string; var aBeforeRevision,
+function TInstaller.DownloadFromGit(aModuleName: string; var aBeforeRevision,
   aAfterRevision: string; UpdateWarnings: TStringList): boolean;
 begin
-  result:=DownloadFromBase(GitClient,ModuleName,aBeforeRevision,aAfterRevision,UpdateWarnings);
+  result:=DownloadFromBase(GitClient,aModuleName,aBeforeRevision,aAfterRevision,UpdateWarnings);
 end;
 
-function TInstaller.DownloadFromSVN(ModuleName: string; var aBeforeRevision, aAfterRevision: string; UpdateWarnings: TStringList): boolean;
+function TInstaller.DownloadFromSVN(aModuleName: string; var aBeforeRevision, aAfterRevision: string; UpdateWarnings: TStringList): boolean;
 var
   CheckoutOrUpdateReturnCode: integer;
   DiffFile: String;
@@ -1766,7 +1773,7 @@ var
 begin
   result:=true;
 
-  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (DownloadFromSVN: '+ModuleName+'): ';
+  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (DownloadFromSVN: '+aModuleName+'): ';
 
   // check if we do have a client !!
   if NOT SVNClient.ValidClient then
@@ -1777,10 +1784,11 @@ begin
 
   aBeforeRevision             := 'failure';
   aAfterRevision              := 'failure';
-  SVNClient.ModuleName        := ModuleName;
+  //SVNClient.Verbose           := FVerbose;
   SVNClient.LocalRepository   := FSourceDirectory;
   SVNClient.Repository        := FURL;
   SVNClient.ExportOnly        := FExportOnly;
+  SVNClient.ModuleName        := aModuleName;
 
   RepoExists:=SVNClient.LocalRepositoryExists;
   if RepoExists then
@@ -1815,15 +1823,15 @@ begin
     DiffFile:='';
     if UpdateWarnings.Count > 0 then
     begin
-      UpdateWarnings.Insert(0, {BeginSnippet+' '+}ModuleName + ': WARNING: found modified files.');
+      UpdateWarnings.Insert(0, {BeginSnippet+' '+}aModuleName + ': WARNING: found modified files.');
       if FKeepLocalChanges=false then
       begin
         DiffFile:=IncludeTrailingPathDelimiter(FSourceDirectory) + 'REV' + aBeforeRevision + '.diff';
         CreateStoreRepositoryDiff(DiffFile, UpdateWarnings,FSVNClient);
-        UpdateWarnings.Add({BeginSnippet+' '+}ModuleName + ': reverting before updating.');
+        UpdateWarnings.Add({BeginSnippet+' '+}aModuleName + ': reverting before updating.');
         SVNClient.Revert; //Remove local changes
       end
-      else UpdateWarnings.Add({BeginSnippet+' '+}ModuleName + ': leaving modified files as is before updating.');
+      else UpdateWarnings.Add({BeginSnippet+' '+}aModuleName + ': leaving modified files as is before updating.');
     end;
   end;
 
@@ -1891,7 +1899,7 @@ begin
       begin
         Output:='';
 
-        UpdateWarnings.Add(ModuleName + ': reapplying local changes.');
+        UpdateWarnings.Add(aModuleName + ': reapplying local changes.');
 
         if ((FPatchCmd='patch'+GetExeExt) OR (FPatchCmd='gpatch'+GetExeExt))
            then LocalPatchCmd:=FPatchCmd + ' -p0 -i '
@@ -2028,7 +2036,9 @@ begin
     if Pos(LowerCase(ModuleName),LowerCase(ExtractFileName(aName)))>0 then
     //if LowerCase(ExtractFileName(aName))=LowerCase(ModuleName) then
     begin
-      Infoln(infotext+'Moving files due to extra path. Please wait.',etInfo);
+      Infoln(infotext+'Moving files due to extra path.',etInfo);
+      //Infoln(infotext+'Also simultaneously correcting line-endings.',etInfo);
+      Infoln(infotext+'This is time-consuming. Please wait.',etInfo);
       FilesList:=FindAllFiles(aName, '', True);
       for i:=0 to (FilesList.Count-1) do
       begin
@@ -2037,6 +2047,11 @@ begin
         aFile:=SafeExpandFileName(aFile);
         if NOT DirectoryExists(ExtractFileDir(aFile)) then ForceDirectoriesSafe(ExtractFileDir(aFile));
         SysUtils.RenameFile(FilesList[i],aFile);
+        {$ifdef UNIX}
+        //Correct line endings
+        //Diabled for now: sed consumes enormous amount of time
+        //ExecuteCommand('sed -i '+'''s/\r//'''+' '+aFile,False);
+        {$endif}
       end;
       DeleteDirectory(aName,False);
       FreeAndNil(FilesList);
@@ -2848,12 +2863,23 @@ function TInstaller.GetSuitableRepoClient:TRepoClient;
 begin
   result:=nil;
 
+  // Do we need SVN
   if result=nil then if DirectoryExists(IncludeTrailingPathDelimiter(FSourceDirectory)+'.svn') then result:=SVNClient;
-  if result=nil then if (Pos('https://svn.',LowerCase(FURL))=1) then result:=SVNClient;
+  if result=nil then if (Pos(SVNBASEHTTP,LowerCase(FURL))>0) then result:=SVNClient;
   if result=nil then if (Pos('http://svn.',LowerCase(FURL))=1) then result:=SVNClient;
+  if result=nil then if (Pos(SVNBASESVN,LowerCase(FURL))>0) then result:=SVNClient;
 
+  // Do we need GIT
   if result=nil then if DirectoryExists(IncludeTrailingPathDelimiter(FSourceDirectory)+'.git') then result:=GitClient;
   if result=nil then if ( {(Pos('GITHUB',UpperCase(FURL))>0) OR} (Pos('.GIT',UpperCase(FURL))>0) ) then result:=GitClient;
+
+  // Do we need HG
+  if result=nil then if ( (Pos('hg.code.sf.net',LowerCase(FURL))>0) ) then result:=HGClient;
+  if result=nil then if ( (Pos('bitbucket.org',LowerCase(FURL))>0) ) then result:=HGClient;
+
+  // Do we need FTP
+  //if result=nil then if (Pos(FTPBASEFTP,LowerCase(FURL))>0) then result:=FTPClient;
+  //if result=nil then if (Pos(FTPBASEHTTP,LowerCase(FURL))>0) then result:=FTPClient;
 end;
 
 function TInstaller.GetTempFileNameExt(Prefix,Ext : String) : String;
@@ -2947,23 +2973,12 @@ begin
   else
     aEvent:=etError;
 
-  aRepoClient:=nil;
-
-  // not so elegant check to see what kind of client we need ...
-  if aRepoClient=nil then if (Pos(SVNBASEHTTP,LowerCase(FURL))>0) then aRepoClient:=SVNClient;
-  if aRepoClient=nil then if (Pos(SVNBASESVN,LowerCase(FURL))>0) then aRepoClient:=SVNClient;
-  //if aRepoClient=nil then if (Pos(FTPBASEFTP,LowerCase(FURL))>0) then aRepoClient:=FTPClient;
-  //if aRepoClient=nil then if (Pos(FTPBASEHTTP,LowerCase(FURL))>0) then aRepoClient:=FTPClient;
-  if aRepoClient=nil then if ( {(Pos('GITHUB',UpperCase(FURL))>0) OR} (Pos('.GIT',UpperCase(FURL))>0) ) then aRepoClient:=GitClient;
-  if aRepoClient=nil then if ( (Pos('hg.code.sf.net',LowerCase(FURL))>0) ) then aRepoClient:=HGClient;
-  if aRepoClient=nil then if ( (Pos('bitbucket.org',LowerCase(FURL))>0) ) then aRepoClient:=HGClient;
-
-  //if aRepoClient=nil then aRepoClient:=SVNClient;
+  aRepoClient:=GetSuitableRepoClient;
 
   // No repo client ...
   if aRepoClient=nil then
   begin
-    Infoln(infotext+'Could not determine what repoclient to use for ' + ModuleName + ' sources !',etWarning);
+    Infoln(infotext+'Could not determine what repoclient to use for ' + ModuleName + ' sources !',etError);
     if (IsFPCInstaller OR IsLazarusInstaller) then
     begin
       exit;
@@ -2976,7 +2991,7 @@ begin
     end;
   end;
 
-  Infoln(infotext+'checking ' + ModuleName + ' sources with '+aRepoClient.ClassName,etInfo);
+  Infoln(infotext+'Checking ' + ModuleName + ' sources with '+aRepoClient.ClassName,etInfo);
 
   aRepoClient.Verbose:=FVerbose;
   aRepoClient.ExportOnly:=FExportOnly;
@@ -3017,13 +3032,16 @@ end;
 function TInstaller.PatchModule(ModuleName: string): boolean;
 const
   STRIPMAGIC='fpcupstrip';
+  {$ifndef FPCONLY}
   DARWINCHECKMAGIC='useride: ';
   DARWINHACKMAGIC='./lazbuild$(SRCEXEEXT) --lazarusdir=. --build-ide= --ws=$(LCL_PLATFORM)';
+  {$endif}
 var
   PatchList:TStringList;
   PatchFilePath,PatchFileCorrectedPath,PatchDirectory:string;
   LocalPatchCmd:string;
   s: string = '';
+  Output: string = '';
   ReturnCode,i,j: integer;
   LocalSourcePatches:string;
   PatchFPC,PatchUniversal,PatchAccepted:boolean;
@@ -3153,7 +3171,8 @@ begin
             PatchVersion:=TrunkVersion;
           end;
 
-          Infoln(localinfotext+'Found online patch: '+PatchFilePath+' with version '+InttoStr(PatchVersion),etDebug);
+          s:=localinfotext+'Found online patch: '+PatchFilePath+' with version '+InttoStr(PatchVersion);
+          if Self.FVerbose then Infoln(s,etInfo) else Infoln(s,etDebug);
 
           {$if not defined(MSWindows) and not defined(Haiku)}
           //only patch the Haiku build process on Windows and Haiku itself
@@ -3390,14 +3409,25 @@ begin
             j:=StrToIntDef(PatchFilePath[j+Length(STRIPMAGIC)],0);
           end else j:=0;
 
+          {$IFDEF MSWINDOWS}
+          Processor.Executable := IncludeTrailingPathDelimiter(FMakeDir) + FPatchCmd;
+          {$ELSE}
+          Processor.Executable := FPatchCmd;
+          {$ENDIF}
+          Processor.Process.Parameters.Clear;
+          Processor.Process.CurrentDirectory := ExcludeTrailingPathDelimiter(FSourceDirectory);
+
           // check for default values
-          if ((FPatchCmd='patch'+GetExeExt) OR (FPatchCmd='gpatch'+GetExeExt))
-            {$IF defined(BSD) and not defined(DARWIN)}
-            then LocalPatchCmd:=FPatchCmd + ' -p' + InttoStr(j) + ' -N -i '
-            {$else}
-            then LocalPatchCmd:=FPatchCmd + ' -p' + InttoStr(j) + ' -N --no-backup-if-mismatch -i '
+          if ((FPatchCmd='patch'+GetExeExt) OR (FPatchCmd='gpatch'+GetExeExt)) then
+          begin
+            Processor.Process.Parameters.Add('-p');
+            Processor.Process.Parameters.Add(InttoStr(j));
+            Processor.Process.Parameters.Add('-N');
+            {$IF not defined(BSD) or defined(DARWIN)}
+            Processor.Process.Parameters.Add('--no-backup-if-mismatch');
             {$endif}
-             else LocalPatchCmd:=Trim(FPatchCmd) + ' ';
+            Processor.Process.Parameters.Add('-i');
+          end;
 
           // always correct for line-endings while patch is very sensitive for that
           PatchFileCorrectedPath:=IncludeTrailingPathDelimiter(GetTempDirName)+ExtractFileName(PatchFilePath);
@@ -3405,11 +3435,11 @@ begin
           begin
             // revert to original file in case of file not found
             if (NOT FileExists(PatchFileCorrectedPath)) then PatchFileCorrectedPath:=PatchFilePath;
-            {$IFDEF MSWINDOWS}
-            ReturnCode:=ExecuteCommandInDir(IncludeTrailingPathDelimiter(FMakeDir) + LocalPatchCmd + PatchFileCorrectedPath, FSourceDirectory,s, True);
-            {$ELSE}
-            ReturnCode:=ExecuteCommandInDir(LocalPatchCmd + PatchFileCorrectedPath, FSourceDirectory, s, True);
-            {$ENDIF}
+            Processor.Process.Parameters.Add(PatchFileCorrectedPath);
+
+            //Execute patch command
+            ReturnCode:=Processor.ExecuteAndWait;
+
             // remove the temporary file
             if (PatchFileCorrectedPath<>PatchFilePath) then DeleteFile(PatchFileCorrectedPath);
             if ReturnCode=0  then
@@ -3420,7 +3450,7 @@ begin
             else
             begin
               WritelnLog(etError, infotext+ModuleName+' patching with ' + PatchList[i] + ' failed.', true);
-              WritelnLog(etError, infotext+ModuleName+' patch output: ' + s, true);
+              WritelnLog(etError, infotext+ModuleName+' patch output: ' + Output, true);
             end;
           end;
           DeleteDirectoryEx(ExtractFileDir(PatchFileCorrectedPath));
@@ -3537,6 +3567,61 @@ begin
       end;
     finally
       RevisionStringList.Free;
+    end;
+  end;
+end;
+
+function TInstaller.GetRevisionFromVersion(aModuleName,aVersion:string): string;
+type
+  TVersionTable = record
+    Version:string;
+    Revision:string;
+  end;
+const
+  FPCVersionsTable: array[0..4] of TVersionTable = (
+    (Version:'2.6.4';Revision:'26970'),
+    (Version:'3.0.0';Revision:'32319'),
+    (Version:'3.0.2';Revision:'35401'),
+    (Version:'3.0.4';Revision:'37149'),
+    (Version:'3.2.0';Revision:'45643')
+    );
+  LazarusVersionsTable: array[0..8] of TVersionTable = (
+    (Version:'1.6.4';Revision:'54278'),
+    (Version:'1.8.0';Revision:'56623'),
+    (Version:'1.8.2';Revision:'57369'),
+    (Version:'1.8.4';Revision:'57972'),
+    (Version:'2.0.0';Revision:'60307'),
+    (Version:'2.0.2';Revision:'60954'),
+    (Version:'2.0.4';Revision:'61665'),
+    (Version:'2.0.6';Revision:'62129'),
+    (Version:'2.0.8';Revision:'62944')
+    );
+var
+  aVersionTable:TVersionTable;
+begin
+  result:='';
+
+  if aModuleName=_FPC then
+  begin
+    for aVersionTable in FPCVersionsTable do
+    begin
+      if aVersionTable.Version=aVersion then
+      begin
+        result:=aVersionTable.Revision;
+        exit;
+      end;
+    end;
+  end;
+
+  if aModuleName=_LAZARUS then
+  begin
+    for aVersionTable in LazarusVersionsTable do
+    begin
+      if aVersionTable.Version=aVersion then
+      begin
+        result:=aVersionTable.Revision;
+        exit;
+      end;
     end;
   end;
 end;
@@ -3753,6 +3838,7 @@ var
   i:integer;
   aTool:TExternalTool;
   FParameters:TStrings;
+  ExeName:string;
 begin
 
   result:=0;
@@ -3803,8 +3889,6 @@ begin
           aTool.Environment.SetVar(PATHVARNAME, PrependPath);
       end;
 
-      if Verbosity then
-        WritelnLog(infotext+aTool.GetExeInfo, true);
       result:=aTool.ExecuteAndWait;
       Output:=aTool.WorkerOutput.Text;
 
@@ -3862,8 +3946,6 @@ begin
           aTool.Environment.SetVar(PATHVARNAME, PrependPath);
       end;
 
-      if Verbosity then
-        WritelnLog(infotext+aTool.GetExeInfo, true);
       result:=aTool.ExecuteAndWait;
       Output:=aTool.WorkerOutput.Text;
 
@@ -3895,6 +3977,8 @@ begin
   FHGClient  := THGClient.Create(Self);
 
   FShell := '';
+  FSVNDirectory := '';
+  FMakeDir      := '';
 
   FNeededExecutablesChecked:=false;
   FCleanModuleSuccess:=false;

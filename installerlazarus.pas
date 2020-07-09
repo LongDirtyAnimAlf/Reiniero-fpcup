@@ -353,9 +353,11 @@ begin
         if (NOT FNoJobs) then
           Processor.Process.Parameters.Add('--jobs='+IntToStr(FCPUCount));}
 
+        Processor.Process.Parameters.Add('--directory=' + FSourceDirectory);
+        //Processor.Process.Parameters.Add('--directory=' + ConcatPaths([FSourceDirectory,'lcl']));
+
         Processor.Process.Parameters.Add('FPC=' + FCompiler);
         Processor.Process.Parameters.Add('PP=' + ExtractFilePath(FCompiler)+GetCompilerName(GetTargetCPU));
-        Processor.Process.Parameters.Add('FPCFPMAKE=' + ExtractFilePath(FCompiler)+GetCompilerName(GetTargetCPU));
         Processor.Process.Parameters.Add('USESVN2REVISIONINC=0');
         Processor.Process.Parameters.Add('PREFIX='+ExcludeTrailingPathDelimiter(FInstallDirectory));
         Processor.Process.Parameters.Add('INSTALL_PREFIX='+ExcludeTrailingPathDelimiter(FInstallDirectory));
@@ -376,10 +378,18 @@ begin
         Processor.Process.Parameters.Add('OS_TARGET=' + CrossInstaller.TargetOSName);
         Processor.Process.Parameters.Add('CPU_TARGET=' + CrossInstaller.TargetCPUName);
 
+        //Prevents the Makefile to search for the (native) ppc compiler which is used to do the latest build
+        //Todo: to be investigated
+        //Processor.Process.Parameters.Add('FPCFPMAKE=' + ExtractFilePath(FCompiler)+GetCompilerName(GetTargetCPU));
+
         //Set standard options
         Options := STANDARDCOMPILERVERBOSITYOPTIONS;
         //Always limit the search for fpc.cfg to our own fpc.cfg
+        //Only needed on Windows. On Linux, we have already our own fpc.sh
+        {$ifdef Windows}
         Options := Options+' -n @'+ConcatPaths([FFPCInstallDir,'bin',GetFPCTarget(true)])+PathDelim+'fpc.cfg';
+        {$endif}
+
         // Add remaining options
         Options := Options+' '+FCompilerOptions;
 
@@ -389,9 +399,6 @@ begin
         end;
         Options:=Trim(Options);
         if Length(Options)>0 then Processor.Process.Parameters.Add('OPT='+Options);
-
-        Processor.Process.Parameters.Add('--directory=' + FSourceDirectory);
-        //Processor.Process.Parameters.Add('--directory=' + ConcatPaths([FSourceDirectory,'lcl']));
 
         if FLCL_Platform <> '' then
           Processor.Process.Parameters.Add('LCL_PLATFORM=' + FLCL_Platform);
@@ -456,8 +463,6 @@ begin
         Infoln(infotext+'Compiling LCL for ' + GetFPCTarget(false) + '/' + FLCL_Platform + ' using ' + ExtractFileName(Processor.Executable), etInfo);
 
       try
-        WritelnLog(infotext+Processor.GetExeInfo, true);
-
         {$ifdef MSWindows}
         //Prepend FPC binary directory to PATH to prevent pickup of strange tools
         OldPath:=Processor.Environment.GetVar(PATHVARNAME);
@@ -609,27 +614,6 @@ begin
 
   LazBuildApp := IncludeTrailingPathDelimiter(FInstallDirectory) + LAZBUILDNAME + GetExeExt;
 
-  {$ifdef Unix}
-    {$ifndef Darwin}
-      {$ifdef LCLQT5}
-        // Check if QT5 library can be found
-        // If not, we add it ourselves (later)
-        if (NOT LibWhich(QT5LIBNAME)) then
-        begin
-          s:=IncludeTrailingPathDelimiter(SafeGetApplicationPath)+QT5LIBNAME;
-          if FileExists(s) then
-          begin
-            // Strange: running needs a .so.1 file .... but linking needs a .so file ...
-            s2:=IncludeTrailingPathDelimiter(FInstallDirectory)+QT5LIBNAME;
-            if (NOT FileExists(s2)) then FileUtil.CopyFile(s,s2);
-            Delete(s2,Length(s2)-1,2);
-            if (NOT FileExists(s2)) then FileUtil.CopyFile(s,s2);
-          end;
-        end;
-      {$endif}
-    {$endif}
-  {$endif}
-
   if (ModuleName=_LAZARUS) then
   begin
     Infoln(infotext+'Now building '+ModuleName+' revision '+ActualRevision,etInfo);
@@ -651,13 +635,14 @@ begin
     //Still not clear if jobs can be enabled for Lazarus make builds ... :-|
     if (NOT FNoJobs) then
       Processor.Process.Parameters.Add('--jobs='+IntToStr(FCPUCount));}
-    Processor.Process.Parameters.Add('FPC=' + FCompiler);
-    Processor.Process.Parameters.Add('PP=' + ExtractFilePath(FCompiler)+GetCompilerName(GetTargetCPU));
-    Processor.Process.Parameters.Add('FPCFPMAKE=' + ExtractFilePath(FCompiler)+GetCompilerName(GetTargetCPU));
-    Processor.Process.Parameters.Add('USESVN2REVISIONINC=0');
+
     //Processor.Process.Parameters.Add('--directory=' + ExcludeTrailingPathDelimiter(FSourceDirectory));
     //Processor.Process.Parameters.Add('--directory=.');
     Processor.Process.Parameters.Add('--directory=' + ExcludeTrailingPathDelimiter(FInstallDirectory));
+
+    Processor.Process.Parameters.Add('FPC=' + FCompiler);
+    Processor.Process.Parameters.Add('PP=' + ExtractFilePath(FCompiler)+GetCompilerName(GetTargetCPU));
+    Processor.Process.Parameters.Add('USESVN2REVISIONINC=0');
     Processor.Process.Parameters.Add('PREFIX='+ExcludeTrailingPathDelimiter(FInstallDirectory));
     Processor.Process.Parameters.Add('INSTALL_PREFIX='+ExcludeTrailingPathDelimiter(FInstallDirectory));
     //Make sure our FPC units can be found by Lazarus
@@ -671,13 +656,21 @@ begin
     Processor.Process.Parameters.Add('COPYTREE=echo');     //fix for examples in Win svn, see build FAQ
     {$endif}
 
+    //Prevents the Makefile to search for the (native) ppc compiler which is used to do the latest build
+    //Todo: to be investigated
+    //Processor.Process.Parameters.Add('FPCFPMAKE=' + ExtractFilePath(FCompiler)+GetCompilerName(GetTargetCPU));
+
     if FLCL_Platform <> '' then
       Processor.Process.Parameters.Add('LCL_PLATFORM=' + FLCL_Platform);
 
     //Set standard options
     s:=STANDARDCOMPILERVERBOSITYOPTIONS;
     //Always limit the search for fpc.cfg to our own fpc.cfg
+    //Only needed on Windows. On Linux, we have already our own fpc.sh
+    {$ifdef Windows}
     s:=s+' -n @'+ConcatPaths([FFPCInstallDir,'bin',GetFPCTarget(true)])+PathDelim+'fpc.cfg';
+    {$endif}
+
     // Add remaining options
     s:=s+' '+FCompilerOptions;
 
@@ -702,9 +695,11 @@ begin
         {$ifdef LCLQT5}
         // Did we copy the QT5 libs ??
         // If so, add some linker help.
-        if (FileExists(IncludeTrailingPathDelimiter(FInstallDirectory)+QT5LIBNAME)) then
+
+        if (NOT LibWhich(LIBQT5)) AND (FileExists(IncludeTrailingPathDelimiter(FInstallDirectory)+LIBQT5)) then
         begin
           s:=s+' -k"-rpath=./"';
+          s:=s+' -k"-rpath=$$ORIGIN"';
           s:=s+' -k"-rpath=\\$$$$$\\ORIGIN"';
           s:=s+' -Fl'+ExcludeTrailingPathDelimiter(FInstallDirectory);
         end;
@@ -845,8 +840,6 @@ begin
     end;
 
     try
-      WritelnLog(infotext+Processor.GetExeInfo, true);
-
       {$ifdef MSWindows}
       //Prepend FPC binary directory to PATH to prevent pickup of strange tools
       OldPath:=Processor.Environment.GetVar(PATHVARNAME);
@@ -963,7 +956,6 @@ begin
       begin
         Infoln(infotext+'Running lazbuild to get IDE with user-specified packages', etInfo);
         try
-          WritelnLog(infotext+Processor.GetExeInfo, true);
           ProcessorResult:=Processor.ExecuteAndWait;
           //Restore FPCDIR environment variable ... could be trivial, but batter safe than sorry
           Processor.Environment.SetVar('FPCDIR',FPCDirStore);
@@ -1027,7 +1019,6 @@ begin
 
           Infoln(infotext+'Compiling startlazarus to make sure it is present:', etInfo);
           try
-            WritelnLog(infotext+Processor.GetExeInfo, true);
             ProcessorResult:=Processor.ExecuteAndWait;
             //Restore FPCDIR environment variable ... could be trivial, but batter safe than sorry
             Processor.Environment.SetVar('FPCDIR',FPCDirStore);
@@ -1418,6 +1409,7 @@ end;
 function TLazarusInstaller.InitModule: boolean;
 var
   PlainBinPath: string; //the directory above e.g. c:\development\fpc\bin\i386-win32
+  SVNPath:string;
 begin
   Result := true;
 
@@ -1450,8 +1442,18 @@ begin
     // at least one ; to be present in the path. If you only have one entry, you
     // can add PathSeparator without problems.
     // https://www.mail-archive.com/fpc-devel@lists.freepascal.org/msg27351.html
-    SetPath(FBinPath + PathSeparator + PlainBinPath + PathSeparator + FMakeDir + PathSeparator +
-      ExcludeTrailingPathDelimiter(FSVNDirectory) + PathSeparator + ExcludeTrailingPathDelimiter(FInstallDirectory), false, false);
+
+    SVNPath:='';
+    if Length(FSVNDirectory)>0
+       then SVNPath:=PathSeparator+ExcludeTrailingPathDelimiter(FSVNDirectory);
+
+    SetPath(
+      FBinPath + PathSeparator +
+      PlainBinPath + PathSeparator +
+      FMakeDir + PathSeparator +
+      SVNPath +
+      ExcludeTrailingPathDelimiter(FInstallDirectory),
+      false, false);
     {$ENDIF MSWINDOWS}
     {$IFDEF UNIX}
     SetPath(FBinPath+PathSeparator+
@@ -1711,20 +1713,22 @@ begin
       ForceDirectoriesSafe(DebuggerPath);
       LazarusConfig.SetVariableIfNewFile(EnvironmentConfig, 'EnvironmentOptions/TestBuildDirectory/Value', IncludeTrailingPathDelimiter(DebuggerPath));
       {$IFDEF UNIX}
+      {$IFNDEF DARWIN}
       {$IFDEF LCLQT5}
-      if (NOT LibWhich(QT5LIBNAME)) then
+      if (NOT LibWhich(LIBQT5)) then
       begin
-        s:=IncludeTrailingPathDelimiter(SafeGetApplicationPath)+QT5LIBNAME;
+        s:=IncludeTrailingPathDelimiter(SafeGetApplicationPath)+LIBQT5;
         if FileExists(s) then
         begin
           // Strange: running needs a .so.1 file .... but linking needs a .so file ...
-          s2:=IncludeTrailingPathDelimiter(DebuggerPath)+QT5LIBNAME;
+          s2:=IncludeTrailingPathDelimiter(DebuggerPath)+LIBQT5;
           if (NOT FileExists(s2)) then FileUtil.CopyFile(s,s2);
-          Delete(s2,Length(s2)-1,2);
+          s2:=s2+'.1';
           if (NOT FileExists(s2)) then FileUtil.CopyFile(s,s2);
         end;
       end;
       {$ENDIF LCLQT5}
+      {$ENDIF DARWIN}
       {$ENDIF UNIX}
 
       // Set file history towards default project directory
@@ -1964,17 +1968,20 @@ begin
     end;
 
     try
-      WritelnLog(infotext+Processor.GetExeInfo, true);
       ProcessorResult:=Processor.ExecuteAndWait;
       result:=(ProcessorResult=0);
       if result then
         Sleep(200)
       else
+      begin
+        // Do not fail if we are cleaning Lazarus itself or the Packager
+        if (ModuleName=_LAZARUS) OR (ModuleName=_PACKAGER) then result:=true;
         break;
+      end;
     except
       on E: Exception do
       begin
-        Result := false;
+        result := false;
         WritelnLog(infotext+'Failed with an exception!' + LineEnding + 'Details: ' + E.Message, true);
       end;
     end;
@@ -2076,16 +2083,17 @@ var
   UpdateWarnings: TStringList;
   aRepoClient:TRepoClient;
   s:string;
-  {$ifdef BSD}
+  SourceVersion:string;
   FilePath:string;
-  {$endif}
 begin
-  Result := inherited;
-  Result := InitModule;
+  result:=inherited;
+  result:=InitModule;
 
-  if not Result then exit;
+  if (not result) then exit;
 
   FPreviousRevision:='unknown';
+
+  SourceVersion:='0.0.0';
 
   aRepoClient:=GetSuitableRepoClient;
 
@@ -2093,7 +2101,7 @@ begin
   begin
     Infoln(infotext+'Using FTP for download of ' + ModuleName + ' sources.',etWarning);
     result:=DownloadFromFTP(ModuleName);
-    if result then CreateRevision(ModuleName,'unknown');
+    FActualRevision:=FPreviousRevision;
   end
   else
   begin
@@ -2112,8 +2120,26 @@ begin
       UpdateWarnings.Free;
     end;
 
-    if NOT aRepoClient.ExportOnly then
+  end;
+
+  if result then
+  begin
+    SourceVersion:=GetVersion;
+
+    if (SourceVersion<>'0.0.0') then
     begin
+      s:=GetRevisionFromVersion(ModuleName,SourceVersion);
+      if (Length(s)>0) then
+      begin
+        FActualRevision:=s;
+        FPreviousRevision:=s;
+      end;
+    end
+    else
+    begin
+      Infoln(infotext+'Could not get version of ' + ModuleName + ' sources. Expect severe errors.',etError);
+    end;
+
       if FRepositoryUpdated then
       begin
         Infoln(infotext+ModuleName + ' was at revision: '+PreviousRevision,etInfo);
@@ -2124,8 +2150,6 @@ begin
         Infoln(infotext+ModuleName + ' is at revision: '+ActualRevision,etInfo);
         Infoln(infotext+'No updates for ' + ModuleName + ' found.',etInfo);
       end;
-    end;
-
     UpdateWarnings:=TStringList.Create;
     try
       s:=SafeExpandFileName(SafeGetApplicationPath+'fpcuprevisions.log');
@@ -2138,19 +2162,19 @@ begin
         UpdateWarnings.Add('Location: '+FBaseDirectory);
         UpdateWarnings.Add('');
       end;
-      UpdateWarnings.Add('Lazarus update at: '+DateTimeToStr(now));
-      UpdateWarnings.Add('Lazarus URL: '+aRepoClient.Repository);
-      UpdateWarnings.Add('Lazarus previous revision: '+PreviousRevision);
-      UpdateWarnings.Add('Lazarus new revision: '+ActualRevision);
+      UpdateWarnings.Add(ModuleName+' update at: '+DateTimeToStr(now));
+      if aRepoClient<>nil then UpdateWarnings.Add(ModuleName+' URL: '+aRepoClient.Repository);
+      UpdateWarnings.Add(ModuleName+' previous revision: '+PreviousRevision);
+      UpdateWarnings.Add(ModuleName+' new revision: '+ActualRevision);
       UpdateWarnings.Add('');
       UpdateWarnings.SaveToFile(s);
     finally
       UpdateWarnings.Free;
     end;
 
-    if (NOT Result) then
-      Infoln(infotext+'Checkout/update of ' + ModuleName + ' sources failure.',etError);
-  end;
+    CreateRevision(ModuleName,ActualRevision);
+
+    if (SourceVersion<>'0.0.0') then PatchModule(ModuleName);
 
   {$ifdef Darwin}
   {$ifdef LCLQT5}
@@ -2212,6 +2236,99 @@ begin
   {$endif}
   {$endif}
 
+    {$ifdef Unix}
+    {$ifndef Darwin}
+    {$ifdef LCLQT5}
+    // Only for Haiku
+    // Get/copy Qt libs if not present yet
+    // I know that this involves a lot of trickery and some dirty work, but it gives the user an öut-of-the-box" experience !
+    // And fpcupdeluxe is there to make the user-experience of FPC and Lazarus an easy one
+    // Note:
+    // Do not fail on error : could be that the fpcupdeluxe user has installed QT5 by himself
+    // ToDo : check if this presumption is correct
+
+    if LibWhich(LIBQT5) then
+      Infoln(infotext+'System wide libQT5Pas found. No trickery needed !!',etInfo)
+    else
+      Infoln(infotext+'QT5 trickery needed: adding QT5Pas library from fpcupdeluxe itself.',etInfo);
+
+    FilePath:=SafeGetApplicationPath;
+
+    {$ifdef Haiku}
+    if (NOT LibWhich(LIBQT5)) then
+    begin
+      {$ifdef CPUX86}
+      s:='/boot/system/non-packaged/lib/x86/';
+      {$else}
+      s:='/boot/system/non-packaged/lib/';
+      {$endif}
+      ForceDirectoriesSafe(s);
+      if FileExists(FilePath+LIBQT5+'.1') then
+      begin
+        if (NOT FileExists(s+LIBQT5+'.1')) then
+          FileUtil.CopyFile(FilePath+LIBQT5+'.1',s+LIBQT5+'.1');
+        if (NOT FileExists(s+LIBQT5)) then
+          FileUtil.CopyFile(FilePath+LIBQT5+'.1',s+LIBQT5);
+      end;
+    end;
+    {$endif}
+
+    {$ifdef Unix}
+    if (NOT LibWhich(LIBQT5)) then
+    begin
+      s:='/usr/local/lib/';
+      if DirectoryExists(s) then
+      begin
+        if FileExists(FilePath+LIBQT5+'.1') then
+        begin
+          if (NOT FileExists(s+LIBQT5+'.1')) then
+            FileUtil.CopyFile(FilePath+LIBQT5+'.1',s+LIBQT5+'.1');
+          if (NOT FileExists(s+LIBQT5)) then
+            FileUtil.CopyFile(FilePath+LIBQT5+'.1',s+LIBQT5);
+        end;
+      end;
+    end;
+    {$endif}
+
+    if (NOT LibWhich(LIBQT5)) then
+    begin
+      s:='1.2.9';
+      if (NOT FileExists(FilePath+LIBQT5+s)) then s:='1.2.8';
+      if (NOT FileExists(FilePath+LIBQT5+s)) then s:='1.2.7';
+      if (NOT FileExists(FilePath+LIBQT5+s)) then s:='1.2.6';
+      if FileExists(FilePath+LIBQT5+s) then
+      begin
+        if (NOT FileExists(IncludeTrailingPathDelimiter(FInstallDirectory)+LIBQT5+s)) then
+          FileUtil.CopyFile(FilePath+LIBQT5+s,IncludeTrailingPathDelimiter(FInstallDirectory)+LIBQT5+s);
+        if (NOT FileExists(IncludeTrailingPathDelimiter(FInstallDirectory)+LIBQT5+'.1')) then
+          FileUtil.CopyFile(FilePath+LIBQT5+s,IncludeTrailingPathDelimiter(FInstallDirectory)+LIBQT5+'.1');
+        if (NOT FileExists(IncludeTrailingPathDelimiter(FInstallDirectory)+LIBQT5)) then
+          FileUtil.CopyFile(FilePath+LIBQT5+s,IncludeTrailingPathDelimiter(FInstallDirectory)+LIBQT5);
+      end;
+
+      //The below can be trivial, but just in case
+      s:='.1';
+      if FileExists(FilePath+LIBQT5+s) then
+      begin
+        if (NOT FileExists(IncludeTrailingPathDelimiter(FInstallDirectory)+LIBQT5+s)) then
+          FileUtil.CopyFile(FilePath+LIBQT5+s,IncludeTrailingPathDelimiter(FInstallDirectory)+LIBQT5+s);
+        if (NOT FileExists(IncludeTrailingPathDelimiter(FInstallDirectory)+LIBQT5)) then
+          FileUtil.CopyFile(FilePath+LIBQT5+s,IncludeTrailingPathDelimiter(FInstallDirectory)+LIBQT5);
+      end;
+      s:='';
+      if FileExists(FilePath+LIBQT5+s) then
+      begin
+        if (NOT FileExists(IncludeTrailingPathDelimiter(FInstallDirectory)+LIBQT5+s)) then
+          FileUtil.CopyFile(FilePath+LIBQT5+s,IncludeTrailingPathDelimiter(FInstallDirectory)+LIBQT5+s);
+        if (NOT FileExists(IncludeTrailingPathDelimiter(FInstallDirectory)+LIBQT5)) then
+          FileUtil.CopyFile(FilePath+LIBQT5+s,IncludeTrailingPathDelimiter(FInstallDirectory)+LIBQT5);
+      end;
+    end;
+
+    {$endif}
+    {$endif}
+    {$endif}
+
   (*
   Errors := 0;
   if (Result) and (Uppercase(FCrossLCL_Platform) = 'QT') then
@@ -2260,21 +2377,11 @@ begin
   end;
   {$endif}
 
-  if result then
-  begin
-    CreateRevision(ModuleName,ActualRevision);
-    //Version is needed for pathing, so get it here
-    s:=GetVersion;
-    if s<>'0.0.0' then
-    begin
-      PatchModule(ModuleName);
     end
     else
     begin
-      Infoln(infotext+'Could not get version of ' + ModuleName + ' sources. Expect severe errors.',etError);
-    end;
+    Infoln(infotext+'Checkout/update of ' + ModuleName + ' sources failure.',etError);
   end;
-
 end;
 
 function TLazarusInstaller.CheckModule(ModuleName: string): boolean;

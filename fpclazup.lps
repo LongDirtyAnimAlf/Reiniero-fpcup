@@ -141,8 +141,9 @@ end;"/>
       <Unit0>
         <Filename Value="fpclazup.lpr"/>
         <IsPartOfProject Value="True"/>
-        <TopLine Value="139"/>
-        <CursorPos Y="157"/>
+        <IsVisibleTab Value="True"/>
+        <TopLine Value="91"/>
+        <CursorPos Y="101"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
       </Unit0>
@@ -469,7 +470,6 @@ end;"/>
       <Unit41>
         <Filename Value="revision.inc"/>
         <IsPartOfProject Value="True"/>
-        <IsVisibleTab Value="True"/>
         <EditorIndex Value="3"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
