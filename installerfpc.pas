@@ -141,6 +141,7 @@ type
     // Another way to get the compiler version string
     //todo: choose either GetCompilerVersion or GetFPCVersion
     function GetFPCVersion: string;
+    function GetFPCRevision: string;
     // internal initialisation, called from BuildModule,CleanModule,GetModule
     // and UnInstallModule but executed only once
     function InitModule(aBootstrapVersion:string=''):boolean;
@@ -761,11 +762,14 @@ begin
           Processor.Process.Parameters.Add('PREFIX='+ExcludeTrailingPathDelimiter(FInstallDirectory));
           Processor.Process.Parameters.Add('INSTALL_PREFIX='+ExcludeTrailingPathDelimiter(FInstallDirectory));
 
+          (*
           {$IFDEF UNIX}
           s1:=ConcatPaths([FInstallDirectory,'lib','fpc',GetFPCVersion]);
           {$ELSE}
           s1:=ExcludeTrailingPathDelimiter(FSourceDirectory);
           {$ENDIF UNIX}
+          *)
+          s1:=ExcludeTrailingPathDelimiter(FSourceDirectory);
           Processor.Process.Parameters.Add('FPCDIR=' + s1);
 
           {$IFDEF MSWINDOWS}
@@ -1523,11 +1527,14 @@ begin
 
   //Sometimes, during build, we get an error about missing yylex.cod and yyparse.cod.
   //The paths are fixed in the FPC sources. Try to set the default path here [FPCDIR], so yylex.cod and yyparse.cod can be found.
+  (*
   {$IFDEF UNIX}
   s1:=ConcatPaths([FInstallDirectory,'lib','fpc',GetFPCVersion]);
   {$ELSE}
   s1:=ExcludeTrailingPathDelimiter(FSourceDirectory);
   {$ENDIF UNIX}
+  *)
+  s1:=ExcludeTrailingPathDelimiter(FSourceDirectory);
   Processor.Process.Parameters.Add('FPCDIR=' + s1);
 
   //Makefile could pickup FPCDIR setting, so try to set it for fpcupdeluxe
@@ -1560,9 +1567,9 @@ begin
   Processor.Process.Parameters.Add('CPU_TARGET=' + GetTargetCPU);
 
   if (CalculateNumericalVersion(GetFPCVersion)<CalculateFullVersion(2,4,4)) then
-  begin
     Processor.Process.Parameters.Add('DATA2INC=echo');
-  end;
+  {else
+    Processor.Process.Parameters.Add('DATA2INC=' + IncludeTrailingPathDelimiter(FBinPath)+'data2inc'+GetExeExt);}
 
   if FBootstrapCompilerOverrideVersionCheck then
     Processor.Process.Parameters.Add('OVERRIDEVERSIONCHECK=1');
@@ -2348,6 +2355,26 @@ begin
   begin
     result:=GetVersionFromSource(FSourceDirectory);
     if result='0.0.0' then result:=GetVersionFromUrl(FURL);
+  end;
+end;
+
+function TFPCInstaller.GetFPCRevision: string;
+var
+  testcompiler:string;
+begin
+  result:='unknown';
+
+  testcompiler:=IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+DirectorySeparator+'ppc1'+GetExeExt;
+
+  if not FileExists(testcompiler) then
+    testcompiler:=IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+DirectorySeparator+'ppc'+GetExeExt;
+
+  if not FileExists(testcompiler) then
+    testcompiler:=GetCompiler;
+
+  if FileExists(testcompiler) then
+  begin
+    result:=CompilerRevision(testcompiler);
   end;
 end;
 
@@ -3977,7 +4004,7 @@ begin
 
   if (not result) then exit;
 
-  FPreviousRevision:='unknown';
+  FPreviousRevision:=GetFPCRevision;
 
   SourceVersion:='0.0.0';
 
