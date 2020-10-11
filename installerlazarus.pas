@@ -50,6 +50,7 @@ const
     _BUILDMODULE+_STARTLAZARUS+_SEP +
     _DO+_UNIVERSALDEFAULT+_SEP+
     _DO+_HELPLAZARUS+_SEP+
+    _BUILDMODULE+_INSTALLLAZARUS+_SEP +
     _EXECUTE+_CREATELAZARUSSCRIPT+_SEP +
     _END +
 
@@ -59,6 +60,8 @@ const
     _GETMODULE+_LAZARUS+_SEP +
     _CONFIGMODULE+_LAZARUS+_SEP +
     _BUILDMODULE+_LAZARUS+_SEP +
+    _BUILDMODULE+_STARTLAZARUS+_SEP +
+    _BUILDMODULE+_INSTALLLAZARUS+_SEP +
     _EXECUTE+_CREATELAZARUSSCRIPT+_SEP +
     _END +
 
@@ -129,6 +132,16 @@ const
     //standard lazbuild build
     _DECLARE+_LAZBUILD+_SEP +
     _BUILDMODULE+_LAZBUILD+_SEP +
+    _END +
+
+    //special lazbuild standalone build (for docker use)
+    _DECLARE+_LAZBUILDONLY+_SEP +
+    _CLEANMODULE+_LAZBUILD+_SEP +
+    _CHECKMODULE+_LAZBUILD+_SEP +
+    _GETMODULE+_LAZBUILD+_SEP +
+    _BUILDMODULE+_LAZBUILD+_SEP +
+    _DO+_LCL+_SEP +
+    _BUILDMODULE+_INSTALLLAZARUS+_SEP +
     _END +
 
     //standard useride build
@@ -347,20 +360,21 @@ begin
         if Length(Shell)>0 then Processor.Process.Parameters.Add('SHELL='+Shell);
         {$ENDIF}
         Processor.Process.CurrentDirectory := ExcludeTrailingPathDelimiter(FSourceDirectory);
+        Processor.Process.Parameters.Add('--directory='+Processor.Process.CurrentDirectory);
 
         {
         //Still not clear if jobs can be enabled for Lazarus make builds ... :-|
         if (NOT FNoJobs) then
           Processor.Process.Parameters.Add('--jobs='+IntToStr(FCPUCount));}
 
-        Processor.Process.Parameters.Add('--directory=' + FSourceDirectory);
-        //Processor.Process.Parameters.Add('--directory=' + ConcatPaths([FSourceDirectory,'lcl']));
-
         Processor.Process.Parameters.Add('FPC=' + FCompiler);
         Processor.Process.Parameters.Add('PP=' + ExtractFilePath(FCompiler)+GetCompilerName(GetTargetCPU));
         Processor.Process.Parameters.Add('USESVN2REVISIONINC=0');
+
         Processor.Process.Parameters.Add('PREFIX='+ExcludeTrailingPathDelimiter(FInstallDirectory));
         Processor.Process.Parameters.Add('INSTALL_PREFIX='+ExcludeTrailingPathDelimiter(FInstallDirectory));
+        Processor.Process.Parameters.Add('LAZARUS_INSTALL_DIR='+IncludeTrailingPathDelimiter(FInstallDirectory));
+
         //Make sure our FPC units can be found by Lazarus
         Processor.Process.Parameters.Add('FPCDIR=' + ExcludeTrailingPathDelimiter(FFPCSourceDir));
         //Make sure Lazarus does not pick up these tools from other installs
@@ -369,7 +383,8 @@ begin
 
         {$ifdef Windows}
         Processor.Process.Parameters.Add('UPXPROG=echo');      //Don't use UPX
-        Processor.Process.Parameters.Add('COPYTREE=echo');     //fix for examples in Win svn, see build FAQ
+        {$else}
+        //Processor.Process.Parameters.Add('INSTALL_BINDIR='+FBinPath);
         {$endif}
 
         Processor.Process.Parameters.Add('OS_SOURCE=' + GetTargetOS);
@@ -384,6 +399,7 @@ begin
 
         //Set standard options
         Options := STANDARDCOMPILERVERBOSITYOPTIONS;
+
         //Always limit the search for fpc.cfg to our own fpc.cfg
         //Only needed on Windows. On Linux, we have already our own fpc.sh
         {$ifdef Windows}
@@ -614,9 +630,14 @@ begin
 
   LazBuildApp := IncludeTrailingPathDelimiter(FInstallDirectory) + LAZBUILDNAME + GetExeExt;
 
-  if (ModuleName=_LAZARUS) then
+  if (ModuleName=_LAZARUS) OR (ModuleName=_LAZBUILD) then
   begin
-    Infoln(infotext+'Now building '+ModuleName+' revision '+ActualRevision,etInfo);
+    if (Length(ActualRevision)=0) OR (ActualRevision='failure') then
+    begin
+      s2:=GetRevision(ModuleName);
+      if Length(s2)>0 then FActualRevision:=s2;
+    end;
+    if (ModuleName=_LAZARUS) then Infoln(infotext+'Now building '+ModuleName+' revision '+ActualRevision,etInfo);
   end;
 
   //Note: available in more recent Lazarus : use "make lazbuild useride" to build ide with installed packages
@@ -631,29 +652,32 @@ begin
     if Length(Shell)>0 then Processor.Process.Parameters.Add('SHELL='+Shell);
     {$ENDIF}
     Processor.Process.CurrentDirectory := ExcludeTrailingPathDelimiter(FSourceDirectory);
+    Processor.Process.Parameters.Add('--directory='+Processor.Process.CurrentDirectory);
+
     {
     //Still not clear if jobs can be enabled for Lazarus make builds ... :-|
     if (NOT FNoJobs) then
       Processor.Process.Parameters.Add('--jobs='+IntToStr(FCPUCount));}
 
-    //Processor.Process.Parameters.Add('--directory=' + ExcludeTrailingPathDelimiter(FSourceDirectory));
-    //Processor.Process.Parameters.Add('--directory=.');
-    Processor.Process.Parameters.Add('--directory=' + ExcludeTrailingPathDelimiter(FInstallDirectory));
-
     Processor.Process.Parameters.Add('FPC=' + FCompiler);
     Processor.Process.Parameters.Add('PP=' + ExtractFilePath(FCompiler)+GetCompilerName(GetTargetCPU));
     Processor.Process.Parameters.Add('USESVN2REVISIONINC=0');
+
     Processor.Process.Parameters.Add('PREFIX='+ExcludeTrailingPathDelimiter(FInstallDirectory));
     Processor.Process.Parameters.Add('INSTALL_PREFIX='+ExcludeTrailingPathDelimiter(FInstallDirectory));
+    Processor.Process.Parameters.Add('LAZARUS_INSTALL_DIR='+IncludeTrailingPathDelimiter(FInstallDirectory));
+
     //Make sure our FPC units can be found by Lazarus
     Processor.Process.Parameters.Add('FPCDIR=' + ExcludeTrailingPathDelimiter(FFPCSourceDir));
+    //Processor.Process.Parameters.Add('FPCDIR=' + ExcludeTrailingPathDelimiter(FFPCInstallDir));
     //Make sure Lazarus does not pick up these tools from other installs
     Processor.Process.Parameters.Add('FPCMAKE=' + ConcatPaths([FFPCInstallDir,'bin',GetFPCTarget(true)])+PathDelim+'fpcmake'+GetExeExt);
     Processor.Process.Parameters.Add('PPUMOVE=' + ConcatPaths([FFPCInstallDir,'bin',GetFPCTarget(true)])+PathDelim+'ppumove'+GetExeExt);
 
     {$ifdef Windows}
     Processor.Process.Parameters.Add('UPXPROG=echo');      //Don't use UPX
-    Processor.Process.Parameters.Add('COPYTREE=echo');     //fix for examples in Win svn, see build FAQ
+    {$else}
+    //Processor.Process.Parameters.Add('INSTALL_BINDIR='+FBinPath);
     {$endif}
 
     //Prevents the Makefile to search for the (native) ppc compiler which is used to do the latest build
@@ -665,10 +689,11 @@ begin
 
     //Set standard options
     s:=STANDARDCOMPILERVERBOSITYOPTIONS;
+
     //Always limit the search for fpc.cfg to our own fpc.cfg
     //Only needed on Windows. On Linux, we have already our own fpc.sh
     {$ifdef Windows}
-    s:=s+' -n @'+ConcatPaths([FFPCInstallDir,'bin',GetFPCTarget(true)])+PathDelim+'fpc.cfg';
+    //s:=s+' -n @'+ConcatPaths([FFPCInstallDir,'bin',GetFPCTarget(true),'fpc.cfg']);
     {$endif}
 
     // Add remaining options
@@ -725,9 +750,11 @@ begin
         Processor.Process.Parameters.Add('LAZBUILDJOBS='+IntToStr(FCPUCount));
         {$endif}
         Processor.Process.Parameters.Add('useride');
+
         s:=IncludeTrailingPathDelimiter(FPrimaryConfigPath)+DefaultIDEMakeOptionFilename;
         //if FileExists(s) then
           Processor.Process.Parameters.Add('CFGFILE=' + s);
+
         Infoln(infotext+'Running: make useride', etInfo);
 
         (*
@@ -767,12 +794,11 @@ begin
       _LAZARUS:
       begin
         Processor.Process.Parameters.Add('all');
-        //Processor.Process.Parameters.Add('install');
         Infoln(infotext+'Running: make all', etInfo);
       end;
       _STARTLAZARUS:
       begin
-        if FileExists(IncludeTrailingPathDelimiter(FInstallDirectory) + 'startlazarus' + GetExeExt) then
+        if FileExists(IncludeTrailingPathDelimiter(FSourceDirectory) + 'startlazarus' + GetExeExt) then
         begin
           Infoln(infotext+'StartLazarus already available ... skip building it.', etInfo);
           OperationSucceeded := true;
@@ -784,7 +810,7 @@ begin
       end;
       _LAZBUILD:
       begin
-        if FileExists(IncludeTrailingPathDelimiter(FInstallDirectory) + LAZBUILDNAME + GetExeExt) then
+        if FileExists(IncludeTrailingPathDelimiter(FSourceDirectory) + LAZBUILDNAME + GetExeExt) then
         begin
           Infoln(infotext+'Lazbuild already available ... skip building it.', etInfo);
           OperationSucceeded := true;
@@ -818,6 +844,22 @@ begin
         begin
           // nothing to be done: exit graceously
           Infoln(infotext+'No extra LCL_PLATFORM defined ... nothing to be done', etInfo);
+          OperationSucceeded := true;
+          Result := true;
+          exit;
+        end;
+      end;
+      _INSTALLLAZARUS:
+      begin
+        if (FInstallDirectory<>FSourceDirectory) then
+        begin
+          Processor.Process.Parameters.Add('install');
+          Infoln(infotext+'Running: make install', etInfo);
+        end
+        else
+        begin
+          Processor.Process.Parameters.Add('--help'); // this should render make harmless
+          WritelnLog(etInfo, infotext+'Skipping install step: Lazarus source and install locations are the same.', true);
           OperationSucceeded := true;
           Result := true;
           exit;
@@ -876,7 +918,7 @@ begin
     //Special check for lazbuild as that is known to go wrong
     if (OperationSucceeded) and (ModuleName=_LAZBUILD) then
     begin
-      if CheckExecutable(IncludeTrailingPathDelimiter(FInstallDirectory) + LAZBUILDNAME + GetExeExt, ['--help'], LAZBUILDNAME) = false then
+      if CheckExecutable(IncludeTrailingPathDelimiter(FSourceDirectory) + LAZBUILDNAME + GetExeExt, ['--help'], LAZBUILDNAME) = false then
       begin
         WritelnLog(etError, infotext+'Lazbuild could not be found, so cannot build USERIDE.', true);
         Result := false;
@@ -1402,7 +1444,7 @@ begin
   end;
 
   if result='0.0.0' then result:=GetVersionFromSource(FSourceDirectory);
-  if result='0.0.0' then result:=GetVersionFromUrl(FURL);
+  if result='0.0.0' then result:=GetVersionFromUrl(URL);
 end;
 
 
@@ -1420,7 +1462,7 @@ begin
   Infoln(localinfotext+'Entering ...',etDebug);
 
   WritelnLog(localinfotext+'Lazarus directory:      ' + FSourceDirectory, false);
-  WritelnLog(localinfotext+'Lazarus URL:            ' + FURL, false);
+  WritelnLog(localinfotext+'Lazarus URL:            ' + URL, false);
   WritelnLog(localinfotext+'Lazarus options:        ' + FCompilerOptions, false);
   result:=(CheckAndGetTools) AND (CheckAndGetNeededBinUtils);
 
@@ -1445,7 +1487,7 @@ begin
 
     SVNPath:='';
     if Length(FSVNDirectory)>0
-       then SVNPath:=PathSeparator+ExcludeTrailingPathDelimiter(FSVNDirectory);
+       then SVNPath:=ExcludeTrailingPathDelimiter(FSVNDirectory)+PathSeparator;
 
     SetPath(
       FBinPath + PathSeparator +
@@ -1505,7 +1547,6 @@ begin
     end;
   end;
 
-
   Result := BuildModuleCustom(ModuleName);
 end;
 
@@ -1522,12 +1563,6 @@ begin
   Result := inherited;
   Result := true;
 
-  if not DirectoryExists(FInstallDirectory) then
-  begin
-    Infoln(infotext+'No Lazarus install directory.',etError);
-    exit;
-  end;
-
   GetVersion;
 
   //Set GDB as standard debugger
@@ -1538,6 +1573,8 @@ begin
     if ForceDirectoriesSafe(FPrimaryConfigPath) then
       Infoln(infotext+'Created Lazarus primary config directory: ' + FPrimaryConfigPath, etInfo);
   end;
+
+  ForceDirectoriesSafe(FInstallDirectory);
 
   // Lazarus 1.2RC1+ and higher support specifying the primary-config-path that should be used
   // inside the lazarus directory itself.
@@ -1870,12 +1907,17 @@ begin
       Processor.Process.Parameters.Add('--jobs='+IntToStr(FCPUCount));}
     Processor.Process.Parameters.Add('FPC=' + FCompiler);
     Processor.Process.Parameters.Add('PP=' + ExtractFilePath(FCompiler)+GetCompilerName(GetTargetCPU));
+
     Processor.Process.Parameters.Add('PREFIX='+ExcludeTrailingPathDelimiter(FInstallDirectory));
     Processor.Process.Parameters.Add('INSTALL_PREFIX='+ExcludeTrailingPathDelimiter(FInstallDirectory));
+    Processor.Process.Parameters.Add('LAZARUS_INSTALL_DIR='+IncludeTrailingPathDelimiter(FInstallDirectory));
+
     {$ifdef Windows}
     Processor.Process.Parameters.Add('UPXPROG=echo');      //Don't use UPX
-    Processor.Process.Parameters.Add('COPYTREE=echo');     //fix for examples in Win svn, see build FAQ
+    {$else}
+    //Processor.Process.Parameters.Add('INSTALL_BINDIR='+FBinPath);
     {$endif}
+
     Processor.Process.Parameters.Add('OS_SOURCE=' + GetTargetOS);
     Processor.Process.Parameters.Add('CPU_SOURCE=' + GetTargetCPU);
 
@@ -1894,6 +1936,11 @@ begin
     CleanCommand:='';
 
     case ModuleName of
+      _LAZBUILD:
+      begin
+        Processor.Process.Parameters.Add('LCL_PLATFORM=nogui');
+        CleanCommand:='clean';
+      end;
       _IDE:
       begin
         CleanCommand:='cleanide';
@@ -2114,7 +2161,7 @@ begin
          else result:=DownloadFromSVN(ModuleName, FPreviousRevision, FActualRevision, UpdateWarnings);
       if UpdateWarnings.Count>0 then
       begin
-        WritelnLog(UpdateWarnings.Text);
+        WritelnLog(UpdateWarnings);
       end;
     finally
       UpdateWarnings.Free;
@@ -2140,16 +2187,16 @@ begin
       Infoln(infotext+'Could not get version of ' + ModuleName + ' sources. Expect severe errors.',etError);
     end;
 
-      if FRepositoryUpdated then
-      begin
-        Infoln(infotext+ModuleName + ' was at revision: '+PreviousRevision,etInfo);
-        Infoln(infotext+ModuleName + ' is now at revision: '+ActualRevision,etInfo);
-      end
-      else
-      begin
-        Infoln(infotext+ModuleName + ' is at revision: '+ActualRevision,etInfo);
-        Infoln(infotext+'No updates for ' + ModuleName + ' found.',etInfo);
-      end;
+    if FRepositoryUpdated then
+    begin
+      Infoln(infotext+ModuleName + ' was at revision: '+PreviousRevision,etInfo);
+      Infoln(infotext+ModuleName + ' is now at revision: '+ActualRevision,etInfo);
+    end
+    else
+    begin
+      Infoln(infotext+ModuleName + ' is at revision: '+ActualRevision,etInfo);
+      Infoln(infotext+'No updates for ' + ModuleName + ' found.',etInfo);
+    end;
     UpdateWarnings:=TStringList.Create;
     try
       s:=SafeExpandFileName(SafeGetApplicationPath+'fpcuprevisions.log');
@@ -2176,65 +2223,65 @@ begin
 
     if (SourceVersion<>'0.0.0') then PatchModule(ModuleName);
 
-  {$ifdef Darwin}
-  {$ifdef LCLQT5}
-  // Only for Darwin
-  // Get Qt bindings if not present yet
-  // I know that this involves a lot of trickery and some dirty work, but it gives the user an öut-of-the-box" experience !
-  // And fpcupdeluxe is there to make the user-experience of FPC and Lazarus an easy one
-  // Note:
-  // Do not fail on error : could be that the fpcupdeluxe user has installed QT5 by himself
-  // ToDo : check if this presumption is correct
+    {$ifdef Darwin}
+    {$ifdef LCLQT5}
+    // Only for Darwin
+    // Get Qt bindings if not present yet
+    // I know that this involves a lot of trickery and some dirty work, but it gives the user an öut-of-the-box" experience !
+    // And fpcupdeluxe is there to make the user-experience of FPC and Lazarus an easy one
+    // Note:
+    // Do not fail on error : could be that the fpcupdeluxe user has installed QT5 by himself
+    // ToDo : check if this presumption is correct
 
-  FilePath:=ExcludeTrailingPathDelimiter(SafeGetApplicationName);
-  Infoln(infotext+'Adding QT5 binary sources (QT5 + QT5Pas Frameworks + libqcocoa) from fpcupdeluxe.app itself.',etInfo);
+    FilePath:=ExcludeTrailingPathDelimiter(SafeGetApplicationName);
+    Infoln(infotext+'Adding QT5 binary sources (QT5 + QT5Pas Frameworks + libqcocoa) from fpcupdeluxe.app itself.',etInfo);
 
-  // copy QT5 frameworks to Lazarus source directory for future use.
-  if DirCopy(FilePath+'/Contents/Frameworks',ExcludeTrailingPathDelimiter(FBaseDirectory)+'/Frameworks') then
-  begin
-    CreateQT5Symlinks(ExcludeTrailingPathDelimiter(FBaseDirectory)+'/Frameworks');
-    Infoln(infotext+'Adding QT5 Frameworks to ' + ExcludeTrailingPathDelimiter(FBaseDirectory)+'/Frameworks' + ' success.',etInfo);
-  end else Infoln(infotext+'Adding QT5 Frameworks to ' + ExcludeTrailingPathDelimiter(FBaseDirectory)+'/Frameworks' + ' failure.',etInfo);
+    // copy QT5 frameworks to Lazarus source directory for future use.
+    if DirCopy(FilePath+'/Contents/Frameworks',ExcludeTrailingPathDelimiter(FBaseDirectory)+'/Frameworks') then
+    begin
+      CreateQT5Symlinks(ExcludeTrailingPathDelimiter(FBaseDirectory)+'/Frameworks');
+      Infoln(infotext+'Adding QT5 Frameworks to ' + ExcludeTrailingPathDelimiter(FBaseDirectory)+'/Frameworks' + ' success.',etInfo);
+    end else Infoln(infotext+'Adding QT5 Frameworks to ' + ExcludeTrailingPathDelimiter(FBaseDirectory)+'/Frameworks' + ' failure.',etInfo);
 
-  // copy QT5 frameworks to lazarus.app ... a bit redundant ... :-(
-  if DirCopy(FilePath+'/Contents/Frameworks',ExcludeTrailingPathDelimiter(FSourceDirectory)+'/lazarus.app/Contents/Frameworks') then
-  begin
-    CreateQT5Symlinks(ExcludeTrailingPathDelimiter(FSourceDirectory)+'/lazarus.app/Contents/Frameworks');
-    Infoln(infotext+'Adding QT5 Frameworks to lazarus.app success.',etInfo);
-  end else Infoln(infotext+'Adding QT5 Frameworks to lazarus.app failure.',etInfo);
+    // copy QT5 frameworks to lazarus.app ... a bit redundant ... :-(
+    if DirCopy(FilePath+'/Contents/Frameworks',ExcludeTrailingPathDelimiter(FSourceDirectory)+'/lazarus.app/Contents/Frameworks') then
+    begin
+      CreateQT5Symlinks(ExcludeTrailingPathDelimiter(FSourceDirectory)+'/lazarus.app/Contents/Frameworks');
+      Infoln(infotext+'Adding QT5 Frameworks to lazarus.app success.',etInfo);
+    end else Infoln(infotext+'Adding QT5 Frameworks to lazarus.app failure.',etInfo);
 
-  // copy QT5 frameworks to startlazarus.app ... a bit redundant ... :-(
-  if DirCopy(FilePath+'/Contents/Frameworks',ExcludeTrailingPathDelimiter(FSourceDirectory)+'/startlazarus.app/Contents/Frameworks') then
-  begin
-    CreateQT5Symlinks(ExcludeTrailingPathDelimiter(FSourceDirectory)+'/startlazarus.app/Contents/Frameworks');
-    Infoln(infotext+'Adding QT5 Frameworks to startlazarus.app success.',etInfo);
-  end else Infoln(infotext+'Adding QT5 Frameworks to startlazarus.app failure.',etInfo);
-  CreateQT5Symlinks(ExcludeTrailingPathDelimiter(FSourceDirectory)+'/lazarus.app');
+    // copy QT5 frameworks to startlazarus.app ... a bit redundant ... :-(
+    if DirCopy(FilePath+'/Contents/Frameworks',ExcludeTrailingPathDelimiter(FSourceDirectory)+'/startlazarus.app/Contents/Frameworks') then
+    begin
+      CreateQT5Symlinks(ExcludeTrailingPathDelimiter(FSourceDirectory)+'/startlazarus.app/Contents/Frameworks');
+      Infoln(infotext+'Adding QT5 Frameworks to startlazarus.app success.',etInfo);
+    end else Infoln(infotext+'Adding QT5 Frameworks to startlazarus.app failure.',etInfo);
+    CreateQT5Symlinks(ExcludeTrailingPathDelimiter(FSourceDirectory)+'/lazarus.app');
 
-  (*
-  // QT5 quirk: copy QT5 libqcocoa.dylib to lazarus.app
-  if DirCopy(FilePath+'/Contents/Plugins',ExcludeTrailingPathDelimiter(FSourceDirectory)+'/lazarus.app/Contents/Plugins')
-    then Infoln(infotext+'Adding QT5 libqcocoa.dylib success.',etInfo)
-    else Infoln(infotext+'Adding QT5 libqcocoa.dylib failure.',etInfo);
+    (*
+    // QT5 quirk: copy QT5 libqcocoa.dylib to lazarus.app
+    if DirCopy(FilePath+'/Contents/Plugins',ExcludeTrailingPathDelimiter(FSourceDirectory)+'/lazarus.app/Contents/Plugins')
+      then Infoln(infotext+'Adding QT5 libqcocoa.dylib success.',etInfo)
+      else Infoln(infotext+'Adding QT5 libqcocoa.dylib failure.',etInfo);
 
-  // QT5 quirk: copy QT5 libqcocoa.dylib to startlazarus.app
-  if DirCopy(FilePath+'/Contents/Plugins',ExcludeTrailingPathDelimiter(FSourceDirectory)+'/startlazarus.app/Contents/Plugins')
-    then Infoln(infotext+'Adding QT5 libqcocoa.dylib success.',etInfo)
-    else Infoln(infotext+'Adding QT5 libqcocoa.dylib failure.',etInfo);
-  *)
+    // QT5 quirk: copy QT5 libqcocoa.dylib to startlazarus.app
+    if DirCopy(FilePath+'/Contents/Plugins',ExcludeTrailingPathDelimiter(FSourceDirectory)+'/startlazarus.app/Contents/Plugins')
+      then Infoln(infotext+'Adding QT5 libqcocoa.dylib success.',etInfo)
+      else Infoln(infotext+'Adding QT5 libqcocoa.dylib failure.',etInfo);
+    *)
 
-  // copy QT5 plugins to lazarus.app ... a bit redundant ... :-(
-  if DirCopy(FilePath+'/Contents/Plugins',ExcludeTrailingPathDelimiter(FSourceDirectory)+'/lazarus.app/Contents/Plugins')
-    then Infoln(infotext+'Adding QT5 plugins success.',etInfo)
-    else Infoln(infotext+'Adding QT5 plugins failure.',etInfo);
+    // copy QT5 plugins to lazarus.app ... a bit redundant ... :-(
+    if DirCopy(FilePath+'/Contents/Plugins',ExcludeTrailingPathDelimiter(FSourceDirectory)+'/lazarus.app/Contents/Plugins')
+      then Infoln(infotext+'Adding QT5 plugins success.',etInfo)
+      else Infoln(infotext+'Adding QT5 plugins failure.',etInfo);
 
-  // copy QT5 plugins to startlazarus.app ... a bit redundant ... :-(
-  if DirCopy(FilePath+'/Contents/Plugins',ExcludeTrailingPathDelimiter(FSourceDirectory)+'/startlazarus.app/Contents/Plugins')
-    then Infoln(infotext+'Adding QT5 plugins success.',etInfo)
-    else Infoln(infotext+'Adding QT5 plugins failure.',etInfo);
+    // copy QT5 plugins to startlazarus.app ... a bit redundant ... :-(
+    if DirCopy(FilePath+'/Contents/Plugins',ExcludeTrailingPathDelimiter(FSourceDirectory)+'/startlazarus.app/Contents/Plugins')
+      then Infoln(infotext+'Adding QT5 plugins success.',etInfo)
+      else Infoln(infotext+'Adding QT5 plugins failure.',etInfo);
 
-  {$endif}
-  {$endif}
+    {$endif}
+    {$endif}
 
     {$ifdef Unix}
     {$ifndef Darwin}
@@ -2329,57 +2376,57 @@ begin
     {$endif}
     {$endif}
 
-  (*
-  Errors := 0;
-  if (Result) and (Uppercase(FCrossLCL_Platform) = 'QT') then
-  begin
-    for Counter := low(FUtilFiles) to high(FUtilFiles) do
+    (*
+    Errors := 0;
+    if (Result) and (Uppercase(FCrossLCL_Platform) = 'QT') then
     begin
-      if (FUtilFiles[Counter].Category = ucQtFile) and not
-        (FileExists(IncludeTrailingPathDelimiter(FSourceDirectory) + FUtilFiles[Counter].FileName)) then
+      for Counter := low(FUtilFiles) to high(FUtilFiles) do
       begin
-        Infoln(infotext+'Downloading: ' + FUtilFiles[Counter].FileName + ' into ' + FSourceDirectory, etDebug);
-        try
-          if Download(FUseWget, FUtilFiles[Counter].RootURL + FUtilFiles[Counter].FileName, IncludeTrailingPathDelimiter(FSourceDirectory) +
-            FUtilFiles[Counter].FileName, FHTTPProxyHost, FHTTPProxyPort, FHTTPProxyUser,
-            FHTTPProxyPassword) = false then
-          begin
-            Errors := Errors + 1;
-            Infoln(infotext+'Error downloading Qt-related file to ' + IncludeTrailingPathDelimiter(FSourceDirectory) +
-              FUtilFiles[Counter].FileName, eterror);
-          end;
-        except
-          on E: Exception do
-          begin
-            Result := false;
-            Infoln(infotext+'Error downloading Qt-related files: ' + E.Message, etError);
-            exit; //out of function.
+        if (FUtilFiles[Counter].Category = ucQtFile) and not
+          (FileExists(IncludeTrailingPathDelimiter(FSourceDirectory) + FUtilFiles[Counter].FileName)) then
+        begin
+          Infoln(infotext+'Downloading: ' + FUtilFiles[Counter].FileName + ' into ' + FSourceDirectory, etDebug);
+          try
+            if Download(FUseWget, FUtilFiles[Counter].RootURL + FUtilFiles[Counter].FileName, IncludeTrailingPathDelimiter(FSourceDirectory) +
+              FUtilFiles[Counter].FileName, FHTTPProxyHost, FHTTPProxyPort, FHTTPProxyUser,
+              FHTTPProxyPassword) = false then
+            begin
+              Errors := Errors + 1;
+              Infoln(infotext+'Error downloading Qt-related file to ' + IncludeTrailingPathDelimiter(FSourceDirectory) +
+                FUtilFiles[Counter].FileName, eterror);
+            end;
+          except
+            on E: Exception do
+            begin
+              Result := false;
+              Infoln(infotext+'Error downloading Qt-related files: ' + E.Message, etError);
+              exit; //out of function.
+            end;
           end;
         end;
       end;
-    end;
 
-    if Errors > 0 then
+      if Errors > 0 then
+      begin
+        Result := false;
+        WritelnLog(infotext+IntToStr(Errors) + ' errors downloading Qt-related files.', true);
+      end;
+    end;
+    *)
+
+    {$ifdef BSD}
+    FilePath:=IncludeTrailingPathDelimiter(FSourceDirectory)+'ide/include/';
+    if (NOT DirectoryExists(FilePath+'dragonfly')) then
     begin
-      Result := false;
-      WritelnLog(infotext+IntToStr(Errors) + ' errors downloading Qt-related files.', true);
+      if DirCopy(FilePath+'netbsd',FilePath+'dragonfly')
+        then Infoln(infotext+'Adding dragonfly include file for IDE.',etInfo)
+        else Infoln(infotext+'Adding dragonfly include file for IDE failure.',etError);
     end;
-  end;
-  *)
+    {$endif}
 
-  {$ifdef BSD}
-  FilePath:=IncludeTrailingPathDelimiter(FSourceDirectory)+'ide/include/';
-  if (NOT DirectoryExists(FilePath+'dragonfly')) then
+  end
+  else
   begin
-    if DirCopy(FilePath+'netbsd',FilePath+'dragonfly')
-      then Infoln(infotext+'Adding dragonfly include file for IDE.',etInfo)
-      else Infoln(infotext+'Adding dragonfly include file for IDE failure.',etError);
-  end;
-  {$endif}
-
-    end
-    else
-    begin
     Infoln(infotext+'Checkout/update of ' + ModuleName + ' sources failure.',etError);
   end;
 end;

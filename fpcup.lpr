@@ -78,7 +78,6 @@ uses
   m_any_to_linuxmips,
   m_any_to_linuxmipsel,
   m_any_to_linuxpowerpc64,
-  m_any_to_linuxaarch64,
   m_any_to_aros386,
   m_any_to_arosx64,
   m_any_to_arosarm,
@@ -118,6 +117,8 @@ uses
   {$endif}
   m_crossdarwinarm,
   m_crossdarwinaarch64,
+  m_crossiosarm,
+  m_crossiosaarch64,
   m_crossdarwinx64iphonesim,
   m_crossdarwin386iphonesim,
   {$else}
@@ -129,6 +130,8 @@ uses
   {$endif MSWINDOWS}
   m_any_to_darwinarm,
   m_any_to_darwinaarch64,
+  m_any_to_iosarm,
+  m_any_to_iosaarch64,
   {$endif}
   {$IF defined(FREEBSD) or defined(NETBSD) or defined(OPENBSD)}
   m_freebsd_to_linux386,

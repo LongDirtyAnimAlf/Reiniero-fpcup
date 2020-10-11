@@ -27,7 +27,7 @@
     <MacroValues Count="1">
       <Macro1 Name="LCLWidgetType" Value="nogui"/>
     </MacroValues>
-    <BuildModes Count="10">
+    <BuildModes Count="11">
       <Item1 Name="Default" Default="True"/>
       <Item2 Name="Debug">
         <MacroValues Count="1">
@@ -40,8 +40,8 @@
             <Filename Value="bin\debug-$NameOnly($(ProjFile))-$(TargetCPU)-$(TargetOS)"/>
           </Target>
           <SearchPaths>
-            <IncludeFiles Value="$(ProjOutDir)"/>
-            <OtherUnitFiles Value="synaser;crossinstallers"/>
+            <IncludeFiles Value="$(ProjOutDir);dcpcrypt\Ciphers"/>
+            <OtherUnitFiles Value="synaser;crossinstallers;dcpcrypt\Hashes;dcpcrypt;dcpcrypt\Ciphers"/>
             <UnitOutputDirectory Value="libfpclazup\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <Conditionals Value="if TargetOS = &apos;darwin&apos; then begin
@@ -90,8 +90,8 @@ end;"/>
             <Filename Value="bin\$NameOnly($(ProjFile))-$(TargetCPU)-$(TargetOS)"/>
           </Target>
           <SearchPaths>
-            <IncludeFiles Value="$(ProjOutDir)"/>
-            <OtherUnitFiles Value="synaser;crossinstallers"/>
+            <IncludeFiles Value="$(ProjOutDir);dcpcrypt\Ciphers"/>
+            <OtherUnitFiles Value="synaser;crossinstallers;dcpcrypt\Hashes;dcpcrypt;dcpcrypt\Ciphers"/>
             <UnitOutputDirectory Value="libfpclazup\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <CodeGeneration>
@@ -128,8 +128,8 @@ end;"/>
             <Filename Value="bin\$NameOnly($(ProjFile))-$(TargetCPU)-$(TargetOS)"/>
           </Target>
           <SearchPaths>
-            <IncludeFiles Value="$(ProjOutDir)"/>
-            <OtherUnitFiles Value="synaser;crossinstallers"/>
+            <IncludeFiles Value="$(ProjOutDir);dcpcrypt\Ciphers"/>
+            <OtherUnitFiles Value="synaser;crossinstallers;dcpcrypt\Hashes;dcpcrypt;dcpcrypt\Ciphers"/>
             <UnitOutputDirectory Value="libfpclazup\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <CodeGeneration>
@@ -167,8 +167,8 @@ end;"/>
             <Filename Value="bin\$NameOnly($(ProjFile))-$(TargetCPU)-$(TargetOS)"/>
           </Target>
           <SearchPaths>
-            <IncludeFiles Value="$(ProjOutDir)"/>
-            <OtherUnitFiles Value="synaser;crossinstallers"/>
+            <IncludeFiles Value="$(ProjOutDir);dcpcrypt\Ciphers"/>
+            <OtherUnitFiles Value="synaser;crossinstallers;dcpcrypt\Hashes;dcpcrypt;dcpcrypt\Ciphers"/>
             <UnitOutputDirectory Value="libfpclazup\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <CodeGeneration>
@@ -206,8 +206,8 @@ end;"/>
             <Filename Value="bin\$NameOnly($(ProjFile))-$(TargetCPU)-$(TargetOS)"/>
           </Target>
           <SearchPaths>
-            <IncludeFiles Value="$(ProjOutDir)"/>
-            <OtherUnitFiles Value="synaser;crossinstallers"/>
+            <IncludeFiles Value="$(ProjOutDir);dcpcrypt\Ciphers"/>
+            <OtherUnitFiles Value="synaser;crossinstallers;dcpcrypt\Hashes;dcpcrypt;dcpcrypt\Ciphers"/>
             <UnitOutputDirectory Value="libfpclazup\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <CodeGeneration>
@@ -245,8 +245,8 @@ end;"/>
             <Filename Value="bin\$NameOnly($(ProjFile))-$(TargetCPU)-$(TargetOS)"/>
           </Target>
           <SearchPaths>
-            <IncludeFiles Value="$(ProjOutDir)"/>
-            <OtherUnitFiles Value="synaser;crossinstallers"/>
+            <IncludeFiles Value="$(ProjOutDir);dcpcrypt\Ciphers"/>
+            <OtherUnitFiles Value="synaser;crossinstallers;dcpcrypt\Hashes;dcpcrypt;dcpcrypt\Ciphers"/>
             <UnitOutputDirectory Value="libfpclazup\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <CodeGeneration>
@@ -284,8 +284,8 @@ end;"/>
             <Filename Value="bin\$NameOnly($(ProjFile))-$(TargetCPU)-$(TargetOS)"/>
           </Target>
           <SearchPaths>
-            <IncludeFiles Value="$(ProjOutDir)"/>
-            <OtherUnitFiles Value="synaser;crossinstallers"/>
+            <IncludeFiles Value="$(ProjOutDir);dcpcrypt\Ciphers"/>
+            <OtherUnitFiles Value="synaser;crossinstallers;dcpcrypt\Hashes;dcpcrypt;dcpcrypt\Ciphers"/>
             <UnitOutputDirectory Value="libfpclazup\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <CodeGeneration>
@@ -323,8 +323,8 @@ end;"/>
             <Filename Value="bin\$NameOnly($(ProjFile))-$(TargetCPU)-$(TargetOS)"/>
           </Target>
           <SearchPaths>
-            <IncludeFiles Value="$(ProjOutDir)"/>
-            <OtherUnitFiles Value="synaser;crossinstallers"/>
+            <IncludeFiles Value="$(ProjOutDir);dcpcrypt\Ciphers"/>
+            <OtherUnitFiles Value="synaser;crossinstallers;dcpcrypt\Hashes;dcpcrypt;dcpcrypt\Ciphers"/>
             <UnitOutputDirectory Value="libfpclazup\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <CodeGeneration>
@@ -359,8 +359,8 @@ end;"/>
             <Filename Value="bin\$NameOnly($(ProjFile))-$(TargetCPU)le-$(TargetOS)"/>
           </Target>
           <SearchPaths>
-            <IncludeFiles Value="$(ProjOutDir)"/>
-            <OtherUnitFiles Value="synaser;crossinstallers"/>
+            <IncludeFiles Value="$(ProjOutDir);dcpcrypt\Ciphers"/>
+            <OtherUnitFiles Value="synaser;crossinstallers;dcpcrypt\Hashes;dcpcrypt;dcpcrypt\Ciphers"/>
             <UnitOutputDirectory Value="libfpclazup\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <CodeGeneration>
@@ -387,6 +387,40 @@ end;"/>
           </Other>
         </CompilerOptions>
       </Item10>
+      <Item11 Name="docker">
+        <CompilerOptions>
+          <Version Value="11"/>
+          <PathDelim Value="\"/>
+          <Target>
+            <Filename Value="bin\$NameOnly($(ProjFile))-$(TargetCPU)-$(TargetOS)"/>
+          </Target>
+          <SearchPaths>
+            <IncludeFiles Value="$(ProjOutDir);dcpcrypt\Ciphers"/>
+            <OtherUnitFiles Value="synaser;crossinstallers;dcpcrypt\Hashes;dcpcrypt;dcpcrypt\Ciphers"/>
+            <UnitOutputDirectory Value="libfpclazup\$(TargetCPU)-$(TargetOS)"/>
+          </SearchPaths>
+          <CodeGeneration>
+            <SmartLinkUnit Value="True"/>
+            <TargetCPU Value="i386"/>
+            <TargetOS Value="win32"/>
+            <Optimizations>
+              <OptimizationLevel Value="0"/>
+            </Optimizations>
+          </CodeGeneration>
+          <Linking>
+            <Debugging>
+              <UseExternalDbgSyms Value="True"/>
+            </Debugging>
+            <LinkSmart Value="True"/>
+          </Linking>
+          <Other>
+            <WriteFPCLogo Value="False"/>
+            <ExecuteBefore>
+              <CompileReasons Run="False"/>
+            </ExecuteBefore>
+          </Other>
+        </CompilerOptions>
+      </Item11>
       <SharedMatrixOptions Count="1">
         <Item1 ID="233755810855" Modes="Default,Debug,win32,win64,linuxi386,linux64,linuxaarch64,freebsdi386,freebsdx64" Type="IDEMacro" MacroName="LCLWidgetType" Value="nogui"/>
       </SharedMatrixOptions>
@@ -396,15 +430,20 @@ end;"/>
     </PublishOptions>
     <RunParams>
       <local>
-        <CommandLineParams Value="--verbose"/>
+        <CommandLineParams Value="--installdir=&quot;C:\fpclazbydeluxe\docker&quot; --fpcURL=stable --fpcsplit --lazURL=stable --lazsplit --only=&quot;LazbuildOnly&quot;"/>
       </local>
       <FormatVersion Value="2"/>
-      <Modes Count="1">
+      <Modes Count="2">
         <Mode0 Name="default">
           <local>
             <CommandLineParams Value="--verbose"/>
           </local>
         </Mode0>
+        <Mode1 Name="docker">
+          <local>
+            <CommandLineParams Value="--installdir=&quot;C:\fpclazbydeluxe\docker&quot; --fpcURL=stable --fpcsplit --lazURL=stable --lazsplit --only=&quot;LazbuildOnly&quot;"/>
+          </local>
+        </Mode1>
       </Modes>
     </RunParams>
     <RequiredPackages Count="2">
@@ -608,7 +647,7 @@ end;"/>
         <IsPartOfProject Value="True"/>
       </Unit45>
       <Unit46>
-        <Filename Value="m_any_to_linuxaarch64.pas"/>
+        <Filename Value="dcpcrypt\Ciphers\dcpdes.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit46>
     </Units>
@@ -620,8 +659,8 @@ end;"/>
       <Filename Value="bin\$NameOnly($(ProjFile))-$(TargetCPU)-$(TargetOS)"/>
     </Target>
     <SearchPaths>
-      <IncludeFiles Value="$(ProjOutDir)"/>
-      <OtherUnitFiles Value="synaser;crossinstallers"/>
+      <IncludeFiles Value="$(ProjOutDir);dcpcrypt\Ciphers"/>
+      <OtherUnitFiles Value="synaser;crossinstallers;dcpcrypt\Hashes;dcpcrypt;dcpcrypt\Ciphers"/>
       <UnitOutputDirectory Value="libfpclazup\$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <Conditionals Value="if TargetOS = &apos;darwin&apos; then begin

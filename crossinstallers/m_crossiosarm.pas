@@ -1,6 +1,6 @@
-unit m_crossdarwinaarch64;
+unit m_crossiosarm;
 
-{ Cross compiles from Darwin to Darwin aarch64 (iphone)
+{ Cross compiles from Darwin to Darwin arm (iphone)
 }
 
 
@@ -17,34 +17,29 @@ uses
   fpcuputil;
 
 const
-  SDKNAME='$SDK';
-  iSDKNAME='iOS';
-  macSDKNAME='macOS';
+  SDKNAME='iPhoneOS';
 
-  SDKLOCATIONS:array[0..5] of string = (
+  SDKLOCATIONS:array[0..4] of string = (
     '/Applications/Xcode.app/Contents/Developer/Platforms/'+SDKNAME+'.platform/Developer/SDKs/'+SDKNAME+'.sdk',
     '/Volumes/Xcode/Xcode.app/Contents/Developer/Platforms/'+SDKNAME+'.platform/Developer/SDKs/'+SDKNAME+'.sdk',
     '~/Desktop/Xcode.app/Contents/Developer/Platforms/'+SDKNAME+'.platform/Developer/SDKs/'+SDKNAME+'.sdk',
     '~/Downloads/Xcode.app/Contents/Developer/Platforms/'+SDKNAME+'.platform/Developer/SDKs/'+SDKNAME+'.sdk',
-    '~/fpcupdeluxe/Xcode.app/Contents/Developer/Platforms/'+SDKNAME+'.platform/Developer/SDKs/'+SDKNAME+'.sdk',
-    '/Applications/Xcode-beta.app/Contents/Developer/Platforms/'+SDKNAME+'.platform/Developer/SDKs/'+SDKNAME+'.sdk'
+    '~/fpcupdeluxe/Xcode.app/Contents/Developer/Platforms/'+SDKNAME+'.platform/Developer/SDKs/'+SDKNAME+'.sdk'
   );
 
-  TOOLCHAINLOCATIONS:array[0..5] of string = (
+  TOOLCHAINLOCATIONS:array[0..4] of string = (
     '/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain',
     '/Volumes/Xcode/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain',
     '~/Desktop/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain',
     '~/Downloads/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain',
-    '~/fpcupdeluxe/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain',
-    '/Applications/Xcode-beta.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain'
+    '~/fpcupdeluxe/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain'
   );
-
 
 type
 
-{ TDarwinaarch64 }
+{ TiOSarm }
 
-TDarwinaarch64 = class(TCrossInstaller)
+TiOSarm = class(TCrossInstaller)
 private
   FAlreadyWarned: boolean; //did we warn user about errors and fixes already?
 public
@@ -54,9 +49,9 @@ public
   destructor Destroy; override;
 end;
 
-{ TDarwinaarch64 }
+{ TiOSarm }
 
-function TDarwinaarch64.GetLibs(Basepath:string): boolean;
+function TiOSarm.GetLibs(Basepath:string): boolean;
 var
   aOption:string;
   i:integer;
@@ -68,31 +63,13 @@ begin
   result:=false;
   FLibsFound:=false;
 
-  if (NOT FLibsFound) then
+  for FLibsPath in SDKLOCATIONS do
   begin
-    for FLibsPath in SDKLOCATIONS do
+    FLibsPath:=ExpandFileName(FLibsPath);
+    if DirectoryExists(FLibsPath) then
     begin
-      FLibsPath:=ExpandFileName(FLibsPath);
-      FLibsPath:=StringReplace(FLibsPath,SDKNAME,iSDKNAME,[rfReplaceAll, rfIgnoreCase]);
-      if DirectoryExists(FLibsPath) then
-      begin
-        FLibsFound:=true;
-        break;
-      end;
-    end;
-  end;
-
-  if (NOT FLibsFound) then
-  begin
-    for FLibsPath in SDKLOCATIONS do
-    begin
-      FLibsPath:=ExpandFileName(FLibsPath);
-      FLibsPath:=StringReplace(FLibsPath,SDKNAME,macSDKNAME,[rfReplaceAll, rfIgnoreCase]);
-      if DirectoryExists(FLibsPath) then
-      begin
-        FLibsFound:=true;
-        break;
-      end;
+      FLibsFound:=true;
+      break;
     end;
   end;
 
@@ -108,7 +85,6 @@ begin
     end else aOption:=Trim(FCrossOpts[i]);
     AddFPCCFGSnippet(aOption);
     }
-
     FLibsPath:=IncludeTrailingPathDelimiter(FLibsPath)+'usr/lib/';
     AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath));
   end else FLibsPath:='';
@@ -118,7 +94,7 @@ begin
   FLibsFound:=true;
 end;
 
-function TDarwinaarch64.GetBinUtils(Basepath:string): boolean;
+function TiOSarm.GetBinUtils(Basepath:string): boolean;
 var
   aOption:string;
   i:integer;
@@ -149,59 +125,41 @@ begin
     AddFPCCFGSnippet('-FD'+FBinUtilsPath);{search this directory for compiler utilities}
   end else FBinUtilsPath:='';
 
-  // Set some defaults if user hasn't specified otherwise
-  // Update !!
-  // Not valid anymore !!
-  // aarch64 can be iOS or macOS
-  {
-  i:=StringListStartsWith(FCrossOpts,'-Ca');
-  if i=-1 then
-  begin
-    aOption:='-CaAARCH64IOS';
-    FCrossOpts.Add(aOption+' ');
-    ShowInfo('Did not find any -Ca architecture parameter; using '+aOption+'.');
-  end else aOption:=Trim(FCrossOpts[i]);
-  AddFPCCFGSnippet(aOption);
-  }
-
-  aOption:=GetDarwinSDKVersion(LowerCase(iSDKNAME));
+  aOption:=GetDarwinSDKVersion(LowerCase(SDKNAME));
   if Length(aOption)>0 then AddFPCCFGSnippet('-WP'+aOption);
-
-  aOption:=GetDarwinSDKVersion(LowerCase(macSDKNAME));
-  if Length(aOption)>0 then AddFPCCFGSnippet('-WM'+aOption);
 
   // Never fail
   result:=true;
   FBinsFound:=true;
 end;
 
-constructor TDarwinaarch64.Create;
+constructor TiOSarm.Create;
 begin
   inherited Create;
   FCrossModuleNamePrefix:='TDarwinAny';
-  FTargetCPU:=TCPU.aarch64;
-  FTargetOS:=TOS.darwin;
+  FTargetCPU:=TCPU.arm;
+  FTargetOS:=TOS.ios;
   Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
 
-destructor TDarwinaarch64.Destroy;
+destructor TiOSarm.Destroy;
 begin
   inherited Destroy;
 end;
 
-{$IFDEF Darwin}
+{$ifdef Darwin}
 var
-  Darwinaarch64:TDarwinaarch64;
+  iOSarm:TiOSarm;
 
 initialization
-  Darwinaarch64:=TDarwinaarch64.Create;
-  RegisterCrossCompiler(Darwinaarch64.RegisterName,Darwinaarch64);
+  iOSarm:=TiOSarm.Create;
+  RegisterCrossCompiler(iOSarm.RegisterName,iOSarm);
 
 finalization
-  Darwinaarch64.Destroy;
-{$ENDIF}
+  iOSarm.Destroy;
+{$endif}
 
 end.
 

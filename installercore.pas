@@ -127,23 +127,19 @@ const
   {$endif}
 
   {$ifdef win64}
-  OpenSSLSourceURL : array [0..5] of string = (
-    'https://indy.fulgan.com/SSL/openssl-1.0.2u-x64_86-win64.zip',
-    'https://indy.fulgan.com/SSL/openssl-1.0.2t-x64_86-win64.zip',
-    'https://indy.fulgan.com/SSL/openssl-1.0.2r-x64_86-win64.zip',
-    'http://wiki.overbyte.eu/arch/openssl-1.0.2r-win64.zip',
+  OpenSSLSourceURL : array [0..3] of string = (
+    'http://wiki.overbyte.eu/arch/openssl-1.0.2u-win64.zip',
+    'https://indy.fulgan.com/SSL/Archive/Experimental/openssl-1.0.2o-x64-VC2017.zip',
     'http://www.magsys.co.uk/download/software/openssl-1.0.2o-win64.zip',
-    'https://indy.fulgan.com/SSL/Archive/openssl-1.0.2p-x64_86-win64.zip'
+    'https://indy.fulgan.com/SSL/Archive/openssl-1.0.2k-x64_86-win64.zip'
     );
   {$endif}
   {$ifdef win32}
-  OpenSSLSourceURL : array [0..5] of string = (
-    'https://indy.fulgan.com/SSL/openssl-1.0.2u-i386-win32.zip',
-    'https://indy.fulgan.com/SSL/openssl-1.0.2t-i386-win32.zip',
-    'https://indy.fulgan.com/SSL/openssl-1.0.2r-i386-win32.zip',
-    'http://wiki.overbyte.eu/arch/openssl-1.0.2r-win32.zip',
+  OpenSSLSourceURL : array [0..3] of string = (
+    'http://wiki.overbyte.eu/arch/openssl-1.0.2u-win32.zip',
+    'https://indy.fulgan.com/SSL/Archive/Experimental/openssl-1.0.2o-x32-VC2017.zip',
     'http://www.magsys.co.uk/download/software/openssl-1.0.2o-win32.zip',
-    'https://indy.fulgan.com/SSL/Archive/openssl-1.0.2p-i386-win32.zip'
+    'https://indy.fulgan.com/SSL/Archive/openssl-1.0.2k-i386-win32.zip'
     );
   {$endif}
 
@@ -157,7 +153,7 @@ const
 
   _FPC                     = 'FPC';
   _LAZARUS                 = 'Lazarus';
-  _LAZARUSSIMPLE           = 'LazarusSimple';
+  _LAZARUSSIMPLE           = _LAZARUS+'Simple';
 
   _MAKEFILECHECK           = 'MakefileCheck';
   _MAKEFILECHECKFPC        = _MAKEFILECHECK+_FPC;
@@ -171,6 +167,7 @@ const
   _GET                     = 'Get';
   _CONFIG                  = 'Config';
   _BUILD                   = 'Build';
+  _INSTALL                 = 'Install';
   _UNINSTALL               = 'Uninstall';
   _RESET                   = 'Reset';
   _ONLY                    = 'Only';
@@ -213,15 +210,20 @@ const
   _FPCREMOVEONLY           = _FPC+_UNINSTALL+_ONLY;
   _LAZARUSCLEANBUILDONLY   = _LAZARUS+_CLEAN+_BUILD+_ONLY;
   _LAZARUSREMOVEONLY       = _LAZARUS+_UNINSTALL+_ONLY;
+
   _LCLALLREMOVEONLY        = _LCL+'ALL'+_CLEAN+_ONLY;
   _LCLREMOVEONLY           = _LCL+_CLEAN+_ONLY;
   _COMPONENTSREMOVEONLY    = _COMPONENTS+_CLEAN+_ONLY;
   _PACKAGERREMOVEONLY      = _PACKAGER+_CLEAN+_ONLY;
 
+  _LAZBUILDONLY            = _LAZBUILD+_ONLY;
+
   _HELP                    = 'Help';
   _HELPFPC                 = _HELP+_FPC;
   _HELPLAZARUS             = _HELP+_LAZARUS;
   _LHELP                   = 'lhelp';
+
+  _INSTALLLAZARUS          = _INSTALL+_LAZARUS;
 
   {$ifdef mswindows}
   {$ifdef win32}
@@ -274,12 +276,15 @@ type
 
   TInstaller = class(TObject)
   private
+    FURL: string;
     FKeepLocalChanges: boolean;
     FReApplyLocalChanges: boolean;
     FCrossInstaller:TCrossInstaller;
     FCrossCPU_Target: TCPU; //When cross-compiling: CPU, e.g. x86_64
     FCrossOS_Target: TOS; //When cross-compiling: OS, e.g. win64
     FCrossOS_SubArch: string; //When cross-compiling for embedded: CPU, e.g. for Teensy SUBARCH=ARMV7EM
+    FCrossToolsDirectory: string;
+    FCrossLibraryDirectory: string;
     procedure SetURL(value:string);
     procedure SetSourceDirectory(value:string);
     function GetShell: string;
@@ -300,8 +305,9 @@ type
     function IsLazarusInstaller:boolean;
     function IsUniversalInstaller:boolean;
   protected
-    FBinPath: string; //path where compiler lives
     FCleanModuleSuccess: boolean;
+    FNeededExecutablesChecked: boolean;
+    FBinPath: string; //path where compiler lives
     FBaseDirectory: string; //Base directory for fpc(laz)up(deluxe) install itself
     FSourceDirectory: string; //Top source directory for a product (FPC, Lazarus)
     FInstallDirectory: string; //Top install directory for a product (FPC, Lazarus)
@@ -310,8 +316,6 @@ type
     FCompilerOptions: string; //options passed when compiling (FPC or Lazarus currently)
     FCPUCount: integer; //logical cpu count (i.e. hyperthreading=2cpus)
     FCrossOPT: string; //options passed (only) when cross-compiling
-    FCrossToolsDirectory: string;
-    FCrossLibraryDirectory: string;
     FPreviousRevision: string;
     FDesiredRevision: string;
     FActualRevision: string;
@@ -328,13 +332,11 @@ type
     FMake: string;
     FMakeDir: string; //Binutils/make/patch directory
     FPatchCmd: string;
-    FNeededExecutablesChecked: boolean;
     FGitClient: TGitClient;
     FHGClient: THGClient;
     FSVNClient: TSVNClient;
     FSVNDirectory: string;
     FRepositoryUpdated: boolean;
-    FURL: string;
     FSourcePatches: string;
     FMajorVersion: integer; //major part of the version number, e.g. 1 for 1.0.8, or -1 if unknown
     FMinorVersion: integer; //minor part of the version number, e.g. 0 for 1.0.8, or -1 if unknown
@@ -343,7 +345,6 @@ type
     FUtilFiles: array of TUtilsList; //Keeps track of binutils etc download locations, filenames...
     FExportOnly: boolean;
     FNoJobs: boolean;
-    FSoftFloat: boolean;
     FOnlinePatching: boolean;
     FVerbose: boolean;
     FUseWget: boolean;
@@ -470,13 +471,12 @@ type
     // Whether or not to back up locale changes to .diff and reapply them before compiling
     property ReApplyLocalChanges: boolean write FReApplyLocalChanges;
     // URL for download. HTTP, ftp or svn
-    property URL: string write SetURL;
+    property URL: string read FURL write SetURL;
     // patches
     property SourcePatches: string write FSourcePatches;
     // do not download the repo itself, but only get the files (of master)
     property ExportOnly: boolean write FExportOnly;
     property NoJobs: boolean write FNoJobs;
-    property SoftFloat: boolean write FSoftFloat;
     property OnlinePatching: boolean write FOnlinePatching;
     // display and log in temp log file all sub process output
     property Verbose: boolean write SetVerbosity;
@@ -492,6 +492,7 @@ type
     function GetCrossCompilerName(Cpu_Target:TCPU):string;
     procedure SetTarget(aCPU:TCPU;aOS:TOS;aSubArch:string);virtual;
     // append line ending and write to log and, if specified, to console
+    procedure WritelnLog(msg: TStrings; ToConsole: boolean = true);overload;
     procedure WritelnLog(msg: string; ToConsole: boolean = true);overload;
     procedure WritelnLog(EventType: TEventType; msg: string; ToConsole: boolean = true);overload;
     function GetSuitableRepoClient:TRepoClient;
@@ -550,7 +551,8 @@ uses
   //LMessages,
   LCLIntf,
   {$endif}
-  process
+  process,
+  RegExpr
   {$IFDEF UNIX}
   ,LazFileUtils
   {$ENDIF UNIX}
@@ -644,7 +646,7 @@ begin
     aOS:='';
     aArch:='';
 
-    FPCCfg := IncludeTrailingPathDelimiter(FBinPath) + FPCCONFIGFILENAME;
+    FPCCfg:=FBinPath+FPCCONFIGFILENAME;
 
     if (NOT FileExists(FPCCfg)) then exit;
 
@@ -712,19 +714,27 @@ end;
 procedure TInstaller.SetURL(value:string);
 begin
   FURL:=value;
-  FMajorVersion := -1;
-  FMinorVersion := -1;
-  FReleaseVersion := -1;
-  FPatchVersion := -1;
+  if (FURL <> '') and (FURL[Length(FURL)] <> '/') then
+    FURL := FURL + '/';
+  if (IsFPCInstaller OR IsLazarusInstaller) then
+  begin
+    FMajorVersion := -1;
+    FMinorVersion := -1;
+    FReleaseVersion := -1;
+    FPatchVersion := -1;
+  end;
 end;
 
 procedure TInstaller.SetSourceDirectory(value:string);
 begin
   FSourceDirectory:=value;
-  FMajorVersion := -1;
-  FMinorVersion := -1;
-  FReleaseVersion := -1;
-  FPatchVersion := -1;
+  if (IsFPCInstaller OR IsLazarusInstaller) then
+  begin
+    FMajorVersion := -1;
+    FMinorVersion := -1;
+    FReleaseVersion := -1;
+    FPatchVersion := -1;
+  end;
 end;
 
 function TInstaller.GetMake: string;
@@ -948,8 +958,8 @@ begin
       if OperationSucceeded then
       begin
         if (RepoExecutable<>EmptyStr) then OperationSucceeded := CheckExecutable(RepoExecutable, ['--version'], '');
-      if OperationSucceeded then FSVNDirectory:=ExtractFileDir(RepoExecutable);
-    end;
+        if OperationSucceeded then FSVNDirectory:=ExtractFileDir(RepoExecutable);
+      end;
     end;
 
     // Regardless of platform, SVN should now be either set up correctly or we should give up.
@@ -1539,7 +1549,7 @@ begin
   AddNewUtil('gdate' + GetExeExt,aSourceURL64,'',ucBinutil);
   // just add default 64 bit debugger for all usercases as a binutil !
   AddNewUtil('gdb' + GetExeExt,SourceURL64_gdb_default,'',ucBinutil);
-  //AddNewUtil('libiconv-2.dll',SourceURL64_gdb_default,'',ucBinutil);
+  AddNewUtil('libiconv-2.dll',SourceURL64_gdb_default,'',ucBinutil);
   AddNewUtil('gecho' + GetExeExt,aSourceURL64,'',ucBinutil);
   AddNewUtil('ginstall' + GetExeExt,aSourceURL64,'',ucBinutil);
   AddNewUtil('ginstall.exe.manifest',aSourceURL64,'',ucBinutil);
@@ -1613,7 +1623,7 @@ begin
   end;
 
   //aBeforeRevision         := 'failure';
-  aAfterRevision := 'failure';
+  aAfterRevision          := 'failure';
   //aClient.Verbose         := FVerbose;
   aClient.LocalRepository := FSourceDirectory;
   aClient.Repository      := FURL;
@@ -1800,6 +1810,10 @@ begin
   end
   else
   begin
+    if (SVNClient.ReturnCode=FRET_LOCAL_REMOTE_URL_NOMATCH) then
+    begin
+    end;
+
     // We could insist on the repo existing, but then we wouldn't be able to checkout!!
     WritelnLog('Directory ' + FSourceDirectory + ' is not an SVN repository (or a repository with the wrong remote URL).');
     if not(DirectoryExists(SVNClient.LocalRepository)) then
@@ -1828,10 +1842,10 @@ begin
       begin
         DiffFile:=IncludeTrailingPathDelimiter(FSourceDirectory) + 'REV' + aBeforeRevision + '.diff';
         CreateStoreRepositoryDiff(DiffFile, UpdateWarnings,FSVNClient);
-        UpdateWarnings.Add({BeginSnippet+' '+}aModuleName + ': reverting before updating.');
+        UpdateWarnings.Add({BeginSnippet+' '+}aModuleName + ': WARNING: reverting before updating.');
         SVNClient.Revert; //Remove local changes
       end
-      else UpdateWarnings.Add({BeginSnippet+' '+}aModuleName + ': leaving modified files as is before updating.');
+      else UpdateWarnings.Add({BeginSnippet+' '+}aModuleName + ': WARNING: leaving modified files as is before updating.');
     end;
   end;
 
@@ -2059,7 +2073,6 @@ begin
   end;
 
   SysUtils.Deletefile(FPCArchive); //Get rid of temp file.
-
 end;
 
 {$IFDEF MSWINDOWS}
@@ -2280,9 +2293,8 @@ var
   OpenSSLFileName,aSourceURL: string;
   i:integer;
 begin
-
-
   result:=false;
+
   OperationSucceeded := false;
 
   localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (DownloadOpenSSL): ';
@@ -2467,9 +2479,18 @@ end;
 
 function TInstaller.DownloadFreetype: boolean;
 const
-  NewSourceURL : array [0..0] of string = (
-    'https://sourceforge.net/projects/gnuwin32/files/freetype/2.3.5-1/freetype-2.3.5-1-bin.zip/download'
+  {$ifdef win64}
+  NewSourceURL : array [0..1] of string = (
+      'https://github.com/LongDirtyAnimAlf/fpcupdeluxe/releases/download/zlib/freetypewin64.zip',
+      'https://sourceforge.net/projects/gnuwin32/files/freetype/2.3.5-1/freetype-2.3.5-1-bin.zip/download'
     );
+  {$endif}
+  {$ifdef win32}
+  NewSourceURL : array [0..1] of string = (
+      'https://github.com/LongDirtyAnimAlf/fpcupdeluxe/releases/download/zlib/freetypewin32.zip',
+      'https://sourceforge.net/projects/gnuwin32/files/freetype/2.3.5-1/freetype-2.3.5-1-bin.zip/download'
+    );
+  {$endif}
 var
   OperationSucceeded: boolean;
   FreetypeDir,FreetypeBin,FreetypZip,FreetypZipDir: string;
@@ -2482,9 +2503,12 @@ begin
   OperationSucceeded := false;
 
   FreetypeDir:=IncludeTrailingPathDelimiter(FInstallDirectory);
-  FreetypeBin:=FreetypeDir+'freetype-6.dll';
 
-  if NOT FileExists(FreetypeBin) then
+  FreetypeBin:='freetype-6.dll';
+  if NOT FileExists(FreetypeDir+FreetypeBin) then
+    FreetypeBin:='freetype.dll';
+
+  if NOT FileExists(FreetypeDir+FreetypeBin) then
   begin
 
     FreetypZip := GetTempFileNameExt('FPCUPTMP','zip');
@@ -2530,13 +2554,13 @@ begin
 
   if OperationSucceeded then
   begin
-    //MoveFile
-    OperationSucceeded := MoveFile(FreetypZipDir+DirectorySeparator+'bin'+DirectorySeparator+'freetype6.dll',FreetypeBin);
+    FreetypeBin:=FindFileInDir(FreetypeBin,ExcludeTrailingPathDelimiter(FreetypZipDir));
+    OperationSucceeded := MoveFile(FreetypeBin,FreetypeDir+ExtractFileName(FreetypeBin));
     if NOT OperationSucceeded then
     begin
-      WritelnLog(etError, localinfotext + 'Could not move freetype6.dll into '+FreetypeBin);
+      WritelnLog(etError, localinfotext + 'Could not move '+FreetypeBin+' into '+FreetypeDir+ExtractFileName(FreetypeBin));
     end
-    else OperationSucceeded := FileExists(FreetypeBin);
+    else OperationSucceeded := FileExists(FreetypeDir+ExtractFileName(FreetypeBin));
   end;
 
   SysUtils.Deletefile(FreetypZip);
@@ -2821,6 +2845,16 @@ begin
     Infoln(Copy(Self.ClassName,2,MaxInt)+' (SetPath): Set path to: ' + ResultingPath,etDebug);
 end;
 
+procedure TInstaller.WritelnLog(msg: TStrings; ToConsole: boolean = true);
+var
+  idx:integer;
+begin
+  if (msg.Count>0) then
+  begin
+    for idx:=0 to Pred(msg.Count) do WritelnLog(msg.Strings[idx],ToConsole);
+  end;
+end;
+
 procedure TInstaller.WritelnLog(msg: string; ToConsole: boolean);
 begin
   if Assigned(FLog) then
@@ -2939,6 +2973,11 @@ begin
     Infoln(infotext+'No '+ModuleName+' source directory ('+FSourceDirectory+') found [yet] ... nothing to be done',etInfo);
     exit(true);
   end;
+  if DirectoryIsEmpty(FSourceDirectory) then
+  begin
+    Infoln(infotext+'No '+ModuleName+' files found in source directory ('+FSourceDirectory+') ... nothing to be done',etInfo);
+    exit(true);
+  end;
 end;
 
 function TInstaller.ConfigModule(ModuleName: string): boolean;
@@ -2993,11 +3032,11 @@ begin
 
   Infoln(infotext+'Checking ' + ModuleName + ' sources with '+aRepoClient.ClassName,etInfo);
 
-  aRepoClient.Verbose:=FVerbose;
-  aRepoClient.ExportOnly:=FExportOnly;
-  aRepoClient.ModuleName:=ModuleName;
-  aRepoClient.LocalRepository:=FSourceDirectory;
-  aRepoClient.Repository:=FURL;
+  aRepoClient.Verbose          := FVerbose;
+  aRepoClient.ExportOnly       := FExportOnly;
+  aRepoClient.ModuleName       := ModuleName;
+  aRepoClient.LocalRepository  := FSourceDirectory;
+  aRepoClient.Repository       := FURL;
 
   aRepoClient.LocalRepositoryExists;
   result:=(aRepoClient.ReturnCode<>FRET_LOCAL_REMOTE_URL_NOMATCH);
@@ -3538,18 +3577,21 @@ begin
 end;
 
 function TInstaller.GetRevision(ModuleName:string): string;
-const
-  ConstName = 'RevisionStr';
 var
   RevFileName,RevString: string;
   RevisionStringList:TStringList;
+  idx:integer;
+  NumbersExtr: TRegExpr;
 begin
   result:='';
 
+  RevString:='';
   RevFileName:='';
 
+  if (ModuleName=_LAZARUS) OR (ModuleName=_LAZBUILD) then RevFileName:=ConcatPaths([FSourceDirectory,'ide',REVINCFILENAME]);
+  if ModuleName=_FPC then RevFileName:=ConcatPaths([FSourceDirectory,'compiler',REVINCFILENAME]);
   //if ModuleName=_LAZARUS then RevFileName:=IncludeTrailingPathDelimiter(FSourceDirectory)+'ide'+PathDelim+REVINCFILENAME;
-  if ModuleName=_FPC then RevFileName:=IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+PathDelim+REVINCFILENAME;
+  //if ModuleName=_FPC then RevFileName:=IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+PathDelim+REVINCFILENAME;
 
   if FileExists(RevFileName) then
   begin
@@ -3558,11 +3600,39 @@ begin
       RevisionStringList.LoadFromFile(RevFileName);
       if (RevisionStringList.Count>0) then
       begin
+
         if ModuleName=_FPC then
         begin
           RevString:=Trim(RevisionStringList.Strings[0]);
-          RevString:=AnsiDequotedStr(RevString,'''');
-          result:=AnsiDequotedStr(RevString,'"');
+        end;
+
+        if (ModuleName=_LAZARUS) OR (ModuleName=_LAZBUILD) then
+        begin
+          idx:=StringListStartsWith(RevisionStringList,'const RevisionStr');
+          if (idx<>-1) then
+          begin
+            RevString:=Trim(RevisionStringList.Strings[idx]);
+          end;
+        end;
+
+        if (Length(RevString)>0) then
+        begin
+          NumbersExtr := TRegExpr.Create;
+          try
+            NumbersExtr.Expression := 'r\d+';
+            if NumbersExtr.Exec(RevString) then
+            begin
+              result := NumbersExtr.Match[0];
+            end
+            else
+            begin
+              NumbersExtr.Expression := '\d+';
+              if NumbersExtr.Exec(RevString) then
+                result := NumbersExtr.Match[0];
+            end;
+          finally
+            NumbersExtr.Free;
+          end;
         end;
       end;
     finally
@@ -3890,6 +3960,10 @@ begin
           aTool.Environment.SetVar(PATHVARNAME, PrependPath);
       end;
 
+      WritelnLog(infotext+aTool.GetExeInfo, false);
+      if Verbosity then
+        ThreadLog(aTool.GetExeInfo,etCustom);
+
       result:=aTool.ExecuteAndWait;
       Output:=aTool.WorkerOutput.Text;
 
@@ -3947,6 +4021,10 @@ begin
           aTool.Environment.SetVar(PATHVARNAME, PrependPath);
       end;
 
+      WritelnLog(infotext+aTool.GetExeInfo, false);
+      if Verbosity then
+        ThreadLog(aTool.GetExeInfo,etCustom);
+
       result:=aTool.ExecuteAndWait;
       Output:=aTool.WorkerOutput.Text;
 
@@ -3977,7 +4055,7 @@ begin
   FGitClient := TGitClient.Create(Self);
   FHGClient  := THGClient.Create(Self);
 
-  FShell := '';
+  FShell        := '';
   FSVNDirectory := '';
   FMakeDir      := '';
 
@@ -3993,13 +4071,13 @@ begin
   FCrossOS_Target:=TOS.osNone;
   FCrossOS_SubArch:='';
 
-  FMajorVersion := -1;
-  FMinorVersion := -1;
+  FMajorVersion   := -1;
+  FMinorVersion   := -1;
   FReleaseVersion := -1;
-  FPatchVersion := -1;
+  FPatchVersion   := -1;
 
-  FMUSL:=false;
-  FSolarisOI:=false;
+  FMUSL      := false;
+  FSolarisOI := false;
 
   {$ifdef Linux}
   FMUSLLinker:='/lib/ld-musl-'+GetTargetCPU+'.so.1';

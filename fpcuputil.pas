@@ -77,7 +77,6 @@ uses
   typinfo,
   zipper,
   fphttpclient, // for github api file list and others
-
   {$ifdef darwin}
   ns_url_request,
   {$endif}
@@ -96,6 +95,8 @@ uses
   eventlog;
 
 Const
+  DELUXEKEY='fpcupdeluxeishereforyou';
+
   MAXCONNECTIONRETRIES=2;
   {$ifdef Windows}
   GetExeExt='.exe';
@@ -391,6 +392,7 @@ Function Pos(Const Substr : string; Const Source : string; Offset : Sizeint = 1)
 {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION < 30000)}
 Function CharInSet(Ch:AnsiChar;Const CSet : TSysCharSet) : Boolean; inline;
 {$ENDIF}
+function SendMail (Host, Subject, pTo, From, login,password: string; Body: TStrings):boolean;
 
 implementation
 
@@ -435,9 +437,16 @@ uses
   //,libcurl
   {$ENDIF}
   {$ENDIF ENABLEWGET}
+  //,SynCrtSock // SendEmail from the mORMot
+  //,LCLIntf // OpenURL
+  {$ifndef Haiku}
+  ,mimemess,mimepart,ssl_openssl,smtpsend
+  {$endif}
   ,process
   ,processutils
   ,bzip2stream
+  ,dcpdes
+  ,DCPsha256
   ,NumCPULib  in './numcpulib/NumCPULib.pas'
   ;
 
@@ -454,6 +463,7 @@ const
   {$ENDIF MSWINDOWS}
 
 {$i revision.inc}
+{$i secrets.inc}
 
 type
   TOnWriteStream = procedure(Sender: TObject; APos: Int64) of object;
@@ -1018,6 +1028,7 @@ begin
 
   // Fail by default:
   OperationSucceeded:=false;
+
   XdgDesktopFile:=IncludeTrailingPathDelimiter(GetTempDir(false))+'fpcup-'+shortcutname+'.desktop';
   XdgDesktopContent:=TStringList.Create;
   try
@@ -1040,9 +1051,9 @@ begin
 
     if AddContext then
     begin
-    //XdgDesktopContent.Add('StartupWMClass=Lazarus');
+      //XdgDesktopContent.Add('StartupWMClass=Lazarus');
       XdgDesktopContent.Add('MimeType=application/x-lazarus;');
-    //XdgDesktopContent.Add('Patterns=*.pas;*.pp;*.p;*.inc;*.lpi;*.lpk;*.lpr;*.lfm;*.lrs;*.lpl;');
+      //XdgDesktopContent.Add('Patterns=*.pas;*.pp;*.p;*.inc;*.lpi;*.lpk;*.lpr;*.lfm;*.lrs;*.lpl;');
     end;
 
     // We're going to try and call xdg-desktop-icon/menu
@@ -1073,7 +1084,7 @@ begin
         if (NOT OperationSucceeded) then
         begin
           aDirectory:=ConcatPaths([GetUserDir,'.local','share','applications']);
-        if DirectoryExists(aDirectory) then
+          if DirectoryExists(aDirectory) then
             FileUtil.CopyFile(XdgDesktopFile,aDirectory+DirectorySeparator+ExtractFileName(XdgDesktopFile),[]);
         end;
       end;
@@ -1185,7 +1196,7 @@ function FileNameFromURL(URL:string):string;
 const
   URLMAGIC='/download';
 var
-  URI:TURI;
+  URI:URIPARSER.TURI;
   aURL:string;
 begin
   aURL:=URL;
@@ -1196,7 +1207,7 @@ end;
 
 function StripUrl(URL:string): string;
 var
-  URI:TURI;
+  URI:URIPARSER.TURI;
 begin
   URI:=ParseURI(URL);
   result:=URI.Host+URI.Path;
@@ -1336,6 +1347,7 @@ begin
   begin
 
     VersionSnippet := UpperCase(URL);
+
     i := Length(VersionSnippet);
 
     // remove trailing delimiter
@@ -1556,11 +1568,11 @@ begin
         begin
           // File; exit with failure on error
           if not SysUtils.DeleteFile(CurFilename) then result:=false;
-          end;
         end;
+      end;
     until (SysUtils.FindNext(FileInfo)<>0) OR (NOT result);
     SysUtils.FindClose(FileInfo);
-      end;
+  end;
   // Remove root directory; exit with failure on error:
   if result then result:=RemoveDir(DirectoryName);
 end;
@@ -1618,13 +1630,13 @@ begin
               if (FileInfo.Attr and faReadOnly)>0 then
                 FileSetAttr(CurFilename, FileInfo.Attr-faReadOnly);
               if not SysUtils.DeleteFile(CurFilename) then result:=false;
-              end;
             end;
           end;
         end;
+      end;
     until (SysUtils.FindNext(FileInfo)<>0) OR (NOT result);
     SysUtils.FindClose(FileInfo);
-      end;
+  end;
 end;
 
 function DeleteFilesExtensionsSubdirs(const DirectoryName: string; const Extensions:TstringList; const OnlyIfPathHas: string): boolean;
@@ -1686,13 +1698,13 @@ begin
               if (FileInfo.Attr and faReadOnly)>0 then
                 FileSetAttr(CurFilename, FileInfo.Attr-faReadOnly);
               if not SysUtils.DeleteFile(CurFilename) then result:=false;
-              end;
             end;
           end;
         end;
+      end;
     until (SysUtils.FindNext(FileInfo)<>0) OR (NOT result);
     SysUtils.FindClose(FileInfo);
-      end;
+  end;
 end;
 
 function DeleteFilesNameSubdirs(const DirectoryName: string; const OnlyIfNameHas: string): boolean;
@@ -1742,12 +1754,12 @@ begin
             if (FileInfo.Attr and faReadOnly)>0 then
               FileSetAttr(CurFilename, FileInfo.Attr-faReadOnly);
             if not SysUtils.DeleteFile(CurFilename) then result:=false;
-            end;
           end;
         end;
+      end;
     until (SysUtils.FindNext(FileInfo)<>0) OR (NOT result);
     SysUtils.FindClose(FileInfo);
-      end;
+  end;
 end;
 
 function DownloadBase(aDownLoader:TBasicDownloader;URL: string; aDataStream:TStream; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''): boolean;
@@ -1809,7 +1821,7 @@ function DownloadByWinINet(URL: string; aDataStream: TSTream): boolean;
 const
   URLMAGIC='/download';
 var
-  URI    : TURI;
+  URI    : URIPARSER.TURI;
   aURL,P : String;
   NetHandle: HINTERNET;
   UrlHandle: HINTERNET;
@@ -1951,7 +1963,7 @@ const
   URLMAGIC='/download';
 var
   Output : String;
-  URI    : TURI;
+  URI    : URIPARSER.TURI;
   aURL,P : String;
 begin
   aURL:=URL;
@@ -1981,7 +1993,7 @@ const
   URLMAGIC='/download';
 var
   Output : String;
-  URI    : TURI;
+  URI    : URIPARSER.TURI;
   aURL,P : String;
 begin
   aURL:=URL;
@@ -2843,15 +2855,15 @@ begin
         FindAllFiles(LinkFiles, result, '*.o', true);
         if (LinkFiles.Count>0) then
         begin
-        for i:=0 to (LinkFiles.Count-1) do
-        begin
-          if Pos(DirectorySeparator+LINKFILE,LinkFiles[i])>0 then
+          for i:=0 to (LinkFiles.Count-1) do
           begin
-            result:=ExtractFileDir(LinkFiles[i]);
-            FoundLinkFile:=true;
-            break;
+            if Pos(DirectorySeparator+LINKFILE,LinkFiles[i])>0 then
+            begin
+              result:=ExtractFileDir(LinkFiles[i]);
+              FoundLinkFile:=true;
+              break;
+            end;
           end;
-        end;
         end;
       finally
         LinkFiles.Free;
@@ -3182,10 +3194,10 @@ begin
   end;
 
   if (NOT result) then
-begin
-  RunCommand('sh',['-c','"ldconfig -p | grep '+aLibrary+'"'],Output,[poUsePipes, poStderrToOutPut],swoHide);
-  result:=(Pos(aLibrary,Output)>0);
-end;
+  begin
+    RunCommand('sh',['-c','"ldconfig -p | grep '+aLibrary+'"'],Output,[poUsePipes, poStderrToOutPut],swoHide);
+    result:=(Pos(aLibrary,Output)>0);
+  end;
   {$endif}
 end;
 
@@ -3338,9 +3350,9 @@ begin
             if (NOT FileExists(Executable)) then
               ThreadLog(Executable + ' not found.',Level)
             else
-            ThreadLog(Executable + ' is not a valid ' + ExeName + ' application. ' +
-            ExeName + ' exists but shows no (' + ExpectOutput + ') in its output.',Level);
-        end;
+              ThreadLog(Executable + ' is not a valid ' + ExeName + ' application. ' +
+              ExeName + ' exists but shows no (' + ExpectOutput + ') in its output.',Level);
+          end;
         end;
       end
       else
@@ -3893,6 +3905,141 @@ begin
   {$ELSE}
   result:=QWORD(GetTickCount);
   {$ENDIF}
+end;
+
+function DoRead(Ptr : Pointer; Size : size_t; nmemb: size_t; Data : Pointer) : size_t;cdecl;
+begin
+  if Data=nil then result:=0 else
+  begin
+    result:=TStream(Data).Read(Ptr^,Size*nmemb);
+  end;
+end;
+
+function SendMail (Host, Subject, pTo, From, login,password: string; Body: TStrings):boolean;
+var
+  aURI          : URIPARSER.TURI;
+  i             : integer;
+  clearpassword : string;
+  s             : string;
+  Cipher        : TDCP_DES;
+  {$ifdef Haiku}
+  hCurl         : pCurl;
+  res           : CURLcode;
+  recipients    : pointer;
+  aDataStream   : TMemoryStream;
+  {$else}
+  Msg           : TMimeMess; // message
+  MIMEPart      : TMimePart; // parts of the message
+ {$endif}
+begin
+  result:=false;
+
+  clearpassword:=password;
+  Cipher := TDCP_DES.Create(nil);
+  try
+    {$ifdef SECRETDELUXEKEY}
+    Cipher.InitStr(VERYSECRETDELUXEKEY,TDCP_sha256);
+    {$else}
+    Cipher.InitStr(DELUXEKEY,TDCP_sha256);
+    {$endif}
+    clearpassword:=Cipher.DecryptString(password);
+  finally
+    Cipher.Burn;
+    Cipher.Free;
+  end;
+
+  {$ifdef Haiku}
+  if LoadCurlLibrary then
+  begin
+    curl_global_init(CURL_GLOBAL_ALL);
+    try
+      aDataStream := TMemoryStream.Create;
+      Body.SaveToStream(aDataStream);
+      try
+       hCurl:=curl_easy_init();
+       if Assigned(hCurl) then
+       begin
+        res:=CURLE_OK;
+        if res=CURLE_OK then res:=curl_easy_setopt(hCurl, CURLOPT_URL, 'smtp://smtp.gmail.com:587');
+        if res=CURLE_OK then res:=curl_easy_setopt(hCurl, CURLOPT_FTP_SSL , CURLUSESSL_ALL);
+
+        if res=CURLE_OK then res:=curl_easy_setopt(hCurl, CURLOPT_USERNAME, PChar(login));
+        if res=CURLE_OK then res:=curl_easy_setopt(hCurl, CURLOPT_PASSWORD, PChar(clearpassword));
+        s:='<'+From+'>';
+        if res=CURLE_OK then res:=curl_easy_setopt(hCurl, CURLOPT_MAIL_FROM, PChar(s));
+
+        recipients := nil;
+        if (Length(pTo)>0) then
+        begin
+          s:='<'+pTo+'>';
+          if res=CURLE_OK then recipients := curl_slist_append(nil,PChar(s));
+          if res=CURLE_OK then res:=curl_easy_setopt(hCurl, CURLOPT_MAIL_RCPT, recipients);
+        end;
+
+        if res=CURLE_OK then res:=curl_easy_setopt(hCurl, CURLOPT_READFUNCTION, @DoRead);
+        if res=CURLE_OK then res:=curl_easy_setopt(hCurl, CURLOPT_READDATA, Pointer(aDataStream));
+        if res=CURLE_OK then res:=curl_easy_setopt(hCurl, CURLOPT_UPLOAD, 1);
+
+        if res=CURLE_OK then res:=curl_easy_perform(hCurl);
+
+        try
+          if Assigned(recipients) then
+          begin
+            curl_slist_free_all(recipients);
+            recipients:=nil;
+          end;
+        except
+        end;
+       end;
+
+      finally
+        aDataStream.Free;
+        if Assigned(hCurl) then curl_easy_cleanup(hCurl);
+      end;
+    except
+      // swallow libcurl exceptions
+    end;
+  end;
+  //s:=Body.Text;
+  //result:=SynCrtSock.SendEmail(Host, From, pTo, Subject, s, '', login, clearpassword, '465', '', true);
+  {$else}
+  {%H-}FillChar({%H-}aUri,SizeOf(TURI),0);
+  aURI.Protocol:='mailto';
+  aURI.Document:=pTo;
+  s:='******************** first 20 lines *************************'+#13#10;
+  i:=0;
+  while (i<Body.Count) do
+  begin
+    s:=s+Body.Strings[i]+#13#10;
+    if (i>18) then break;
+    Inc(i);
+  end;
+  s:=s+#13#10;
+  s:=s+'******************** last 50 lines *************************'+#13#10;
+  i:=Body.Count-50;
+  if (i<18) then i:=18;
+  while (i<Body.Count) do
+  begin
+    s:=s+Body.Strings[i]+#13#10;
+    Inc(i);
+  end;
+  s:=s+#13#10;
+  s:=s+'************************* end ******************************';
+  aURI.Params:='subject=Fpcupdeluxe command screen log&body=Please find included part of the command screen output of fpcupdeluxe. You may add more if you want by copy paste of command screen.'+#13#10+#13#10+s;
+  //result:=OpenURL(EncodeURI(aURI));
+  Msg := TMimeMess.Create;
+  try
+    Msg.Header.Subject := Subject;
+    Msg.Header.From := From;
+    Msg.Header.ToList.Add(pTo);
+    MIMEPart := Msg.AddPartMultipart('alternative', nil);
+    Msg.AddPartText(Body, MIMEPart);
+    Msg.EncodeMessage;
+    result:=smtpsend.SendToRaw(From,pTo,Host+':465',Msg.Lines,login,clearpassword);
+  finally
+    Msg.Free;
+  end;
+  {$endif}
 end;
 
 {TNormalUnzipper}
@@ -4533,7 +4680,7 @@ function TUseNativeDownLoader.getFTPFileList(const URL:string; filelist:TStringL
 var
   i: Integer;
   s: string;
-  URI : TURI;
+  URI : URIPARSER.TURI;
   P : String;
 begin
   result:=false;
@@ -4591,7 +4738,7 @@ end;
 
 function TUseNativeDownLoader.FTPDownload(Const URL: String; aDataStream:TStream):boolean;
 var
-  URI : TURI;
+  URI : URIPARSER.TURI;
   aPort:integer;
   aFTPClient:TFTPSend;
 begin
@@ -4741,7 +4888,7 @@ function TUseNativeDownLoader.Download(const URL: String; aDataStream:TStream):b
 const
   URLMAGIC='/download';
 Var
-  URI    : TURI;
+  URI    : URIPARSER.TURI;
   aURL,P : String;
 begin
   result:=false;
@@ -4857,7 +5004,7 @@ var
   aURL:string;
   s:string;
   i:integer;
-  URI : TURI;
+  URI : URIPARSER.TURI;
   P : String;
   {$IF NOT DEFINED(MORPHOS) AND NOT DEFINED(AROS)}  // this is very bad coding ... ;-)
   aTFTPList:TFTPList;
@@ -4910,7 +5057,7 @@ end;
 
 function TUseWGetDownloader.LibCurlDownload(Const URL : String; aDataStream : TStream):boolean;
 var
-  URI : TURI;
+  URI : URIPARSER.TURI;
   hCurl : pCurl;
   res: CURLcode;
   UserPass:string;
@@ -5012,7 +5159,7 @@ function TUseWGetDownloader.LibCurlFTPFileList(const URL:string; filelist:TStrin
 var
   hCurl : pCurl;
   res: CURLcode;
-  URI : TURI;
+  URI : URIPARSER.TURI;
   s : String;
   aTFTPList:TFTPList;
   F:TMemoryStream;
@@ -5217,7 +5364,7 @@ end;
 
 function TUseWGetDownloader.Download(const URL: String; aDataStream: TStream):boolean;
 Var
-  URI : TURI;
+  URI : URIPARSER.TURI;
   P : String;
 begin
   result:=false;

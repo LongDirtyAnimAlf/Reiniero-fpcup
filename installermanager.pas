@@ -188,7 +188,8 @@ type
     {$ifndef FPCONLY}
     FLazarusDesiredRevision: string;
     FLazarusDesiredBranch: string;
-    FLazarusDirectory: string;
+    FLazarusSourceDirectory: string;
+    FLazarusInstallDirectory: string;
     FLazarusOPT: string;
     FLazarusPrimaryConfigPath: string;
     FLazarusURL: string;
@@ -224,9 +225,11 @@ type
     FSolarisOI:boolean;
     FMUSL:boolean;
     FRunInfo:string;
+    function GetCrossCombo_Target:TCPUOS;
     {$ifndef FPCONLY}
     function GetLazarusPrimaryConfigPath: string;
-    procedure SetLazarusDirectory(AValue: string);
+    procedure SetLazarusSourceDirectory(AValue: string);
+    procedure SetLazarusInstallDirectory(AValue: string);
     procedure SetLazarusURL(AValue: string);
     {$endif}
     function GetLogFileName: string;
@@ -277,6 +280,8 @@ type
     property CrossCPU_Target:TCPU read FCrossCPU_Target write FCrossCPU_Target;
     property CrossOS_Target:TOS read FCrossOS_Target write FCrossOS_Target;
     property CrossOS_SubArch:string read FCrossOS_SubArch write FCrossOS_SubArch;
+    property CrossCombo_Target:TCPUOS read GetCrossCombo_Target;
+
     // Widgetset for which the user wants to compile the LCL (not the IDE).
     // Empty if default LCL widgetset used for current platform
     {$ifndef FPCONLY}
@@ -298,7 +303,8 @@ type
     property KeepLocalChanges: boolean read FKeepLocalDiffs write FKeepLocalDiffs;
     property UseSystemFPC:boolean read FUseSystemFPC write FUseSystemFPC;
    {$ifndef FPCONLY}
-    property LazarusDirectory: string read FLazarusDirectory write SetLazarusDirectory;
+    property LazarusSourceDirectory: string read FLazarusSourceDirectory write SetLazarusSourceDirectory;
+    property LazarusInstallDirectory: string read FLazarusInstallDirectory write SetLazarusInstallDirectory;
     property LazarusPrimaryConfigPath: string read GetLazarusPrimaryConfigPath write FLazarusPrimaryConfigPath ;
     property LazarusURL: string read FLazarusURL write SetLazarusURL;
     property LazarusOPT:string read FLazarusOPT write FLazarusOPT;
@@ -502,9 +508,13 @@ begin
 end;
 
 {$ifndef FPCONLY}
-procedure TFPCupManager.SetLazarusDirectory(AValue: string);
+procedure TFPCupManager.SetLazarusSourceDirectory(AValue: string);
 begin
-  FLazarusDirectory:=SafeExpandFileName(AValue);
+  FLazarusSourceDirectory:=SafeExpandFileName(AValue);
+end;
+procedure TFPCupManager.SetLazarusInstallDirectory(AValue: string);
+begin
+  FLazarusInstallDirectory:=SafeExpandFileName(AValue);
 end;
 
 procedure TFPCupManager.SetLazarusURL(AValue: string);
@@ -937,6 +947,13 @@ begin
   inherited Destroy;
 end;
 
+
+function TFPCupManager.GetCrossCombo_Target:TCPUOS;
+begin
+  result.CPU:=FCrossCPU_Target;
+  result.OS:=FCrossOS_Target;
+end;
+
 { TSequencer }
 
 procedure TSequencer.AddToModuleList(ModuleName: string; EntryPoint: integer);
@@ -1000,7 +1017,7 @@ function TSequencer.DoExec(FunctionName: string): boolean;
       //Infoln('TSequencer.DoExec (Lazarus): creating desktop shortcut:',etInfo);
       try
         // Create shortcut; we don't care very much if it fails=>don't mess with OperationSucceeded
-        InstalledLazarus:=IncludeTrailingPathDelimiter(FParent.LazarusDirectory)+'lazarus'+GetExeExt;
+        InstalledLazarus:=IncludeTrailingPathDelimiter(FParent.LazarusInstallDirectory)+'lazarus'+GetExeExt;
         {$IFDEF MSWINDOWS}
         CreateDesktopShortCut(InstalledLazarus,'--pcp="'+FParent.LazarusPrimaryConfigPath+'"',FParent.ShortCutNameLazarus);
         {$ENDIF MSWINDOWS}
@@ -1352,6 +1369,7 @@ begin
     FInstaller.InstallDirectory:=FParent.FPCInstallDirectory;
     (FInstaller as TFPCInstaller).BootstrapCompilerDirectory:=FParent.BootstrapCompilerDirectory;
     (FInstaller as TFPCInstaller).SourcePatches:=FParent.FPCPatches;
+    (FInstaller as TFPCInstaller).SoftFloat:=FParent.SoftFloat;
     if FParent.MUSL then
       (FInstaller as TFPCInstaller).NativeFPCBootstrapCompiler:=false
     else
@@ -1375,6 +1393,7 @@ begin
     or (ModuleName=_IDE)
     or (ModuleName=_BIGIDE)
     or (ModuleName=_USERIDE)
+    or (ModuleName=_INSTALLLAZARUS)
     or (ModuleName=_MAKEFILECHECKLAZARUS)
   then
   begin
@@ -1395,8 +1414,8 @@ begin
       FInstaller:=TLazarusNativeInstaller.Create;
 
     // source- and install-dir are the same for Lazarus ... could be changed
-    FInstaller.SourceDirectory:=FParent.LazarusDirectory;
-    FInstaller.InstallDirectory:=FParent.LazarusDirectory;
+    FInstaller.SourceDirectory:=FParent.LazarusSourceDirectory;
+    FInstaller.InstallDirectory:=FParent.LazarusInstallDirectory;
 
     FInstaller.CompilerOptions:=FParent.LazarusOPT;
 
@@ -1446,9 +1465,8 @@ begin
         FInstaller.free; // get rid of old FInstaller
     end;
     FInstaller:=THelpLazarusInstaller.Create;
-    FInstaller.SourceDirectory:=FParent.LazarusDirectory;
-    // the same ... may change in the future
-    FInstaller.InstallDirectory:=FParent.LazarusDirectory;
+    FInstaller.SourceDirectory:=FParent.LazarusSourceDirectory;
+    FInstaller.InstallDirectory:=FParent.LazarusInstallDirectory;
     (FInstaller as THelpLazarusInstaller).FPCBinDirectory:=IncludeTrailingPathDelimiter(FParent.FPCInstallDirectory);
     (FInstaller as THelpLazarusInstaller).FPCSourceDirectory:=IncludeTrailingPathDelimiter(FParent.FPCSourceDirectory);
     (FInstaller as THelpLazarusInstaller).LazarusPrimaryConfigPath:=FParent.LazarusPrimaryConfigPath;
@@ -1468,10 +1486,12 @@ begin
           FInstaller.free; // get rid of old FInstaller
       end;
 
-      if ModuleName='mORMotPXL' then
-        FInstaller:=TmORMotPXLInstaller.Create
+      case ModuleName of
+        'mORMotPXL'     : FInstaller:=TmORMotPXLInstaller.Create;
+        'internettools' : FInstaller:=TInternetToolsInstaller.Create;
       else
         FInstaller:=TUniversalInstaller.Create;
+      end;
 
       FCurrentModule:=ModuleName;
       //assign properties
@@ -1481,8 +1501,8 @@ begin
       FInstaller.CompilerOptions:=FParent.FPCOPT;
       // ... but more importantly, pass Lazarus compiler options needed for IDE rebuild
       {$ifndef FPCONLY}
-      (FInstaller as TUniversalInstaller).LazarusSourceDir:=FParent.FLazarusDirectory;
-      (FInstaller as TUniversalInstaller).LazarusInstallDir:=FParent.FLazarusDirectory;
+      (FInstaller as TUniversalInstaller).LazarusSourceDir:=FParent.FLazarusSourceDirectory;
+      (FInstaller as TUniversalInstaller).LazarusInstallDir:=FParent.FLazarusInstallDirectory;
       (FInstaller as TUniversalInstaller).LazarusCompilerOptions:=FParent.FLazarusOPT;
       (FInstaller as TUniversalInstaller).LazarusPrimaryConfigPath:=FParent.LazarusPrimaryConfigPath;
       (FInstaller as TUniversalInstaller).LCL_Platform:=FParent.LCL_Platform;
@@ -1529,7 +1549,6 @@ begin
     {$ENDIF}
     FInstaller.ExportOnly:=FParent.ExportOnly;
     FInstaller.NoJobs:=FParent.NoJobs;
-    FInstaller.SoftFloat:=FParent.SoftFloat;
     FInstaller.OnlinePatching:=FParent.OnlinePatching;
     FInstaller.Log:=FParent.FLog;
     FInstaller.MakeDirectory:=FParent.MakeDirectory;

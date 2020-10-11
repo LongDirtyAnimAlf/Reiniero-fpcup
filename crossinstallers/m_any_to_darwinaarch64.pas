@@ -225,6 +225,7 @@ begin
     AddFPCCFGSnippet('-XP'+FBinUtilsPrefix); {Prepend the binutils names};
 
     // Set some defaults if user hasn't specified otherwise
+    {
     i:=StringListStartsWith(FCrossOpts,'-Ca');
     if i=-1 then
     begin
@@ -233,6 +234,8 @@ begin
       ShowInfo('Did not find any -Ca architecture parameter; using '+aOption+'.');
     end else aOption:=Trim(FCrossOpts[i]);
     AddFPCCFGSnippet(aOption);
+    }
+
   end;
 end;
 
@@ -251,6 +254,7 @@ begin
   inherited Destroy;
 end;
 
+{$ifndef Darwin}
 var
   any_darwinaarch64:Tany_darwinaarch64;
 
@@ -260,6 +264,7 @@ initialization
 
 finalization
   any_darwinaarch64.Destroy;
+{$endif}
 
 end.
 

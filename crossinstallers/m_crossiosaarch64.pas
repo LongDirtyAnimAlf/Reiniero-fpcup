@@ -1,4 +1,4 @@
-unit m_crossdarwinaarch64;
+unit m_crossiosaarch64;
 
 { Cross compiles from Darwin to Darwin aarch64 (iphone)
 }
@@ -42,9 +42,9 @@ const
 
 type
 
-{ TDarwinaarch64 }
+{ TiOSaarch64 }
 
-TDarwinaarch64 = class(TCrossInstaller)
+TiOSaarch64 = class(TCrossInstaller)
 private
   FAlreadyWarned: boolean; //did we warn user about errors and fixes already?
 public
@@ -54,9 +54,9 @@ public
   destructor Destroy; override;
 end;
 
-{ TDarwinaarch64 }
+{ TiOSaarch64 }
 
-function TDarwinaarch64.GetLibs(Basepath:string): boolean;
+function TiOSaarch64.GetLibs(Basepath:string): boolean;
 var
   aOption:string;
   i:integer;
@@ -118,7 +118,7 @@ begin
   FLibsFound:=true;
 end;
 
-function TDarwinaarch64.GetBinUtils(Basepath:string): boolean;
+function TiOSaarch64.GetBinUtils(Basepath:string): boolean;
 var
   aOption:string;
   i:integer;
@@ -175,33 +175,33 @@ begin
   FBinsFound:=true;
 end;
 
-constructor TDarwinaarch64.Create;
+constructor TiOSaarch64.Create;
 begin
   inherited Create;
   FCrossModuleNamePrefix:='TDarwinAny';
   FTargetCPU:=TCPU.aarch64;
-  FTargetOS:=TOS.darwin;
+  FTargetOS:=TOS.ios;
   Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
 
-destructor TDarwinaarch64.Destroy;
+destructor TiOSaarch64.Destroy;
 begin
   inherited Destroy;
 end;
 
-{$IFDEF Darwin}
+{$ifdef Darwin}
 var
-  Darwinaarch64:TDarwinaarch64;
+  iOSaarch64:TiOSaarch64;
 
 initialization
-  Darwinaarch64:=TDarwinaarch64.Create;
-  RegisterCrossCompiler(Darwinaarch64.RegisterName,Darwinaarch64);
+  iOSaarch64:=TiOSaarch64.Create;
+  RegisterCrossCompiler(iOSaarch64.RegisterName,iOSaarch64);
 
 finalization
-  Darwinaarch64.Destroy;
-{$ENDIF}
+  iOSaarch64.Destroy;
+{$endif}
 
 end.
 

@@ -149,6 +149,13 @@ type
     function BuildModule(ModuleName: string): boolean; override;
   end;
 
+  { TInternetToolsInstaller }
+
+  TInternetToolsInstaller = class(TUniversalInstaller)
+  protected
+    function GetModule(ModuleName: string): boolean; override;
+  end;
+
 
   // Gets the list of modules enabled in ConfigFile. Appends to existing TStringList
   function GetModuleEnabledList(var ModuleList:TStringList):boolean;
@@ -241,7 +248,10 @@ begin
   {$IFDEF MSWINDOWS}
   if Length(Shell)>0 then Processor.Process.Parameters.Add('SHELL='+Shell);
   {$ENDIF}
-  Processor.Process.CurrentDirectory := ExcludeTrailingPathDelimiter(LazarusInstallDir);
+
+  Processor.Process.CurrentDirectory := ExcludeTrailingPathDelimiter(LazarusSourceDir);
+  Processor.Process.Parameters.Add('--directory=' + Processor.Process.CurrentDirectory);
+
   {
   //Still not clear if jobs can be enabled for Lazarus make builds ... :-|
   if (NOT FNoJobs) then
@@ -249,23 +259,26 @@ begin
   Processor.Process.Parameters.Add('FPC=' + FCompiler);
   Processor.Process.Parameters.Add('PP=' + ExtractFilePath(FCompiler)+GetCompilerName(GetTargetCPU));
   Processor.Process.Parameters.Add('USESVN2REVISIONINC=0');
-  //Processor.Process.Parameters.Add('--directory=.');
-  Processor.Process.Parameters.Add('--directory=' + ExcludeTrailingPathDelimiter(LazarusInstallDir));
+
+  Processor.Process.Parameters.Add('PREFIX='+ExcludeTrailingPathDelimiter(LazarusInstallDir));
+  Processor.Process.Parameters.Add('INSTALL_PREFIX='+ExcludeTrailingPathDelimiter(LazarusInstallDir));
+  Processor.Process.Parameters.Add('LAZARUS_INSTALL_DIR='+IncludeTrailingPathDelimiter(LazarusInstallDir));
+
   //Make sure our FPC units can be found by Lazarus
   Processor.Process.Parameters.Add('FPCDIR=' + ExcludeTrailingPathDelimiter(FPCSourceDir));
+
   //Make sure Lazarus does not pick up these tools from other installs
-  Processor.Process.Parameters.Add('FPCMAKE=' + ConcatPaths([FFPCInstallDir,'bin',GetFPCTarget(true)])+PathDelim+'fpcmake'+GetExeExt);
-  Processor.Process.Parameters.Add('PPUMOVE=' + ConcatPaths([FFPCInstallDir,'bin',GetFPCTarget(true)])+PathDelim+'ppumove'+GetExeExt);
+  Processor.Process.Parameters.Add('FPCMAKE=' + FBinPath+'fpcmake'+GetExeExt);
+  Processor.Process.Parameters.Add('PPUMOVE=' + FBinPath+'ppumove'+GetExeExt);
 
   s:=IncludeTrailingPathDelimiter(LazarusPrimaryConfigPath)+DefaultIDEMakeOptionFilename;
   //if FileExists(s) then
-  begin
     Processor.Process.Parameters.Add('CFGFILE=' + s);
-  end;
 
   {$IFDEF MSWINDOWS}
   Processor.Process.Parameters.Add('UPXPROG=echo');      //Don't use UPX
-  Processor.Process.Parameters.Add('COPYTREE=echo');     //fix for examples in Win svn, see build FAQ
+  {$else}
+  //Processor.Process.Parameters.Add('INSTALL_BINDIR='+FBinPath);
   {$ENDIF MSWINDOWS}
 
   if FLCL_Platform <> '' then Processor.Process.Parameters.Add('LCL_PLATFORM=' + FLCL_Platform);
@@ -311,7 +324,7 @@ begin
     {$ifdef MSWindows}
     //Prepend FPC binary directory to PATH to prevent pickup of strange tools
     OldPath:=Processor.Environment.GetVar(PATHVARNAME);
-    s:=ConcatPaths([FFPCInstallDir,'bin',GetFPCTarget(true)]);
+    s:=ExcludeTrailingPathDelimiter(FBinPath);
     if OldPath<>'' then
        Processor.Environment.SetVar(PATHVARNAME, s+PathSeparator+OldPath)
     else
@@ -426,7 +439,7 @@ begin
         if macro='BASEDIR' then
           macro:=ExcludeTrailingPathDelimiter(FBaseDirectory)
         else if macro='FPCDIR' then
-          macro:=ExcludeTrailingPathDelimiter(FFPCInstallDir)
+          macro:=ExcludeTrailingPathDelimiter(FPCInstallDir)
         else if macro='FPCBINDIR' then
             macro:=ExcludeTrailingPathDelimiter(FBinPath)
         else if macro='FPCBIN' then
@@ -517,8 +530,6 @@ begin
 end;
 
 function TUniversalInstaller.InitModule: boolean;
-var
-  PlainBinPath: string; //the directory above e.g. c:\development\fpc\bin\i386-win32
 begin
   result:=true;
   localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (InitModule): ';
@@ -531,21 +542,21 @@ begin
   // only download some SVN repositories
   // So.. enable this.
   result:=(CheckAndGetTools) AND (CheckAndGetNeededBinUtils);
+
   if not(result) then
     Infoln(localinfotext+'Missing required executables. Aborting.',etError);
 
   // Add fpc architecture bin and plain paths
-  FBinPath:=IncludeTrailingPathDelimiter(FFPCInstallDir)+'bin'+DirectorySeparator+GetFPCTarget(true);
-  PlainBinPath:=ExcludeTrailingPathDelimiter(FFPCInstallDir);
+  FBinPath:=ConcatPaths([FPCInstallDir,'bin',GetFPCTarget(true)])+DirectorySeparator;
   // Need to remember because we don't always use ProcessEx
-  FPath:=FBinPath+PathSeparator+
+  FPath:=ExcludeTrailingPathDelimiter(FBinPath)+PathSeparator+
   {$IFDEF DARWIN}
   // pwd is located in /bin ... the makefile needs it !!
   // tools are located in /usr/bin ... the makefile needs it !!
   // don't ask, but this is needed when fpcupdeluxe runs out of an .app package ... quirk solved this way .. ;-)
   '/bin'+PathSeparator+'/usr/bin'+PathSeparator+
   {$ENDIF}
-  PlainBinPath+PathSeparator;
+  ExcludeTrailingPathDelimiter(FPCInstallDir)+PathSeparator;
   SetPath(FPath,true,false);
   // No need to build Lazarus IDE again right now; will
   // be changed by buildmodule/configmodule installexecute/
@@ -1779,7 +1790,7 @@ begin
         Infoln(infotext+'Please wait: this can take some time (if repo is big or has a large history).',etInfo);
         UpdateWarnings:=TStringList.Create;
         try
-          FURL:=RemoteURL;
+          URL:=RemoteURL;
           GitClient.ModuleName:=ModuleName;
           GitClient.ExportOnly:=FExportOnly;
           result:=DownloadFromGit(ModuleName,BeforeRevision,AfterRevision,UpdateWarnings);
@@ -1804,7 +1815,7 @@ begin
         Infoln(infotext+'Please wait: this can take some time (if repo is big or has a large history).',etInfo);
         UpdateWarnings:=TStringList.Create;
         try
-          FURL:=RemoteURL;
+          URL:=RemoteURL;
           SVNClient.UserName   := GetValueFromKey('UserName',PackageSettings);
           SVNClient.Password   := GetValueFromKey('Password',PackageSettings);
           result:=DownloadFromSVN(ModuleName,BeforeRevision,AfterRevision,UpdateWarnings);
@@ -1841,7 +1852,7 @@ begin
         Infoln(infotext+'Please wait: this can take some time (if repo is big or has a large history).',etInfo);
         UpdateWarnings:=TStringList.Create;
         try
-          FUrl:=RemoteURL;
+          Url:=RemoteURL;
           HGClient.ModuleName:=ModuleName;
           HGClient.ExportOnly:=FExportOnly;
           result:=DownloadFromHG(ModuleName,BeforeRevision,AfterRevision,UpdateWarnings);
@@ -2178,6 +2189,8 @@ var
   FileContents:TStrings;
 begin
   result:=inherited;
+  result:=InitModule;
+  if not result then exit;
 
   //Perform some extra magic for this module
 
@@ -2294,6 +2307,55 @@ begin
       end;
 
     end;
+  end;
+end;
+
+function TInternetToolsInstaller.GetModule(ModuleName: string): boolean;
+var
+  Workingdir,FLREDir:string;
+  aSourceFile,aTargetFile:string;
+  idx:integer;
+  sl:TStringList;
+begin
+  result:=inherited;
+  result:=InitModule;
+  if not result then exit;
+
+  //Perform some extra magic for this module
+  //Copy some files from FLRE
+
+  Workingdir:='';
+  FLREDir:='';
+
+  idx:=UniModuleList.IndexOf(ModuleName);
+  if idx>=0 then
+  begin
+    sl:=TStringList(UniModuleList.Objects[idx]);
+    Workingdir:=GetValueFromKey(LOCATIONMAGIC,sl);
+    if Workingdir='' then Workingdir:=GetValueFromKey(INSTALLMAGIC,sl);
+    Workingdir:=FixPath(Workingdir);
+  end;
+
+  idx:=UniModuleList.IndexOf('flre');
+  if idx>=0 then
+  begin
+    sl:=TStringList(UniModuleList.Objects[idx]);
+    FLREDir:=GetValueFromKey(LOCATIONMAGIC,sl);
+    if FLREDir='' then FLREDir:=GetValueFromKey(INSTALLMAGIC,sl);
+    FLREDir:=FixPath(FLREDir);
+  end;
+
+  if DirectoryExists(Workingdir) AND DirectoryExists(FLREDir) then
+  begin
+    aSourceFile:=ConcatPaths([FLREDir,'src'])+DirectorySeparator+'FLRE.pas';
+    aTargetFile:=ConcatPaths([Workingdir,'data'])+DirectorySeparator+'FLRE.pas';
+    if FileExists(aSourceFile) then
+      FileUtil.CopyFile(aSourceFile,aTargetFile,[]);
+
+    aSourceFile:=ConcatPaths([FLREDir,'src'])+DirectorySeparator+'PUCU.pas';
+    aTargetFile:=ConcatPaths([Workingdir,'data'])+DirectorySeparator+'PUCU.pas';
+    if FileExists(aSourceFile) then
+      FileUtil.CopyFile(aSourceFile,aTargetFile,[]);
   end;
 end;
 
@@ -2449,17 +2511,28 @@ var
   function CreateModuleSequence(aModuleName:string;IsHidden:boolean=false):string;
   var
     ModuleName,Declaration,RequiredModules:string;
+    RequiredModulesList:TStringList;
+    li:integer;
   begin
     result:='';
     ModuleName:=ini.ReadString(aModuleName,INIKEYWORD_NAME,'');
     if ModuleName<>'' then
     begin
       if IsHidden then Declaration:=_DECLAREHIDDEN else Declaration:=_DECLARE;
-      RequiredModules:=ini.ReadString(aModuleName,Trim(_REQUIRES),'');
-      if RequiredModules<>'' then
-      begin
-        RequiredModules:=_REQUIRES + RequiredModules + _SEP;
-        RequiredModules:=StringReplace(RequiredModules, ',', _SEP+_REQUIRES, [rfReplaceAll,rfIgnoreCase]);
+
+      RequiredModules:='';
+      RequiredModulesList:=TStringList.Create;
+      try
+        RequiredModulesList.AddCommaText(ini.ReadString(aModuleName,Trim(_REQUIRES),''));
+        if (RequiredModulesList.Count>0) then
+        begin
+          for li:=0 to Pred(RequiredModulesList.Count) do
+          begin
+            RequiredModules:=RequiredModules+_REQUIRES+RequiredModulesList.Strings[li]+_SEP;
+          end;
+        end;
+      finally
+        RequiredModulesList.Free;
       end;
 
       result:=

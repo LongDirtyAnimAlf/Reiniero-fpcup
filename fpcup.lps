@@ -16,7 +16,7 @@
           </Target>
           <SearchPaths>
             <IncludeFiles Value="$(ProjOutDir)"/>
-            <OtherUnitFiles Value="synaser;crossinstallers"/>
+            <OtherUnitFiles Value="synaser;crossinstallers;dcpcrypt;dcpcrypt\Hashes;dcpcrypt\Ciphers"/>
             <UnitOutputDirectory Value="libfpcup\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <CodeGeneration>
@@ -57,7 +57,7 @@
           </Target>
           <SearchPaths>
             <IncludeFiles Value="$(ProjOutDir)"/>
-            <OtherUnitFiles Value="synaser;crossinstallers"/>
+            <OtherUnitFiles Value="synaser;crossinstallers;dcpcrypt;dcpcrypt\Hashes;dcpcrypt\Ciphers"/>
             <UnitOutputDirectory Value="libfpcup\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <Conditionals Value="if TargetOS = &apos;darwin&apos; then begin
@@ -101,7 +101,7 @@ end;"/>
           </Target>
           <SearchPaths>
             <IncludeFiles Value="$(ProjOutDir)"/>
-            <OtherUnitFiles Value="synaser;crossinstallers"/>
+            <OtherUnitFiles Value="synaser;crossinstallers;dcpcrypt;dcpcrypt\Hashes;dcpcrypt\Ciphers"/>
             <UnitOutputDirectory Value="libfpcup\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
           <Conditionals Value="if TargetOS = &apos;darwin&apos; then begin
@@ -140,13 +140,13 @@ end;"/>
       </SessionEnabledMatrixOptions>
     </BuildModes>
     <ManyBuildModesSelection Value="win32,win64,linuxi386,linux64,linuxaarch64,freebsdi386,freebsdx64,linuxppc64,linuxarmhf"/>
-    <Units Count="46">
+    <Units Count="49">
       <Unit0>
         <Filename Value="fpcup.lpr"/>
         <IsPartOfProject Value="True"/>
         <IsVisibleTab Value="True"/>
-        <TopLine Value="64"/>
-        <CursorPos Y="72"/>
+        <TopLine Value="140"/>
+        <CursorPos Y="165"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
       </Unit0>
@@ -496,6 +496,33 @@ end;"/>
         <EditorIndex Value="-1"/>
         <UsageCount Value="94"/>
       </Unit45>
+      <Unit46>
+        <Filename Value="dcpcrypt\dcpbase64.pas"/>
+        <IsPartOfProject Value="True"/>
+        <EditorIndex Value="-1"/>
+        <WindowIndex Value="-1"/>
+        <TopLine Value="-1"/>
+        <CursorPos X="-1" Y="-1"/>
+        <UsageCount Value="20"/>
+      </Unit46>
+      <Unit47>
+        <Filename Value="dcpcrypt\Hashes\dcpsha512.pas"/>
+        <IsPartOfProject Value="True"/>
+        <EditorIndex Value="-1"/>
+        <WindowIndex Value="-1"/>
+        <TopLine Value="-1"/>
+        <CursorPos X="-1" Y="-1"/>
+        <UsageCount Value="20"/>
+      </Unit47>
+      <Unit48>
+        <Filename Value="dcpcrypt\Ciphers\dcpdes.pas"/>
+        <IsPartOfProject Value="True"/>
+        <EditorIndex Value="-1"/>
+        <WindowIndex Value="-1"/>
+        <TopLine Value="-1"/>
+        <CursorPos X="-1" Y="-1"/>
+        <UsageCount Value="20"/>
+      </Unit48>
     </Units>
     <RunParams>
       <FormatVersion Value="2"/>

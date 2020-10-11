@@ -115,6 +115,7 @@ type
 
   TFPCInstaller = class(TBaseFPCInstaller)
   private
+    FSoftFloat: boolean;
     FTargetCompilerName: string;
     FBootstrapCompiler: string;
     FBootstrapCompilerDirectory: string;
@@ -146,6 +147,7 @@ type
     // and UnInstallModule but executed only once
     function InitModule(aBootstrapVersion:string=''):boolean;
   public
+    property SoftFloat: boolean write FSoftFloat;
     //Directory that has compiler needed to compile compiler sources. If compiler doesn't exist, it will be downloaded
     property BootstrapCompilerDirectory: string write FBootstrapCompilerDirectory;
     // Build module
@@ -535,19 +537,6 @@ var
   {$endif}
 begin
   result:=inherited;
-  // Make crosscompiler using new compiler
-  { Note: command line equivalents for Win32=>Win64 cross compiler:
-  set path=c:\development\fpc\bin\i386-win32;c:\development\fpcbootstrap
-  make FPC=c:\development\fpc\bin\i386-win32\fpc.exe --directory=c:\development\fpc INSTALL_PREFIX=c:\development\fpc UPXPROG=echo COPYTREE=echo all OS_TARGET=win64 CPU_TARGET=x86_64
-  rem already gives compiler\ppcrossx64.exe, compiler\ppcx64.exe
-  make FPC=c:\development\fpc\bin\i386-win32\fpc.exe --directory=c:\development\fpc INSTALL_PREFIX=c:\development\fpc UPXPROG=echo COPYTREE=echo crossinstall OS_TARGET=win64 CPU_TARGET=x86_64
-  rem gives bin\i386-win32\ppcrossx64.exe
-
-  Note: make install CROSSINSTALL=1 apparently installs, but does NOT install utilities (ld etc?) for that
-  platform; see posting Jonas Maebe https://lists.freepascal.org/lists/fpc-pascal/2011-August/030084.html
-  make all install CROSSCOMPILE=1??? find out?
-  }
-
   result:=false; //fail by default
 
   if assigned(CrossInstaller) then
@@ -643,10 +632,13 @@ begin
         begin
           s1:='';
           {$ifdef Darwin}
-          s1:=GetDarwinSDKVersion('macosx');
-          if CompareVersionStrings(s1,'10.8')>=0 then
+          if (CrossInstaller.TargetCPU=TCPU.i386) OR (CrossInstaller.TargetCPU=TCPU.x86_64) then
           begin
-            s1:='10.8';
+            s1:=GetDarwinSDKVersion('macosx');
+            if CompareVersionStrings(s1,'10.8')>=0 then
+            begin
+              s1:='10.8';
+            end;
           end;
           {$endif}
           if Length(s1)>0 then
@@ -664,8 +656,8 @@ begin
           if (CrossInstaller.TargetCPU=TCPU.aarch64) OR (CrossInstaller.TargetCPU=TCPU.arm) then
           begin
             s1:=GetDarwinSDKVersion('iphoneos');
-          end
-          else
+          end;
+          if (CrossInstaller.TargetCPU=TCPU.i386) OR (CrossInstaller.TargetCPU=TCPU.x86_64) then
           begin
             s1:=GetDarwinSDKVersion('iphonesimulator');
           end;
@@ -751,11 +743,14 @@ begin
           if Length(Shell)>0 then Processor.Process.Parameters.Add('SHELL='+Shell);
           {$ENDIF}
           Processor.Process.CurrentDirectory:=ExcludeTrailingPathDelimiter(FSourceDirectory);
-          {
+
           //Still not clear if jobs can be enabled for crosscompiler builds ... :-|
           if (NOT FNoJobs) then
+          begin
             Processor.Process.Parameters.Add('--jobs='+IntToStr(FCPUCount));
-          }
+            Processor.Process.Parameters.Add('FPMAKEOPT=--threads='+IntToStr(FCPUCount));
+          end;
+
           Processor.Process.Parameters.Add('--directory='+ ExcludeTrailingPathDelimiter(FSourceDirectory));
           Processor.Process.Parameters.Add('FPCMAKE=' + IncludeTrailingPathDelimiter(FBinPath)+'fpcmake'+GetExeExt);
           Processor.Process.Parameters.Add('PPUMOVE=' + IncludeTrailingPathDelimiter(FBinPath)+'ppumove'+GetExeExt);
@@ -781,7 +776,7 @@ begin
             end;
           end;
           Processor.Process.Parameters.Add('UPXPROG=echo'); //Don't use UPX
-          Processor.Process.Parameters.Add('COPYTREE=echo'); //fix for examples in Win svn, see build FAQ
+          //Processor.Process.Parameters.Add('COPYTREE=echo'); //fix for examples in Win svn, see build FAQ
           {$ELSE}
           Processor.Process.Parameters.Add('INSTALL_BINDIR='+FBinPath);
           {$ENDIF}
@@ -964,10 +959,11 @@ begin
                Options:=Options+' -dFPC_USE_LIBC';
           {$endif}
 
-          if (Length(ActualRevision)=0) OR (ActualRevision='failure') then
+          // Revision should be something like : "[r]123456" !!
+          if (Length(ActualRevision)=0) OR (ActualRevision='failure') OR (NOT (ActualRevision[2] in ['0'..'9'])) then
           begin
             s2:=GetRevision(ModuleName);
-            if Length(s2)>0 then FActualRevision:=s2;
+            if (Length(s2)>0) then FActualRevision:=s2;
           end;
 
           if (Length(ActualRevision)>0) AND (ActualRevision<>'failure') then
@@ -1449,7 +1445,6 @@ var
   {$IFDEF UNIX}
   s3:string;
   {$ENDIF}
-
   //FPCDirStore:string;
 begin
   result:=inherited;
@@ -1502,6 +1497,11 @@ begin
 
   if (ModuleName=_FPC) then
   begin
+    if (Length(ActualRevision)=0) OR (ActualRevision='failure') then
+    begin
+      s1:=GetRevision(ModuleName);
+      if Length(s1)>0 then FActualRevision:=s1;
+    end;
     Infoln(infotext+'Now building '+ModuleName+' revision '+ActualRevision,etInfo);
   end;
 
@@ -1511,8 +1511,13 @@ begin
   if Length(Shell)>0 then Processor.Process.Parameters.Add('SHELL='+Shell);
   {$ENDIF}
   FErrorLog.Clear;
+
   if (NOT FNoJobs) then
+  begin
     Processor.Process.Parameters.Add('--jobs='+IntToStr(FCPUCount));
+    Processor.Process.Parameters.Add('FPMAKEOPT=--threads='+IntToStr(FCPUCount));
+  end;
+
   //Processor.Process.Parameters.Add('FPC='+FCompiler);
   Processor.Process.Parameters.Add('PP='+FCompiler);
 
@@ -1559,7 +1564,7 @@ begin
   end;
 
   Processor.Process.Parameters.Add('UPXPROG=echo'); //Don't use UPX
-  Processor.Process.Parameters.Add('COPYTREE=echo'); //fix for examples in Win svn, see build FAQ
+  //Processor.Process.Parameters.Add('COPYTREE=echo'); //fix for examples in Win svn, see build FAQ
   {$ENDIF}
   Processor.Process.Parameters.Add('OS_SOURCE=' + GetTargetOS);
   Processor.Process.Parameters.Add('CPU_SOURCE=' + GetTargetCPU);
@@ -1679,6 +1684,8 @@ begin
   else
   begin
     Processor.Process.Parameters.Add('all');
+    //If we have separate source and install, always use the install command
+    //if (FInstallDirectory<>FSourceDirectory) then
     Processor.Process.Parameters.Add('install');
   end;
 
@@ -2354,7 +2361,7 @@ begin
   else
   begin
     result:=GetVersionFromSource(FSourceDirectory);
-    if result='0.0.0' then result:=GetVersionFromUrl(FURL);
+    if result='0.0.0' then result:=GetVersionFromUrl(URL);
   end;
 end;
 
@@ -2401,13 +2408,13 @@ begin
 
   localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (InitModule): ';
 
-  FBinPath:=IncludeTrailingPathDelimiter(FInstallDirectory)+'bin'+DirectorySeparator+GetFPCTarget(true);
+  FBinPath:=ConcatPaths([FInstallDirectory,'bin',GetFPCTarget(true)]);
 
   result:=CheckAndGetTools;
 
   WritelnLog(localinfotext+'Init:', false);
   WritelnLog(localinfotext+'FPC directory:      ' + FSourceDirectory, false);
-  WritelnLog(localinfotext+'FPC URL:            ' + FURL, false);
+  WritelnLog(localinfotext+'FPC URL:            ' + URL, false);
   WritelnLog(localinfotext+'FPC options:        ' + FCompilerOptions, false);
 
   // set standard bootstrap compilername
@@ -2843,7 +2850,7 @@ begin
 
   WritelnLog(localinfotext+'Init:',false);
   WritelnLog(localinfotext+'Bootstrap compiler dir: '+ExtractFilePath(FCompiler),false);
-  WritelnLog(localinfotext+'FPC URL:                '+FURL,false);
+  WritelnLog(localinfotext+'FPC URL:                '+URL,false);
   WritelnLog(localinfotext+'FPC options:            '+FCompilerOptions,false);
   WritelnLog(localinfotext+'FPC source directory:   '+FSourceDirectory,false);
   WritelnLog(localinfotext+'FPC install directory:  '+FInstallDirectory,false);
@@ -2990,18 +2997,29 @@ begin
     exit(false);
   end;
 
-  s2:=GetVersion;
   s:=GetCompilerInDir(FInstallDirectory);
-  VersionSnippet:=CompilerVersion(s);
-  if VersionSnippet='0.0.0' then VersionSnippet:=s2;
-  if VersionSnippet<>'0.0.0' then
+  if (Self is TFPCCrossInstaller) then
   begin
-    if (Self is TFPCCrossInstaller) then
-      s:='FPC '+CrossInstaller.RegisterName+' cross-builder: Detected source version FPC (compiler): '
-    else
-      s:='FPC native builder: Detected source version FPC: ';
-    Infoln(s+VersionSnippet, etInfo);
+    VersionSnippet:=CompilerVersion(s);
+    s2:='FPC '+CrossInstaller.RegisterName+' cross-builder: Detected source version FPC (compiler): '
+  end
+  else
+  begin
+    VersionSnippet:=GetVersion;
+    s2:='FPC native builder: Detected source version FPC (source): ';
+    if VersionSnippet='0.0.0' then
+    begin
+      VersionSnippet:=CompilerVersion(s);
+      if VersionSnippet<>'0.0.0' then
+      begin
+        VersionFromString(VersionSnippet,FMajorVersion,FMinorVersion,FReleaseVersion);
+        s2:='FPC native builder: Detected source version FPC (compiler): ';
+      end;
+    end;
   end;
+
+  if VersionSnippet<>'0.0.0' then
+    Infoln(s2+VersionSnippet, etInfo);
 
   // if cross-compiling, skip a lot of code
   // trust the previous work done by this code for the native installer!
@@ -3016,10 +3034,7 @@ begin
     // So, try something else !
     if RequiredBootstrapVersionLow='0.0.0' then RequiredBootstrapVersionHigh:='0.0.0';
     if RequiredBootstrapVersionLow='0.0.0' then
-       RequiredBootstrapVersionLow:=GetBootstrapCompilerVersionFromVersion(GetVersionFromSource(FSourceDirectory));
-    if RequiredBootstrapVersionLow='0.0.0' then
-       RequiredBootstrapVersionLow:=GetBootstrapCompilerVersionFromVersion(GetVersionFromUrl(FURL));
-
+       RequiredBootstrapVersionLow:=GetBootstrapCompilerVersionFromVersion(GetVersion);
     if RequiredBootstrapVersionLow='0.0.0' then
     begin
       Infoln(infotext+'Could not determine required bootstrap compiler version. Should not happen. Aborting.',etError);
@@ -3149,7 +3164,10 @@ begin
       Processor.Process.CurrentDirectory:=ExcludeTrailingPathDelimiter(FSourceDirectory);
       Processor.Process.Parameters.Add('compiler_cycle');
       if (NOT FNoJobs) then
+      begin
         Processor.Process.Parameters.Add('--jobs='+IntToStr(FCPUCount));
+        Processor.Process.Parameters.Add('FPMAKEOPT=--threads='+IntToStr(FCPUCount));
+      end;
       Processor.Process.Parameters.Add('FPC='+FCompiler);
       Processor.Process.Parameters.Add('--directory='+ExcludeTrailingPathDelimiter(FSourceDirectory));
       Processor.Process.Parameters.Add('OS_SOURCE=win32');
@@ -3183,7 +3201,10 @@ begin
       Processor.Process.Parameters.Clear;
       Processor.Process.Parameters.Add('compiler_cycle');
       if (NOT FNoJobs) then
+      begin
         Processor.Process.Parameters.Add('--jobs='+IntToStr(FCPUCount));
+        Processor.Process.Parameters.Add('FPMAKEOPT=--threads='+IntToStr(FCPUCount));
+      end;
       Processor.Process.Parameters.Add('FPC='+FCompiler);
       Processor.Process.Parameters.Add('--directory='+ExcludeTrailingPathDelimiter(FSourceDirectory));
       Processor.Process.Parameters.Add('OS_SOURCE=' + GetTargetOS);
@@ -3648,7 +3669,6 @@ begin
         {$endif}
         {$endif}
 
-
         {$ENDIF UNIX}
 
         {$ifdef Darwin}
@@ -3776,6 +3796,7 @@ begin
 
   if OperationSucceeded then
   begin
+    Infoln(infotext+'Start search and removal of stale build files and directories. May take a while.');
     RemoveStaleBuildDirectories(FSourceDirectory,GetTargetCPU,GetTargetOS);
     Infoln(infotext+'Removal of stale build files and directories ready.');
     WritelnLog(infotext+'Update/build/config succeeded.',false);
@@ -3790,7 +3811,7 @@ function TFPCInstaller.CleanModule(ModuleName: string): boolean;
 // On Windows, removing fpmake.exe, see Build FAQ (Nov 2011), 2.5
 var
   CrossCompiling: boolean;
-  FileCounter:word;
+  FileCounter:integer;
   DeleteList: TStringList;
   CPUOS_Signature:string;
   aCleanupCompiler:string;
@@ -3842,7 +3863,10 @@ begin
     {$ENDIF}
     Processor.Process.CurrentDirectory:=ExcludeTrailingPathDelimiter(FSourceDirectory);
     if (NOT FNoJobs) then
+    begin
       Processor.Process.Parameters.Add('--jobs='+IntToStr(FCPUCount));
+      Processor.Process.Parameters.Add('FPMAKEOPT=--threads='+IntToStr(FCPUCount));
+    end;
     Processor.Process.Parameters.Add('FPC='+aCleanupCompiler);
     Processor.Process.Parameters.Add('--directory='+ExcludeTrailingPathDelimiter(FSourceDirectory));
     Processor.Process.Parameters.Add('FPCMAKE=' + IncludeTrailingPathDelimiter(FBinPath)+'fpcmake'+GetExeExt);
@@ -3855,7 +3879,7 @@ begin
     {$ENDIF}
     {$IFDEF MSWINDOWS}
     Processor.Process.Parameters.Add('UPXPROG=echo'); //Don't use UPX
-    Processor.Process.Parameters.Add('COPYTREE=echo'); //fix for examples in Win svn, see build FAQ
+    //Processor.Process.Parameters.Add('COPYTREE=echo'); //fix for examples in Win svn, see build FAQ
     Processor.Process.Parameters.Add('CPU_SOURCE='+GetTargetCPU);
     Processor.Process.Parameters.Add('OS_SOURCE='+GetTargetOS);
     {$ENDIF}
@@ -3953,10 +3977,13 @@ begin
       DeleteList.Add('.o');
       DeleteFilesExtensionsSubdirs(FSourceDirectory,DeleteList,CPUOS_Signature);
 
-      DeleteList.Clear;
+      // Delete stray compilers, if any !!
+      FindAllFiles(DeleteList,IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler', '*'+GetExeExt, False);
+      // But do not delete the PPC executable ... :-)
+      FileCounter:=DeleteList.IndexOf(IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+DirectorySeparator+'ppc'+GetExeExt);
+      if (FileCounter<>-1) then DeleteList.Delete(FileCounter);
 
       // delete stray executables, if any !!
-      FindAllFiles(DeleteList,IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler', '*'+GetExeExt, False);
       if (NOT CrossCompiling) then
       begin
         FindAllFiles(DeleteList,IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+DirectorySeparator+'utils', '*'+GetExeExt, False);
@@ -4027,7 +4054,7 @@ begin
          else result:=DownloadFromSVN(ModuleName, FPreviousRevision, FActualRevision, UpdateWarnings);
       if UpdateWarnings.Count>0 then
       begin
-        WritelnLog(UpdateWarnings.Text);
+        WritelnLog(UpdateWarnings);
       end;
     finally
       UpdateWarnings.Free;
@@ -4053,44 +4080,44 @@ begin
       Infoln(infotext+'Could not get version of ' + ModuleName + ' sources. Expect severe errors.',etError);
     end;
 
-      if FRepositoryUpdated then
-      begin
-        Infoln(infotext+ModuleName + ' was at revision: '+PreviousRevision,etInfo);
-        Infoln(infotext+ModuleName + ' is now at revision: '+ActualRevision,etInfo);
-      end
+    if FRepositoryUpdated then
+    begin
+      Infoln(infotext+ModuleName + ' was at revision: '+PreviousRevision,etInfo);
+      Infoln(infotext+ModuleName + ' is now at revision: '+ActualRevision,etInfo);
+    end
+    else
+    begin
+      Infoln(infotext+ModuleName + ' is at revision: '+ActualRevision,etInfo);
+      Infoln(infotext+'No updates for ' + ModuleName + ' found.',etInfo);
+    end;
+    UpdateWarnings:=TStringList.Create;
+    try
+      s:=SafeExpandFileName(SafeGetApplicationPath+'fpcuprevisions.log');
+      if FileExists(s) then
+        UpdateWarnings.LoadFromFile(s)
       else
       begin
-        Infoln(infotext+ModuleName + ' is at revision: '+ActualRevision,etInfo);
-        Infoln(infotext+'No updates for ' + ModuleName + ' found.',etInfo);
+        UpdateWarnings.Add('New install.');
+        UpdateWarnings.Add('Date: '+DateTimeToStr(now));
+        UpdateWarnings.Add('Location: '+FBaseDirectory);
+        UpdateWarnings.Add('');
       end;
-      UpdateWarnings:=TStringList.Create;
-      try
-        s:=SafeExpandFileName(SafeGetApplicationPath+'fpcuprevisions.log');
-        if FileExists(s) then
-          UpdateWarnings.LoadFromFile(s)
-        else
-        begin
-          UpdateWarnings.Add('New install.');
-          UpdateWarnings.Add('Date: '+DateTimeToStr(now));
-          UpdateWarnings.Add('Location: '+FBaseDirectory);
-          UpdateWarnings.Add('');
-        end;
       UpdateWarnings.Add(ModuleName+' update at: '+DateTimeToStr(now));
       if aRepoClient<>nil then UpdateWarnings.Add(ModuleName+' URL: '+aRepoClient.Repository);
       UpdateWarnings.Add(ModuleName+' previous revision: '+PreviousRevision);
       UpdateWarnings.Add(ModuleName+' new revision: '+ActualRevision);
-        UpdateWarnings.Add('');
-        UpdateWarnings.SaveToFile(s);
-      finally
-        UpdateWarnings.Free;
-      end;
+      UpdateWarnings.Add('');
+      UpdateWarnings.SaveToFile(s);
+    finally
+      UpdateWarnings.Free;
+    end;
 
     CreateRevision(ModuleName,ActualRevision);
 
     if (SourceVersion<>'0.0.0') then PatchModule(ModuleName);
-    end
-    else
-    begin
+  end
+  else
+  begin
     Infoln(infotext+'Checkout/update of ' + ModuleName + ' sources failure.',etError);
   end;
 end;

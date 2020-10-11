@@ -1,7 +1,7 @@
-unit m_any_to_darwin386;
+unit m_any_to_iosaarch64;
 
-{ Cross compiles to Darwin 32 bit
-Copyright (C) 2014 Reinier Olislagers / DonAlfredo
+{ Cross compiles to ios 64 bit arm
+Copyright (C) 2020 Reinier Olislagers / DonAlfredo
 
 This library is free software; you can redistribute it and/or modify it
 under the terms of the GNU Library General Public License as published by
@@ -43,8 +43,8 @@ uses
 
 type
 
-{ Tany_darwin386 }
-Tany_darwin386 = class(TCrossInstaller)
+{ Tany_iosaarch64 }
+Tany_iosaarch64 = class(TCrossInstaller)
 private
   FAlreadyWarned: boolean; //did we warn user about errors and fixes already?
 public
@@ -54,18 +54,24 @@ public
   destructor Destroy; override;
 end;
 
-{ Tany_darwin386 }
+{ Tany_iosaarch64 }
 
-function Tany_darwin386.GetLibs(Basepath:string): boolean;
+function Tany_iosaarch64.GetLibs(Basepath:string): boolean;
 const
   LibName='libc.dylib';
 var
   s:string;
-  i,j:integer;
+  i,j,k:integer;
+  found:boolean;
+  SDKVersion,SDKMajor,SDKMinor:string;
 begin
   result:=FLibsFound;
 
   if result then exit;
+
+  found:=false;
+  SDKMajor := '';
+  SDKMinor := '';
 
   // begin simple: check presence of library file in basedir
   if not result then
@@ -86,45 +92,71 @@ begin
   if not result then
     result:=SimpleSearchLibrary(BasePath,DirName,LibName);
 
-  // also for osxcross
+  if not result then
+    result:=SimpleSearchLibrary(BasePath,DirName,'libc.tbd');
+
+  if not result then
+    result:=SimpleSearchLibrary(BasePath,ConcatPaths([DirName,'usr','lib']),LibName);
+
+  if not result then
+    result:=SimpleSearchLibrary(BasePath,ConcatPaths([DirName,'usr','lib']),'libc.tbd');
+
+  // universal libs : also search in arm-ios
+  if not result then
+    result:=SimpleSearchLibrary(BasePath,ConcatPaths(['arm-ios','usr','lib']),LibName);
+  if not result then
+    result:=SimpleSearchLibrary(BasePath,ConcatPaths(['arm-ios','usr','lib']),'libc.tbd');
+
+
+  // also for cctools
   if not result then
   begin
-    for i:=15 downto 3 do
+    for i:=15 downto 8 do
     begin
-      s:='MacOSX10.'+InttoStr(i);
-      result:=SimpleSearchLibrary(BasePath,'x86-darwin'+DirectorySeparator+s+'.sdk'+DirectorySeparator+'usr'+DirectorySeparator+'lib',LibName);
-      if not result then
-         result:=SimpleSearchLibrary(BasePath,'x86-darwin'+DirectorySeparator+s+'.sdk'+DirectorySeparator+'usr'+DirectorySeparator+'lib','libc.tbd');
-      if not result then
-         result:=SimpleSearchLibrary(BasePath,'all-darwin'+DirectorySeparator+s+'.sdk'+DirectorySeparator+'usr'+DirectorySeparator+'lib',LibName);
-      if not result then
-         result:=SimpleSearchLibrary(BasePath,'all-darwin'+DirectorySeparator+s+'.sdk'+DirectorySeparator+'usr'+DirectorySeparator+'lib','libc.tbd');
-
-      if result then
+      if found then break;
+      for j:=15 downto -1 do
       begin
-        {$ifndef Darwin}
-        j:=StringListStartsWith(FCrossOpts,'-WM');
-        if j=-1 then
+        if found then break;
+        for k:=15 downto -1 do
         begin
-          // any SDK version setting >8 gives errors ... possible FPC bug ?
-          j:=i;
-          if j>8 then j:=8;
-          s:='-WM'+'10.'+InttoStr(j);
-          FCrossOpts.Add(s+' ');
-          ShowInfo('Did not find any -WM; using '+s+'.',etInfo);
-        end else s:=Trim(FCrossOpts[j]);
-        AddFPCCFGSnippet(s);
-        {$endif}
-        break;
-      end;
+          if found then break;
+          s:=InttoStr(i);
+          if j<>-1 then
+          begin
+            s:=s+'.'+InttoStr(j);
+            if k<>-1 then s:=s+'.'+InttoStr(k);
+          end;
+          SDKVersion:=s;
 
+          s:=ConcatPaths([DirName,'iPhoneOS'+SDKVersion+'.sdk','usr','lib']);
+          result:=SimpleSearchLibrary(BasePath,s,LibName);
+          if not result then
+             result:=SimpleSearchLibrary(BasePath,s,'libc.tbd');
+
+          // universal libs : also search in all-ios
+          if (not result) then
+          begin
+            s:=ConcatPaths(['all-ios','iPhoneOS'+SDKVersion+'.sdk','usr','lib']);
+            result:=SimpleSearchLibrary(BasePath,s,LibName);
+            if not result then
+               result:=SimpleSearchLibrary(BasePath,s,'libc.tbd');
+          end;
+
+          if result then
+          begin
+            found:=true;
+            SDKMajor := InttoStr(i);
+            SDKMinor := InttoStr(j);
+          end;
+        end;
+      end;
     end;
   end;
 
   if not result then
   begin
     {$IFDEF UNIX}
-    FLibsPath:='/usr/lib/i386-darwin-gnu'; //debian Jessie+ convention
+    FLibsPath:='/usr/lib/arm-darwin-gnu'; //debian Jessie+ convention
     result:=DirectoryExists(FLibsPath);
     if not result then
     ShowInfo('Searched but not found libspath '+FLibsPath);
@@ -143,23 +175,32 @@ begin
     s:=ExcludeTrailingBackslash(s);
 
     AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath)+'system'+DirectorySeparator);
-    AddFPCCFGSnippet('-k-framework -kAppKit');
     AddFPCCFGSnippet('-k-framework -kFoundation');
     AddFPCCFGSnippet('-k-framework -kCoreFoundation');
     AddFPCCFGSnippet('-XR'+s);
+
+    //Add minimal iOS version
+    {
+    if found then
+    begin
+      s:='-WP'+SDKMajor+'.'+SDKMinor;
+      AddFPCCFGSnippet(s);
+      FCrossOpts.Add(s+' ');
+    end;
+    }
   end
   else
   begin
-    ShowInfo('Hint: https://github.com/phracker/MacOSX-SDKs');
-    ShowInfo('Hint: https://github.com/alexey-lysiuk/macos-sdk');
-    ShowInfo('Hint: https://github.com/sirgreyhat/MacOSX-SDKs/releases');
+    ShowInfo('Hint: https://github.com/xybp888/iOS-SDKs');
+    ShowInfo('Hint: https://github.com/theos/sdks');
   end;
 end;
 
-function Tany_darwin386.GetBinUtils(Basepath:string): boolean;
+function Tany_iosaarch64.GetBinUtils(Basepath:string): boolean;
 var
   AsFile: string;
   BinPrefixTry: string;
+  aOption:string;
   i:integer;
 begin
   result:=inherited;
@@ -172,8 +213,19 @@ begin
     result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
 
   // Also allow for (cross)binutils from https://github.com/tpoechtrager/cctools
-  // fpc version from https://github.com/LongDirtyAnimalf/cctools
-  BinPrefixTry:=GetTargetCPU+'-apple-darwin';
+  BinPrefixTry:=TargetCPUName+'-apple-darwin';
+
+  {
+  10.4  = darwin8
+  10.5  = darwin9
+  10.6  = darwin10
+  10.7  = darwin11
+  10.8  = darwin12
+  10.9  = darwin13
+  10.10 = darwin14
+  10.11 = darwin15
+  10.12 = darwin16
+  }
 
   for i:=MAXDARWINVERSION downto MINDARWINVERSION do
   begin
@@ -184,11 +236,9 @@ begin
       if not result then
         result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
       if not result then
-        result:=SimpleSearchBinUtil(BasePath,'all-darwin',AsFile);
+        result:=SimpleSearchBinUtil(BasePath,'all-ios',AsFile);
       if not result then
-        result:=SimpleSearchBinUtil(BasePath+DirectorySeparator+'bin','all-darwin',AsFile);
-      if not result then
-        result:=SimpleSearchBinUtil(BasePath,'x86-darwin',AsFile);
+        result:=SimpleSearchBinUtil(BasePath+DirectorySeparator+'bin','all-ios',AsFile);
       if result then
       begin
         FBinUtilsPrefix:=BinPrefixTry+InttoStr(i)+'-';
@@ -202,38 +252,52 @@ begin
   if result then
   begin
     FBinsFound:=true;
+
     // Configuration snippet for FPC
     AddFPCCFGSnippet('-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath)); {search this directory for compiler utilities}
     AddFPCCFGSnippet('-XX');
     AddFPCCFGSnippet('-XP'+FBinUtilsPrefix); {Prepend the binutils names};
+
+    // Set some defaults if user hasn't specified otherwise
+    {
+    i:=StringListStartsWith(FCrossOpts,'-Ca');
+    if i=-1 then
+    begin
+      aOption:='-CaAARCH64IOS';
+      FCrossOpts.Add(aOption+' ');
+      ShowInfo('Did not find any -Ca architecture parameter; using '+aOption+'.');
+    end else aOption:=Trim(FCrossOpts[i]);
+    AddFPCCFGSnippet(aOption);
+    }
   end;
 end;
 
-constructor Tany_darwin386.Create;
+constructor Tany_iosaarch64.Create;
 begin
   inherited Create;
-  FTargetCPU:=TCPU.i386;
-  FTargetOS:=TOS.darwin;
+  FTargetCPU:=TCPU.aarch64;
+  FTargetOS:=TOS.ios;
   Reset;
-  FBinutilsPathInPath:=true;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
 
-destructor Tany_darwin386.Destroy;
+destructor Tany_iosaarch64.Destroy;
 begin
   inherited Destroy;
 end;
 
+{$ifndef Darwin}
 var
-  any_darwin386:Tany_darwin386;
+  any_iosaarch64:Tany_iosaarch64;
 
 initialization
-  any_darwin386:=Tany_darwin386.Create;
-  RegisterCrossCompiler(any_darwin386.RegisterName,any_darwin386);
+  any_iosaarch64:=Tany_iosaarch64.Create;
+  RegisterCrossCompiler(any_iosaarch64.RegisterName,any_iosaarch64);
 
 finalization
-  any_darwin386.Destroy;
+  any_iosaarch64.Destroy;
+{$endif}
 
 end.
 
