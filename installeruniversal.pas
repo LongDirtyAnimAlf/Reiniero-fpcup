@@ -31,8 +31,6 @@ Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 {$mode objfpc}{$H+}
 
-{$DEFINE DISABLELAZBUILDJOBS}
-
 {$modeswitch advancedrecords}
 
 interface
@@ -145,14 +143,14 @@ type
   { TmORMotPXLInstaller }
 
   TmORMotPXLInstaller = class(TUniversalInstaller)
-  protected
+  public
     function BuildModule(ModuleName: string): boolean; override;
   end;
 
   { TInternetToolsInstaller }
 
   TInternetToolsInstaller = class(TUniversalInstaller)
-  protected
+  public
     function GetModule(ModuleName: string): boolean; override;
   end;
 
@@ -252,10 +250,14 @@ begin
   Processor.Process.CurrentDirectory := ExcludeTrailingPathDelimiter(LazarusSourceDir);
   Processor.Process.Parameters.Add('--directory=' + Processor.Process.CurrentDirectory);
 
-  {
+  {$IF DEFINED(CPUARM) AND DEFINED(LINUX)}
+  Processor.Process.Parameters.Add('--jobs=1');
+  {$ELSE}
   //Still not clear if jobs can be enabled for Lazarus make builds ... :-|
-  if (NOT FNoJobs) then
-    Processor.Process.Parameters.Add('--jobs='+IntToStr(FCPUCount));}
+  //if (NOT FNoJobs) then
+  //  Processor.Process.Parameters.Add('--jobs='+IntToStr(FCPUCount));
+  {$ENDIF}
+
   Processor.Process.Parameters.Add('FPC=' + FCompiler);
   Processor.Process.Parameters.Add('PP=' + ExtractFilePath(FCompiler)+GetCompilerName(GetTargetCPU));
   Processor.Process.Parameters.Add('USESVN2REVISIONINC=0');
@@ -728,15 +730,6 @@ begin
   {$ELSE}
   Processor.Process.Parameters.Add('--quiet');
   {$ENDIF}
-
-  {$ifdef DISABLELAZBUILDJOBS}
-  if (True) then
-  {$else}
-  if (FNoJobs) then
-  {$endif}
-    Processor.Process.Parameters.Add('--max-process-count=1')
-  else
-    Processor.Process.Parameters.Add('--max-process-count='+InttoStr(FCPUCount));
 
   Processor.Process.Parameters.Add('--pcp=' + DoubleQuoteIfNeeded(FLazarusPrimaryConfigPath));
   Processor.Process.Parameters.Add('--cpu=' + GetTargetCPU);
@@ -1236,15 +1229,6 @@ begin
       {$ELSE}
       s:='--quiet';
       {$ENDIF}
-
-      {$ifdef DISABLELAZBUILDJOBS}
-      if (True) then
-      {$else}
-      if (FNoJobs) then
-      {$endif}
-        s:=s+' --max-process-count=1'
-      else
-        s:=s+' --max-process-count='+InttoStr(FCPUCount);
 
       if FLCL_Platform<>'' then s:=s+' --ws=' + FLCL_Platform;
       exec:=StringReplace(exec,LAZBUILDNAME+GetExeExt,LAZBUILDNAME+GetExeExt+' '+s,[rfIgnoreCase]);
@@ -2523,7 +2507,11 @@ var
       RequiredModules:='';
       RequiredModulesList:=TStringList.Create;
       try
+        {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)}
         RequiredModulesList.AddCommaText(ini.ReadString(aModuleName,Trim(_REQUIRES),''));
+        {$ELSE}
+        RequiredModulesList.AddText(ini.ReadString(aModuleName,Trim(_REQUIRES),''));
+        {$ENDIF}
         if (RequiredModulesList.Count>0) then
         begin
           for li:=0 to Pred(RequiredModulesList.Count) do

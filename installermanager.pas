@@ -432,6 +432,11 @@ type
 implementation
 
 uses
+  {$IFNDEF FPCONLY}
+  {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
+  InterfaceBase,
+  {$ENDIF}
+  {$ENDIF}
   StrUtils,
   processutils;
 
@@ -564,14 +569,26 @@ procedure TFPCupManager.WritelnLog(msg: string; ToConsole: boolean);
 begin
   // Set up log if it doesn't exist yet
   FLog.WriteLog(msg);
-  if ToConsole then if Assigned(Sequencer.Installer) then Sequencer.Installer.Infoln(msg);
+  if ToConsole then
+  begin
+    if Assigned(Sequencer.Installer) then
+      Sequencer.Installer.Infoln(msg)
+    else
+      ThreadLog(msg);
+  end;
 end;
 
 procedure TFPCupManager.WritelnLog(EventType: TEventType; msg: string; ToConsole: boolean);
 begin
   // Set up log if it doesn't exist yet
   FLog.WriteLog(EventType,msg);
-  if ToConsole then if Assigned(Sequencer.Installer) then Sequencer.Installer.Infoln(msg,EventType);
+  if ToConsole then
+  begin
+    if Assigned(Sequencer.Installer) then
+      Sequencer.Installer.Infoln(msg,EventType)
+    else
+      ThreadLog(msg,EventType);
+  end;
 end;
 
 function TFPCupManager.LoadFPCUPConfig: boolean;
@@ -1271,6 +1288,8 @@ function TSequencer.DoExec(FunctionName: string): boolean;
   end;
   {$endif linux}
   {$endif}
+var
+  WidgetTypeName:string;
 begin
   if FunctionName=_CREATEFPCUPSCRIPT then
     result:=CreateFpcupScript
@@ -1281,8 +1300,12 @@ begin
     result:=DeleteLazarusScript
   else if FunctionName=_CHECKDEVLIBS then
   begin
-    FParent.WritelnLog(etInfo,'Checking dev-libs for: '+FParent.LCL_Platform, true);
-    result:=CheckDevLibs(FParent.LCL_Platform)
+    WidgetTypeName:=FParent.LCL_Platform;
+    {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION > 30000)}
+    if (Length(WidgetTypeName)=0) then WidgetTypeName:=GetLCLWidgetTypeName;
+    {$ENDIF}
+    FParent.WritelnLog(etInfo,'Checking dev-libs for: '+WidgetTypeName, true);
+    result:=CheckDevLibs(WidgetTypeName);
   end
   {$endif}
   else

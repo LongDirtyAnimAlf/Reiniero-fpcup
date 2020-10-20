@@ -3,7 +3,7 @@
   <ProjectSession>
     <PathDelim Value="\"/>
     <Version Value="12"/>
-    <BuildModes Count="3" Active="darwin32">
+    <BuildModes Count="5" Active="Default">
       <Item1 Name="linuxarmhf">
         <MacroValues Count="1">
           <Macro1 Name="LCLWidgetType" Value="nogui"/>
@@ -45,10 +45,7 @@
           </Other>
         </CompilerOptions>
       </Item1>
-      <Item2 Name="darwin32">
-        <MacroValues Count="1">
-          <Macro1 Name="LCLWidgetType" Value="nogui"/>
-        </MacroValues>
+      <Item2 Name="darwini386">
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -60,10 +57,6 @@
             <OtherUnitFiles Value="synaser;crossinstallers;dcpcrypt;dcpcrypt\Hashes;dcpcrypt\Ciphers"/>
             <UnitOutputDirectory Value="libfpcup\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
-          <Conditionals Value="if TargetOS = &apos;darwin&apos; then begin
-  UsageCustomOptions += &apos; -k-macosx_version_min -k10.6&apos;;
-  UsageCustomOptions += &apos; -XR/Developer/SDKs/MacOSX10.6.sdk/&apos;;
-end;"/>
           <CodeGeneration>
             <SmartLinkUnit Value="True"/>
             <TargetCPU Value="i386"/>
@@ -89,10 +82,7 @@ end;"/>
           </Other>
         </CompilerOptions>
       </Item2>
-      <Item3 Name="darwin64">
-        <MacroValues Count="1">
-          <Macro1 Name="LCLWidgetType" Value="nogui"/>
-        </MacroValues>
+      <Item3 Name="darwinx64">
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -104,10 +94,6 @@ end;"/>
             <OtherUnitFiles Value="synaser;crossinstallers;dcpcrypt;dcpcrypt\Hashes;dcpcrypt\Ciphers"/>
             <UnitOutputDirectory Value="libfpcup\$(TargetCPU)-$(TargetOS)"/>
           </SearchPaths>
-          <Conditionals Value="if TargetOS = &apos;darwin&apos; then begin
-  UsageCustomOptions += &apos; -k-macosx_version_min -k10.6&apos;;
-  UsageCustomOptions += &apos; -XR/Developer/SDKs/MacOSX10.6.sdk/&apos;;
-end;"/>
           <CodeGeneration>
             <SmartLinkUnit Value="True"/>
             <TargetCPU Value="x86_64"/>
@@ -133,10 +119,82 @@ end;"/>
           </Other>
         </CompilerOptions>
       </Item3>
-      <SessionEnabledMatrixOptions Count="3">
+      <Item4 Name="darwinxppc">
+        <CompilerOptions>
+          <Version Value="11"/>
+          <PathDelim Value="\"/>
+          <Target>
+            <Filename Value="bin\$NameOnly($(ProjFile))-$(TargetCPU)-$(TargetOS)"/>
+          </Target>
+          <SearchPaths>
+            <IncludeFiles Value="$(ProjOutDir)"/>
+            <OtherUnitFiles Value="synaser;crossinstallers;dcpcrypt;dcpcrypt\Hashes;dcpcrypt\Ciphers"/>
+            <UnitOutputDirectory Value="libfpcup\$(TargetCPU)-$(TargetOS)"/>
+          </SearchPaths>
+          <CodeGeneration>
+            <SmartLinkUnit Value="True"/>
+            <TargetCPU Value="powerpc"/>
+            <TargetOS Value="darwin"/>
+            <Optimizations>
+              <OptimizationLevel Value="2"/>
+            </Optimizations>
+          </CodeGeneration>
+          <Linking>
+            <Debugging>
+              <GenerateDebugInfo Value="False"/>
+              <StripSymbols Value="True"/>
+              <UseExternalDbgSyms Value="True"/>
+            </Debugging>
+            <LinkSmart Value="True"/>
+          </Linking>
+          <Other>
+            <WriteFPCLogo Value="False"/>
+            <CustomOptions Value="-dFPCONLY"/>
+            <ExecuteBefore>
+              <CompileReasons Run="False"/>
+            </ExecuteBefore>
+          </Other>
+        </CompilerOptions>
+      </Item4>
+      <Item5 Name="darwinxppc64">
+        <CompilerOptions>
+          <Version Value="11"/>
+          <PathDelim Value="\"/>
+          <Target>
+            <Filename Value="bin\$NameOnly($(ProjFile))-$(TargetCPU)-$(TargetOS)"/>
+          </Target>
+          <SearchPaths>
+            <IncludeFiles Value="$(ProjOutDir)"/>
+            <OtherUnitFiles Value="synaser;crossinstallers;dcpcrypt;dcpcrypt\Hashes;dcpcrypt\Ciphers"/>
+            <UnitOutputDirectory Value="libfpcup\$(TargetCPU)-$(TargetOS)"/>
+          </SearchPaths>
+          <CodeGeneration>
+            <SmartLinkUnit Value="True"/>
+            <TargetCPU Value="powerpc64"/>
+            <TargetOS Value="darwin"/>
+            <Optimizations>
+              <OptimizationLevel Value="2"/>
+            </Optimizations>
+          </CodeGeneration>
+          <Linking>
+            <Debugging>
+              <GenerateDebugInfo Value="False"/>
+              <StripSymbols Value="True"/>
+              <UseExternalDbgSyms Value="True"/>
+            </Debugging>
+            <LinkSmart Value="True"/>
+          </Linking>
+          <Other>
+            <WriteFPCLogo Value="False"/>
+            <CustomOptions Value="-dFPCONLY"/>
+            <ExecuteBefore>
+              <CompileReasons Run="False"/>
+            </ExecuteBefore>
+          </Other>
+        </CompilerOptions>
+      </Item5>
+      <SessionEnabledMatrixOptions Count="1">
         <Item1 Mode="linuxarmhf" Option="233755810855"/>
-        <Item2 Mode="darwin32" Option="233755810855"/>
-        <Item3 Mode="darwin64" Option="233755810855"/>
       </SessionEnabledMatrixOptions>
     </BuildModes>
     <ManyBuildModesSelection Value="win32,win64,linuxi386,linux64,linuxaarch64,freebsdi386,freebsdx64,linuxppc64,linuxarmhf"/>
@@ -145,8 +203,6 @@ end;"/>
         <Filename Value="fpcup.lpr"/>
         <IsPartOfProject Value="True"/>
         <IsVisibleTab Value="True"/>
-        <TopLine Value="140"/>
-        <CursorPos Y="165"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
       </Unit0>
@@ -165,30 +221,29 @@ end;"/>
       <Unit3>
         <Filename Value="processutils.pas"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="-1"/>
-        <TopLine Value="448"/>
+        <EditorIndex Value="1"/>
+        <TopLine Value="530"/>
         <CursorPos X="25" Y="457"/>
         <UsageCount Value="200"/>
+        <Loaded Value="True"/>
       </Unit3>
       <Unit4>
         <Filename Value="installercore.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerCore"/>
-        <EditorIndex Value="2"/>
-        <TopLine Value="3211"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="3210"/>
         <CursorPos X="3" Y="3035"/>
         <UsageCount Value="200"/>
-        <Loaded Value="True"/>
       </Unit4>
       <Unit5>
         <Filename Value="installerfpc.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerFpc"/>
-        <EditorIndex Value="1"/>
+        <EditorIndex Value="-1"/>
         <TopLine Value="3995"/>
         <CursorPos X="13" Y="4000"/>
         <UsageCount Value="200"/>
-        <Loaded Value="True"/>
       </Unit5>
       <Unit6>
         <Filename Value="installerlazarus.pas"/>
@@ -220,7 +275,7 @@ end;"/>
       <Unit9>
         <Filename Value="fpcup.ini"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="3"/>
+        <EditorIndex Value="2"/>
         <TopLine Value="21"/>
         <CursorPos Y="40"/>
         <UsageCount Value="200"/>
@@ -327,7 +382,7 @@ end;"/>
       <Unit23>
         <Filename Value="settings.ini"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="4"/>
+        <EditorIndex Value="3"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
         <DefaultSyntaxHighlighter Value="Ini"/>
@@ -449,7 +504,7 @@ end;"/>
         <WindowIndex Value="-1"/>
         <TopLine Value="-1"/>
         <CursorPos X="-1" Y="-1"/>
-        <UsageCount Value="137"/>
+        <UsageCount Value="140"/>
       </Unit39>
       <Unit40>
         <Filename Value="jedi.inc"/>
@@ -457,7 +512,7 @@ end;"/>
         <EditorIndex Value="-1"/>
         <TopLine Value="68"/>
         <CursorPos X="8" Y="88"/>
-        <UsageCount Value="137"/>
+        <UsageCount Value="140"/>
       </Unit40>
       <Unit41>
         <Filename Value="m_linux386_to_mipsel.pas"/>
@@ -465,7 +520,7 @@ end;"/>
         <EditorIndex Value="-1"/>
         <TopLine Value="107"/>
         <CursorPos Y="132"/>
-        <UsageCount Value="137"/>
+        <UsageCount Value="140"/>
       </Unit41>
       <Unit42>
         <Filename Value="revision.inc"/>
@@ -474,7 +529,7 @@ end;"/>
         <WindowIndex Value="-1"/>
         <TopLine Value="-1"/>
         <CursorPos X="-1" Y="-1"/>
-        <UsageCount Value="137"/>
+        <UsageCount Value="140"/>
       </Unit42>
       <Unit43>
         <Filename Value="m_any_to_linuxarm.pas"/>
@@ -482,19 +537,19 @@ end;"/>
         <EditorIndex Value="-1"/>
         <TopLine Value="65"/>
         <CursorPos X="19" Y="81"/>
-        <UsageCount Value="130"/>
+        <UsageCount Value="133"/>
       </Unit43>
       <Unit44>
         <Filename Value="m_any_to_androidjvm.pas"/>
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="-1"/>
-        <UsageCount Value="94"/>
+        <UsageCount Value="97"/>
       </Unit44>
       <Unit45>
         <Filename Value="m_any_to_javajvm.pas"/>
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="-1"/>
-        <UsageCount Value="94"/>
+        <UsageCount Value="97"/>
       </Unit45>
       <Unit46>
         <Filename Value="dcpcrypt\dcpbase64.pas"/>
@@ -503,7 +558,7 @@ end;"/>
         <WindowIndex Value="-1"/>
         <TopLine Value="-1"/>
         <CursorPos X="-1" Y="-1"/>
-        <UsageCount Value="20"/>
+        <UsageCount Value="23"/>
       </Unit46>
       <Unit47>
         <Filename Value="dcpcrypt\Hashes\dcpsha512.pas"/>
@@ -512,7 +567,7 @@ end;"/>
         <WindowIndex Value="-1"/>
         <TopLine Value="-1"/>
         <CursorPos X="-1" Y="-1"/>
-        <UsageCount Value="20"/>
+        <UsageCount Value="23"/>
       </Unit47>
       <Unit48>
         <Filename Value="dcpcrypt\Ciphers\dcpdes.pas"/>
@@ -521,7 +576,7 @@ end;"/>
         <WindowIndex Value="-1"/>
         <TopLine Value="-1"/>
         <CursorPos X="-1" Y="-1"/>
-        <UsageCount Value="20"/>
+        <UsageCount Value="23"/>
       </Unit48>
     </Units>
     <RunParams>

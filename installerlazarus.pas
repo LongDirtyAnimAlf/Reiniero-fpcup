@@ -30,8 +30,6 @@ Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 {$mode objfpc}{$H+}
 
-{$DEFINE DISABLELAZBUILDJOBS}
-
 interface
 
 uses
@@ -42,6 +40,7 @@ const
   Sequences =
     //standard lazarus build
     _DECLARE+_LAZARUS+_SEP +
+    _EXECUTE+_CHECKDEVLIBS+_SEP+
     _CLEANMODULE+_LAZARUS+_SEP +
     _CHECKMODULE+_LAZARUS+_SEP +
     _GETMODULE+_LAZARUS+_SEP +
@@ -55,6 +54,7 @@ const
     _END +
 
     _DECLARE+_LAZARUSSIMPLE+_SEP +
+    _EXECUTE+_CHECKDEVLIBS+_SEP+
     _CLEANMODULE+_LAZARUS+_SEP +
     _CHECKMODULE+_LAZARUS+_SEP +
     _GETMODULE+_LAZARUS+_SEP +
@@ -286,8 +286,8 @@ implementation
 
 uses
   {$ifdef Darwin}
-  {$ifdef LCLQT5}
   BaseUnix,
+  {$ifdef LCLQT5}
   LazFileUtils,
   {$endif}
   {$endif}
@@ -362,10 +362,14 @@ begin
         Processor.Process.CurrentDirectory := ExcludeTrailingPathDelimiter(FSourceDirectory);
         Processor.Process.Parameters.Add('--directory='+Processor.Process.CurrentDirectory);
 
-        {
+        {$IF DEFINED(CPUARM) AND DEFINED(LINUX)}
+        Processor.Process.Parameters.Add('--jobs=1');
+        {$ELSE}
         //Still not clear if jobs can be enabled for Lazarus make builds ... :-|
-        if (NOT FNoJobs) then
-          Processor.Process.Parameters.Add('--jobs='+IntToStr(FCPUCount));}
+        //if (NOT FNoJobs) then
+        //  Processor.Process.Parameters.Add('--jobs='+IntToStr(FCPUCount));
+        {$ENDIF}
+
 
         Processor.Process.Parameters.Add('FPC=' + FCompiler);
         Processor.Process.Parameters.Add('PP=' + ExtractFilePath(FCompiler)+GetCompilerName(GetTargetCPU));
@@ -441,15 +445,6 @@ begin
         Processor.Process.Parameters.Add('--quiet');
         {$ENDIF}
 
-        {$ifdef DISABLELAZBUILDJOBS}
-        if (True) then
-        {$else}
-        if (FNoJobs) then
-        {$endif}
-          Processor.Process.Parameters.Add('--max-process-count=1')
-        else
-          Processor.Process.Parameters.Add('--max-process-count='+InttoStr(FCPUCount));
-
         Processor.Process.Parameters.Add('--pcp=' + DoubleQuoteIfNeeded(FPrimaryConfigPath));
 
         // Apparently, the .compiled file, that are used to check for a rebuild, do not contain a cpu setting if cpu and cross-cpu do not differ !!
@@ -464,13 +459,13 @@ begin
         if FLCL_Platform <> '' then
           Processor.Process.Parameters.Add('--ws=' + FLCL_Platform);
 
-        Processor.Process.Parameters.Add(ConcatPaths(['packager','registration'])+DirectorySeparator+'fcl.lpk');
-        Processor.Process.Parameters.Add(ConcatPaths(['components','lazutils'])+DirectorySeparator+'lazutils.lpk');
-        Processor.Process.Parameters.Add(ConcatPaths(['lcl','interfaces'])+DirectorySeparator+'lcl.lpk');
+        Processor.Process.Parameters.Add(ConcatPaths([{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION < 30200)}UnicodeString{$ENDIF}('packager'),'registration'])+DirectorySeparator+'fcl.lpk');
+        Processor.Process.Parameters.Add(ConcatPaths([{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION < 30200)}UnicodeString{$ENDIF}('components'),'lazutils'])+DirectorySeparator+'lazutils.lpk');
+        Processor.Process.Parameters.Add(ConcatPaths([{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION < 30200)}UnicodeString{$ENDIF}('lcl'),'interfaces'])+DirectorySeparator+'lcl.lpk');
         // Also add the basecomponents !
-        Processor.Process.Parameters.Add(ConcatPaths(['components','synedit'])+DirectorySeparator+'synedit.lpk');
-        Processor.Process.Parameters.Add(ConcatPaths(['components','lazcontrols'])+DirectorySeparator+'lazcontrols.lpk');
-        Processor.Process.Parameters.Add(ConcatPaths(['components','ideintf'])+DirectorySeparator+'ideintf.lpk');
+        Processor.Process.Parameters.Add(ConcatPaths([{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION < 30200)}UnicodeString{$ENDIF}('components'),'synedit'])+DirectorySeparator+'synedit.lpk');
+        Processor.Process.Parameters.Add(ConcatPaths([{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION < 30200)}UnicodeString{$ENDIF}('components'),'lazcontrols'])+DirectorySeparator+'lazcontrols.lpk');
+        Processor.Process.Parameters.Add(ConcatPaths([{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION < 30200)}UnicodeString{$ENDIF}('components'),'ideintf'])+DirectorySeparator+'ideintf.lpk');
       end;
 
       if FLCL_Platform = '' then
@@ -654,10 +649,13 @@ begin
     Processor.Process.CurrentDirectory := ExcludeTrailingPathDelimiter(FSourceDirectory);
     Processor.Process.Parameters.Add('--directory='+Processor.Process.CurrentDirectory);
 
-    {
+    {$IF DEFINED(CPUARM) AND DEFINED(LINUX)}
+    Processor.Process.Parameters.Add('--jobs=1');
+    {$ELSE}
     //Still not clear if jobs can be enabled for Lazarus make builds ... :-|
-    if (NOT FNoJobs) then
-      Processor.Process.Parameters.Add('--jobs='+IntToStr(FCPUCount));}
+    //if (NOT FNoJobs) then
+    //  Processor.Process.Parameters.Add('--jobs='+IntToStr(FCPUCount));
+    {$ENDIF}
 
     Processor.Process.Parameters.Add('FPC=' + FCompiler);
     Processor.Process.Parameters.Add('PP=' + ExtractFilePath(FCompiler)+GetCompilerName(GetTargetCPU));
@@ -959,15 +957,6 @@ begin
       Processor.Process.Parameters.Add('--quiet');
       {$ENDIF}
 
-      {$ifdef DISABLELAZBUILDJOBS}
-      if (True) then
-      {$else}
-      if (FNoJobs) then
-      {$endif}
-        Processor.Process.Parameters.Add('--max-process-count=1')
-      else
-        Processor.Process.Parameters.Add('--max-process-count='+InttoStr(FCPUCount));
-
       Processor.Process.Parameters.Add('--pcp=' + DoubleQuoteIfNeeded(FPrimaryConfigPath));
       Processor.Process.Parameters.Add('--cpu=' + GetTargetCPU);
       Processor.Process.Parameters.Add('--os=' + GetTargetOS);
@@ -1040,15 +1029,6 @@ begin
           Processor.Process.Parameters.Add('--quiet');
           {$ENDIF}
 
-          {$ifdef DISABLELAZBUILDJOBS}
-          if (True) then
-          {$else}
-          if (FNoJobs) then
-          {$endif}
-            Processor.Process.Parameters.Add('--max-process-count=1')
-          else
-            Processor.Process.Parameters.Add('--max-process-count='+InttoStr(FCPUCount));
-
           Processor.Process.Parameters.Add('--pcp=' + DoubleQuoteIfNeeded(FPrimaryConfigPath));
           Processor.Process.Parameters.Add('--cpu=' + GetTargetCPU);
           Processor.Process.Parameters.Add('--os=' + GetTargetOS);
@@ -1085,10 +1065,42 @@ begin
 
   if (ModuleName=_MAKEFILECHECKLAZARUS) then exit;
 
-  if (ModuleName=_USERIDE) OR (ModuleName=_LAZARUS) then
+  if OperationSucceeded then
   begin
-    if OperationSucceeded then
+
+    if (ModuleName=_STARTLAZARUS) then
     begin
+      //Make new symlinks !!
+      {$ifdef Darwin}
+      s:=ConcatPaths([FInstallDirectory,'startlazarus']);
+      if FileExists(s) then
+      begin
+        s2:=ConcatPaths([FInstallDirectory,'startlazarus.app','Contents','MacOS','startlazarus']);
+        SysUtils.DeleteFile(s2);
+        fpSymlink(PChar('./../../../startlazarus'),PChar(s2));
+      end;
+      {$endif}
+    end;
+
+    if (ModuleName=_USERIDE) OR (ModuleName=_LAZARUS) then
+    begin
+      //Make new symlinks !!
+      {$ifdef Darwin}
+      s:=ConcatPaths([FInstallDirectory,'lazarus']);
+      if FileExists(s) then
+      begin
+        s2:=ConcatPaths([FInstallDirectory,'lazarus.app','Contents','MacOS','lazarus']);
+        SysUtils.DeleteFile(s2);
+        fpSymlink(PChar('./../../../lazarus'),PChar(s2));
+      end;
+      s:=ConcatPaths([FInstallDirectory,'startlazarus']);
+      if FileExists(s) then
+      begin
+        s2:=ConcatPaths([FInstallDirectory,'startlazarus.app','Contents','MacOS','startlazarus']);
+        SysUtils.DeleteFile(s2);
+        fpSymlink(PChar('./../../../startlazarus'),PChar(s2));
+      end;
+      {$endif}
 
       LazarusConfig:=TUpdateLazConfig.Create(FPrimaryConfigPath);
       try
@@ -1451,7 +1463,9 @@ end;
 function TLazarusInstaller.InitModule: boolean;
 var
   PlainBinPath: string; //the directory above e.g. c:\development\fpc\bin\i386-win32
+  {$IFDEF MSWINDOWS}
   SVNPath:string;
+  {$ENDIF}
 begin
   Result := true;
 
@@ -1835,6 +1849,7 @@ var
   CleanCommand,CleanDirectory:string;
   CrossCompiling: boolean;
   RunTwice: boolean;
+  s:string;
   {
   DeleteList: TStringList;
   CPUOS_Signature:string;
@@ -1901,10 +1916,15 @@ begin
     if Length(Shell)>0 then Processor.Process.Parameters.Add('SHELL='+Shell);
     {$ENDIF}
     Processor.Process.CurrentDirectory := ExcludeTrailingPathDelimiter(FSourceDirectory);
-    {
+
+    {$IF DEFINED(CPUARM) AND DEFINED(LINUX)}
+    Processor.Process.Parameters.Add('--jobs=1');
+    {$ELSE}
     //Still not clear if jobs can be enabled for Lazarus make builds ... :-|
-    if (NOT FNoJobs) then
-      Processor.Process.Parameters.Add('--jobs='+IntToStr(FCPUCount));}
+    //if (NOT FNoJobs) then
+    //  Processor.Process.Parameters.Add('--jobs='+IntToStr(FCPUCount));
+    {$ENDIF}
+
     Processor.Process.Parameters.Add('FPC=' + FCompiler);
     Processor.Process.Parameters.Add('PP=' + ExtractFilePath(FCompiler)+GetCompilerName(GetTargetCPU));
 
@@ -2049,9 +2069,30 @@ begin
   end;
   {$endif MSWINDOWS}
 
-  {
   // finally ... if something is still still still floating around ... delete it !!
-  CrossCompiling:=(Self is TLazarusCrossInstaller);
+  if NOT CrossCompiling then
+  begin
+    s:=ConcatPaths([FInstallDirectory,'lazbuild']);
+    if FileExists(s+GetExeExt) then
+    begin
+      FileUtil.CopyFile(s+GetExeExt,s+'.old'+GetExeExt);
+      SysUtils.DeleteFile(s+GetExeExt);
+    end;
+    s:=ConcatPaths([FInstallDirectory,'lazarus']);
+    if FileExists(s+GetExeExt) then
+    begin
+      FileUtil.CopyFile(s+GetExeExt,s+'.old'+GetExeExt);
+      SysUtils.DeleteFile(s+GetExeExt);
+    end;
+    s:=ConcatPaths([FInstallDirectory,'startlazarus']);
+    if FileExists(s+GetExeExt) then
+    begin
+      FileUtil.CopyFile(s+GetExeExt,s+'.old'+GetExeExt);
+      SysUtils.DeleteFile(s+GetExeExt);
+    end;
+  end;
+
+  {
   if CrossCompiling then
     CPUOS_Signature:=GetFPCTarget(false)
   else

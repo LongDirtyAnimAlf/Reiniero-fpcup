@@ -36,14 +36,14 @@ uses
 
 const
   DEFAULTFPCVERSION     = '3.2.0';
-  DEFAULTLAZARUSVERSION = '2.0.8';
+  DEFAULTLAZARUSVERSION = '2.0.10';
 
   FPCTRUNKVERSION       = '3.3.1';
-  FPCTRUNKBOOTVERSION   = '3.0.4';
-  //FPCTRUNKBOOTVERSION   = '3.2.0';
+  //FPCTRUNKBOOTVERSION   = '3.0.4';
+  FPCTRUNKBOOTVERSION   = '3.2.0';
   LAZARUSTRUNKVERSION   = '2.1.0';
 
-  DEFAULTFREEBSDVERSION = 11;
+  DEFAULTFREEBSDVERSION = 12;
 
   LAZBUILDNAME          = 'lazbuild';
 
@@ -410,9 +410,9 @@ type
     function GetFile(aURL,aFile:string; forceoverwrite:boolean=false; forcenative:boolean=false):boolean;
     function GetSanityCheck:boolean;
 
-    function {%H-}GetVersionFromSource(aSourcePath:string):string;virtual;abstract;
-    function {%H-}GetVersionFromURL(aUrl:string):string;virtual;abstract;
-    function {%H-}GetReleaseCandidateFromSource(aSourcePath:string):integer;virtual;abstract;
+    function GetVersionFromSource({%H-}aSourcePath:string):string;virtual;
+    function GetVersionFromURL({%H-}aUrl:string):string;virtual;
+    function GetReleaseCandidateFromSource({%H-}aSourcePath:string):integer;virtual;
     function GetVersion:string;
 
   public
@@ -564,7 +564,7 @@ uses
   //,blcksock, ssl_openssl_lib
   ,openssl
   {$ENDIF}
-  {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30000)}
+  {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)}
   ,opensslsockets
   {$ENDIF}
   {$ENDIF}
@@ -606,7 +606,7 @@ var
   ConfigText      : TStringList;
   SnipBegin,i     : integer;
   aCPU,aOS        : string;
-  aArch           : string;
+  {%H-}aArch           : string;
 begin
   result:=false;
 
@@ -751,7 +751,13 @@ begin
     FMake := IncludeTrailingPathDelimiter(FMakeDir) + GNUMake + '.exe';
     {$ELSE}
     FMake:=Which(GNUMake);
-    if FMake='' then raise Exception.CreateFmt('%s not found. Please install GNU make.',[GNUMake]);
+    if FMake='' then
+    begin
+      Infoln(localinfotext+'Could not find '+GNUMake+' executable.',etError);
+      Infoln(localinfotext+'This is a fatal error. Exception wil be created.',etError);
+      Infoln(localinfotext+'Please make sure it is installed.',etError);
+      raise Exception.CreateFmt('%s not found. Please install %s',[GNUMake,GNUMake]);
+    end;
     {$ENDIF MSWINDOWS}
   Result := FMake;
 end;
@@ -1335,6 +1341,7 @@ var
   i: integer;
   {$ENDIF MSWINDOWS}
   OperationSucceeded: boolean;
+  InstallPath:string;
   s1,s2: string;
 begin
   s2:=Copy(Self.ClassName,2,MaxInt)+' (DownloadBinUtils): ';
@@ -1357,9 +1364,15 @@ begin
       // Check all binutils in directory
       for i:=low(FUtilFiles) to high(FUtilFiles) do
       begin
-        if FUtilFiles[i].Category=ucBinutil then
+        if FUtilFiles[i].Category in [ucBinutil,ucDebugger32,ucDebugger64] then
         begin
-          if (NOT FileExists(IncludeTrailingPathDelimiter(FMakeDir)+FUtilFiles[i].FileName)) then
+          InstallPath:=IncludeTrailingPathDelimiter(FMakeDir);
+          if (FUtilFiles[i].Category in [ucDebugger32,ucDebugger64]) then
+          begin
+            if (FUtilFiles[i].Category=ucDebugger32) then InstallPath:=InstallPath+'gdb\i386-win32\';
+            if (FUtilFiles[i].Category=ucDebugger64) then InstallPath:=InstallPath+'gdb\x86_64-win64\';
+          end;
+          if (NOT FileExists(InstallPath+FUtilFiles[i].FileName)) then
           begin
             AllThere:=false;
             break;
@@ -1405,7 +1418,7 @@ begin
       // ignore errors, this is only an extra check
     end;
 
-    {$IF (defined(UNIX)) and (not defined(Darwin))}
+    {$IFDEF LINUX}
     // Check for proper ld executable
     if OperationSucceeded then
     try
@@ -1423,7 +1436,7 @@ begin
     except
       // ignore errors, this is only an extra check
     end;
-    {$ENDIF UNIX}
+    {$ENDIF LINUX}
   end;
 
   Result := OperationSucceeded;
@@ -1500,7 +1513,7 @@ begin
   // add win32/64 gdb from lazarus
   AddNewUtil('gdb' + GetExeExt,SourceURL_gdb_default,'',ucDebugger32);
   AddNewUtil('gdb' + GetExeExt,SourceURL64_gdb_default,'',ucDebugger64);
-  //AddNewUtil('libiconv-2.dll',SourceURL64_gdb,'',ucDebugger64);
+  AddNewUtil('libiconv-2.dll',SourceURL64_gdb_default,'',ucDebugger64);
 
   // add win32/64 gdb from fpcup
   //AddNewUtil('i386-win32-gdb.zip',SourceURL_gdb,'',ucDebugger32);
@@ -2091,10 +2104,10 @@ begin
 
   for Counter := low(FUtilFiles) to high(FUtilFiles) do
   begin
-    if (FUtilFiles[Counter].Category=ucBinutil) or (FUtilFiles[Counter].Category=ucDebugger32) or (FUtilFiles[Counter].Category=ucDebugger64) then
+    if (FUtilFiles[Counter].Category in [ucBinutil,ucDebugger32,ucDebugger64]) then
     begin
       InstallPath:=IncludeTrailingPathDelimiter(FMakeDir);
-      if (FUtilFiles[Counter].Category=ucDebugger32) or (FUtilFiles[Counter].Category=ucDebugger64) then
+      if (FUtilFiles[Counter].Category in [ucDebugger32,ucDebugger64]) then
       begin
         if (FUtilFiles[Counter].Category=ucDebugger32) then InstallPath:=InstallPath+'gdb\i386-win32\';
         if (FUtilFiles[Counter].Category=ucDebugger64) then InstallPath:=InstallPath+'gdb\x86_64-win64\';
@@ -3078,7 +3091,6 @@ const
 var
   PatchList:TStringList;
   PatchFilePath,PatchFileCorrectedPath,PatchDirectory:string;
-  LocalPatchCmd:string;
   s: string = '';
   Output: string = '';
   ReturnCode,i,j: integer;
@@ -3285,7 +3297,39 @@ begin
     end;
   end;
 
-  // we will hack into fpc itself for better isolation
+
+  {$ifdef Haiku}
+  // we will hack into FPC itself to prevent FPU crash on Haiku
+  //if FOnlinePatching then
+  begin
+    if PatchFPC then
+    begin
+      PatchList:=TStringList.Create;
+      try
+        PatchList.Clear;
+        PatchFilePath:=ConcatPaths([FSourceDirectory,'rtl','inc'])+DirectorySeparator+'mathh.inc';
+        PatchList.LoadFromFile(PatchFilePath);
+        for i:=0 to (PatchList.Count-1) do
+        begin
+          s:=PatchList.Strings[i];
+          if (Pos('fpcupdeluxe',s)>0) then break; // we were here already ... ;-)
+          if ((Pos('Default8087CW',s)>0) AND (Pos('$1332;',s)>0)) then
+          begin
+            PatchList.Strings[i]:=StringReplace(s,'$1332;','$1333; // Patched by fpcupdeluxe to prevent FPU crash',[]);
+            PatchList.SaveToFile(PatchFilePath);
+            break;
+          end;
+        end;
+      finally
+        PatchList.Free;
+      end;
+    end;
+  end;
+  {$endif}
+
+
+
+  // we will hack into FPC itself for better isolation
   // needs more testing
   (*
   if FOnlinePatching then
@@ -3743,6 +3787,22 @@ begin
   end;
 end;
 
+function TInstaller.GetVersionFromSource(aSourcePath:string):string;
+begin
+  result:='';
+  raise Exception.Create('TInstaller descendants must implement this function themselves.');
+end;
+function TInstaller.GetVersionFromURL(aUrl:string):string;
+begin
+  result:='';
+  raise Exception.Create('TInstaller descendants must implement this function themselves.');
+end;
+function TInstaller.GetReleaseCandidateFromSource(aSourcePath:string):integer;
+begin
+  result:=0;
+  raise Exception.Create('TInstaller descendants must implement this function themselves.');
+end;
+
 function TInstaller.GetVersion:string;
 var
   s:string;
@@ -3909,7 +3969,6 @@ var
   i:integer;
   aTool:TExternalTool;
   FParameters:TStrings;
-  ExeName:string;
 begin
 
   result:=0;

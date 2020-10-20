@@ -104,7 +104,7 @@ begin
   // also for cctools
   if not result then
   begin
-    for i:=15 downto 8 do
+    for i:=MAXIOSVERSION downto MINIOSVERSION do
     begin
       if found then break;
       for j:=15 downto -1 do
@@ -129,7 +129,7 @@ begin
           // universal libs : also search in all-ios
           if (not result) then
           begin
-            s:=ConcatPaths(['all-ios','iPhoneOS'+SDKVersion+'.sdk','usr','lib']);
+            s:=ConcatPaths(['all-'+TargetOSName,'iPhoneOS'+SDKVersion+'.sdk','usr','lib']);
             result:=SimpleSearchLibrary(BasePath,s,LibName);
             if not result then
                result:=SimpleSearchLibrary(BasePath,s,'libc.tbd');
@@ -220,6 +220,7 @@ begin
   10.10 = darwin14
   10.11 = darwin15
   10.12 = darwin16
+  10.13 = darwin17
   }
 
   for i:=MAXDARWINVERSION downto MINDARWINVERSION do
@@ -231,9 +232,7 @@ begin
       if not result then
         result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
       if not result then
-        result:=SimpleSearchBinUtil(BasePath,'all-ios',AsFile);
-      if not result then
-        result:=SimpleSearchBinUtil(BasePath+DirectorySeparator+'bin','all-ios',AsFile);
+        result:=SimpleSearchBinUtil(BasePath,'all-'+TargetOSName,AsFile);
       if result then
       begin
         FBinUtilsPrefix:=BinPrefixTry+InttoStr(i)+'-';
