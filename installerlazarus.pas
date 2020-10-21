@@ -135,13 +135,12 @@ const
     _END +
 
     //special lazbuild standalone build (for docker use)
-    _DECLARE+_LAZBUILDONLY+_SEP +
+    _DECLARE+_LAZBUILD+_ONLY+_SEP +
     _CLEANMODULE+_LAZBUILD+_SEP +
     _CHECKMODULE+_LAZBUILD+_SEP +
     _GETMODULE+_LAZBUILD+_SEP +
+    _CONFIGMODULE+_LAZBUILD+_SEP +
     _BUILDMODULE+_LAZBUILD+_SEP +
-    _DO+_LCL+_SEP +
-    _BUILDMODULE+_INSTALLLAZARUS+_SEP +
     _END +
 
     //standard useride build
@@ -834,7 +833,7 @@ begin
       begin
         if LCLCrossActionNeeded then
         begin
-          Processor.Process.Parameters.Add('-C lcl');
+          Processor.Process.Parameters.Add('-C '+ConcatPaths([FSourceDirectory,'lcl']));
           Processor.Process.Parameters.Add('intf');
           Infoln(infotext+'Running: make -C lcl intf', etInfo);
         end
@@ -1960,6 +1959,7 @@ begin
       begin
         Processor.Process.Parameters.Add('LCL_PLATFORM=nogui');
         CleanCommand:='clean';
+        CleanDirectory:='ide';
       end;
       _IDE:
       begin
@@ -2021,9 +2021,12 @@ begin
       end;
     end;
 
-    CleanDirectory:=ConcatPaths([FSourceDirectory,CleanDirectory]);
-
+    if Length(CleanDirectory)>0 then
+      CleanDirectory:=ConcatPaths([FSourceDirectory,CleanDirectory])
+    else
+      CleanDirectory:=ExcludeTrailingPathDelimiter(FSourceDirectory);
     Processor.Process.Parameters.Add('--directory=' + CleanDirectory);
+
     Processor.Process.Parameters.Add(CleanCommand);
 
     if (NOT RunTwice) then

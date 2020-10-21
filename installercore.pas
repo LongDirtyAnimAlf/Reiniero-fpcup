@@ -205,6 +205,9 @@ const
   _OLDLAZARUS              = 'OldLazarus';
   _PAS2JS                  = 'Pas2JS';
 
+  _DOCKER                  = 'Docker';
+
+
   _UNIVERSALDEFAULT        = 'Universal'+_DEFAULT;
   _FPCCLEANBUILDONLY       = _FPC+_CLEAN+_BUILD+_ONLY;
   _FPCREMOVEONLY           = _FPC+_UNINSTALL+_ONLY;
@@ -215,8 +218,6 @@ const
   _LCLREMOVEONLY           = _LCL+_CLEAN+_ONLY;
   _COMPONENTSREMOVEONLY    = _COMPONENTS+_CLEAN+_ONLY;
   _PACKAGERREMOVEONLY      = _PACKAGER+_CLEAN+_ONLY;
-
-  _LAZBUILDONLY            = _LAZBUILD+_ONLY;
 
   _HELP                    = 'Help';
   _HELPFPC                 = _HELP+_FPC;

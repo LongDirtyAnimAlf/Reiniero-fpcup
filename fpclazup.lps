@@ -2,8 +2,8 @@
 <CONFIG>
   <ProjectSession>
     <PathDelim Value="\"/>
-    <Version Value="11"/>
-    <BuildModes Count="5" Active="darwinppc64">
+    <Version Value="12"/>
+    <BuildModes Count="5" Active="Debug">
       <Item1 Name="linuxarmhf">
         <MacroValues Count="1">
           <Macro1 Name="LCLWidgetType" Value="nogui"/>
@@ -197,8 +197,6 @@
       <Unit0>
         <Filename Value="fpclazup.lpr"/>
         <IsPartOfProject Value="True"/>
-        <IsVisibleTab Value="True"/>
-        <TopLine Value="105"/>
         <CursorPos X="11" Y="112"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
@@ -229,28 +227,32 @@
         <Filename Value="installercore.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerCore"/>
-        <EditorIndex Value="-1"/>
-        <TopLine Value="254"/>
-        <CursorPos X="13" Y="261"/>
+        <EditorIndex Value="3"/>
+        <TopLine Value="209"/>
+        <CursorPos Y="222"/>
         <UsageCount Value="200"/>
+        <Loaded Value="True"/>
       </Unit4>
       <Unit5>
         <Filename Value="installerfpc.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerFpc"/>
-        <EditorIndex Value="-1"/>
-        <TopLine Value="1508"/>
-        <CursorPos X="37" Y="1511"/>
+        <IsVisibleTab Value="True"/>
+        <EditorIndex Value="1"/>
+        <TopLine Value="687"/>
+        <CursorPos X="43" Y="708"/>
         <UsageCount Value="200"/>
+        <Loaded Value="True"/>
       </Unit5>
       <Unit6>
         <Filename Value="installerlazarus.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerLazarus"/>
-        <EditorIndex Value="-1"/>
-        <TopLine Value="720"/>
-        <CursorPos X="9" Y="734"/>
+        <EditorIndex Value="2"/>
+        <TopLine Value="126"/>
+        <CursorPos X="13" Y="135"/>
         <UsageCount Value="200"/>
+        <Loaded Value="True"/>
       </Unit6>
       <Unit7>
         <Filename Value="installerhelp.pas"/>
@@ -271,7 +273,7 @@
       <Unit9>
         <Filename Value="fpcup.ini"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="1"/>
+        <EditorIndex Value="4"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
         <DefaultSyntaxHighlighter Value="Ini"/>
@@ -281,8 +283,8 @@
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerManager"/>
         <EditorIndex Value="-1"/>
-        <TopLine Value="1371"/>
-        <CursorPos Y="1374"/>
+        <TopLine Value="128"/>
+        <CursorPos X="5" Y="140"/>
         <UsageCount Value="200"/>
       </Unit10>
       <Unit11>
@@ -377,7 +379,7 @@
       <Unit22>
         <Filename Value="settings.ini"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="2"/>
+        <EditorIndex Value="5"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
         <DefaultSyntaxHighlighter Value="Ini"/>
@@ -526,7 +528,7 @@
       <Unit41>
         <Filename Value="revision.inc"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="3"/>
+        <EditorIndex Value="6"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
       </Unit41>
@@ -540,13 +542,13 @@
         <Filename Value="m_any_to_androidjvm.pas"/>
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="-1"/>
-        <UsageCount Value="169"/>
+        <UsageCount Value="172"/>
       </Unit43>
       <Unit44>
         <Filename Value="m_any_to_javajvm.pas"/>
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="-1"/>
-        <UsageCount Value="169"/>
+        <UsageCount Value="172"/>
       </Unit44>
       <Unit45>
         <Filename Value="fpcuputil.pas"/>
@@ -554,7 +556,7 @@
         <EditorIndex Value="-1"/>
         <TopLine Value="335"/>
         <CursorPos X="22" Y="441"/>
-        <UsageCount Value="167"/>
+        <UsageCount Value="170"/>
       </Unit45>
       <Unit46>
         <Filename Value="dcpcrypt\Ciphers\dcpdes.pas"/>
@@ -563,12 +565,22 @@
         <WindowIndex Value="-1"/>
         <TopLine Value="-1"/>
         <CursorPos X="-1" Y="-1"/>
-        <UsageCount Value="20"/>
+        <UsageCount Value="23"/>
       </Unit46>
     </Units>
     <RunParams>
       <FormatVersion Value="2"/>
-      <Modes Count="0" ActiveMode="docker"/>
+      <Modes ActiveMode="docker"/>
     </RunParams>
+    <HistoryLists Count="3">
+      <List0 Name="WorkingDirectory" Type="File" Count="1"/>
+      <List1 Name="LaunchingApplication" Type="File" Count="1">
+        <Item1 Value="C:\WINDOWS\system32\cmd.exe /C ${TargetCmdLine}"/>
+      </List1>
+      <List2 Name="CommandLineParameters" Count="2">
+        <Item1 Value="--installdir=&quot;C:\fpclazbydeluxe\something&quot; --fpcURL=&quot;stable&quot; --lazURL=&quot;stable&quot; --only=&quot;docker&quot; --fpcsplit"/>
+        <Item2 Value="--installdir=&quot;C:\fpclazbydeluxe\docker&quot; --fpcURL=stable --fpcsplit --lazURL=stable --lazsplit --only=&quot;LazbuildOnly&quot;"/>
+      </List2>
+    </HistoryLists>
   </ProjectSession>
 </CONFIG>
