@@ -78,6 +78,7 @@ uses
   m_any_to_linuxmips,
   m_any_to_linuxmipsel,
   m_any_to_linuxpowerpc64,
+  m_any_to_linuxaarch64,
   m_any_to_aros386,
   m_any_to_arosx64,
   m_any_to_arosarm,
@@ -162,8 +163,7 @@ uses
   m_anyinternallinker_to_winarm64,
   m_anyinternallinker_to_winx64,
   {$endif MSWINDOWS}
-  checkoptions
-  ;
+  checkoptions;
 
 //{$R *.res}
 // see unit installerUniversal;

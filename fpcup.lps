@@ -3,7 +3,7 @@
   <ProjectSession>
     <PathDelim Value="\"/>
     <Version Value="12"/>
-    <BuildModes Count="5" Active="Default">
+    <BuildModes Count="5" Active="linux64">
       <Item1 Name="linuxarmhf">
         <MacroValues Count="1">
           <Macro1 Name="LCLWidgetType" Value="nogui"/>
@@ -203,6 +203,8 @@
         <Filename Value="fpcup.lpr"/>
         <IsPartOfProject Value="True"/>
         <IsVisibleTab Value="True"/>
+        <TopLine Value="112"/>
+        <CursorPos X="11" Y="75"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
       </Unit0>

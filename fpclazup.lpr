@@ -77,6 +77,7 @@ uses
   m_any_to_linuxmips,
   m_any_to_linuxmipsel,
   m_any_to_linuxpowerpc64,
+  m_any_to_linuxaarch64,
   m_any_to_aros386,
   m_any_to_arosx64,
   m_any_to_arosarm,

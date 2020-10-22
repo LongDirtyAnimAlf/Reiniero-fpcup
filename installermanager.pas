@@ -488,6 +488,7 @@ end;
 procedure TFPCupManager.SetBaseDirectory(AValue: string);
 begin
   FBaseDirectory:=SafeExpandFileName(AValue);
+  ForceDirectoriesSafe(FBaseDirectory);
 end;
 
 procedure TFPCupManager.SetBootstrapCompilerDirectory(AValue: string);

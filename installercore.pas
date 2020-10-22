@@ -288,6 +288,8 @@ type
     FCrossLibraryDirectory: string;
     procedure SetURL(value:string);
     procedure SetSourceDirectory(value:string);
+    procedure SetBaseDirectory(value:string);
+    procedure SetInstallDirectory(value:string);
     function GetShell: string;
     function GetMake: string;
     procedure SetVerbosity(aValue:boolean);
@@ -428,9 +430,9 @@ type
     // Source directory for installation (fpcdir, lazdir,... option)
     property SourceDirectory: string write SetSourceDirectory;
     //Base directory for fpc(laz)up(deluxe) itself
-    property BaseDirectory: string write FBaseDirectory;
-    // Source directory for installation (fpcdir, lazdir,... option)
-    property InstallDirectory: string write FInstallDirectory;
+    property BaseDirectory: string write SetBaseDirectory;
+    // Final install directory
+    property InstallDirectory: string write SetInstallDirectory;
     //Base directory for fpc(laz)up(deluxe) itself
     property TempDirectory: string write FTempDirectory;
     // Compiler to use for building. Specify empty string when using bootstrap compiler.
@@ -599,6 +601,13 @@ begin
         end;
   end;
   result:=FCrossInstaller;
+  if (NOT Assigned(FCrossInstaller)) then
+  begin
+    Infoln(localinfotext+'Could not find crosscompiler logic for '+target+' !!',etError);
+    Infoln(localinfotext+'This is a fatal error. Exception wil be created.',etError);
+    Infoln(localinfotext+'Please file a bug-report.',etError);
+    raise Exception.CreateFmt('%s fpcup cross-logic not found. Please report this issue.',[target]);
+  end;
 end;
 
 function TInstaller.GetCrossCompilerPresent:boolean;
@@ -735,6 +744,20 @@ begin
     FMinorVersion := -1;
     FReleaseVersion := -1;
     FPatchVersion := -1;
+  end;
+end;
+
+procedure TInstaller.SetBaseDirectory(value:string);
+begin
+  FBaseDirectory:=value;
+end;
+
+procedure TInstaller.SetInstallDirectory(value:string);
+begin
+  FInstallDirectory:=value;
+  if (IsFPCInstaller OR IsLazarusInstaller) then
+  begin
+    ForceDirectoriesSafe(FInstallDirectory);
   end;
 end;
 
