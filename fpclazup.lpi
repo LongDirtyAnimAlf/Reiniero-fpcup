@@ -430,7 +430,7 @@ end;"/>
     </PublishOptions>
     <RunParams>
       <local>
-        <CommandLineParams Value="--installdir=&quot;C:\fpclazbydeluxe\something&quot; --fpcURL=&quot;stable&quot; --lazURL=&quot;stable&quot; --only=&quot;docker&quot; --fpcsplit"/>
+        <CommandLineParams Value="--fpcURL=&quot;stable&quot; --lazURL=&quot;stable&quot; --verbose --installdir=&quot;C:\fpclazbydeluxe\something&quot; --fpcsplit"/>
       </local>
       <FormatVersion Value="2"/>
       <Modes Count="2">
@@ -441,7 +441,7 @@ end;"/>
         </Mode0>
         <Mode1 Name="docker">
           <local>
-            <CommandLineParams Value="--installdir=&quot;C:\fpclazbydeluxe\something&quot; --fpcURL=&quot;stable&quot; --lazURL=&quot;stable&quot; --only=&quot;docker&quot; --fpcsplit"/>
+            <CommandLineParams Value="--fpcURL=&quot;stable&quot; --lazURL=&quot;stable&quot; --verbose --installdir=&quot;C:\fpclazbydeluxe\something&quot; --fpcsplit"/>
           </local>
         </Mode1>
       </Modes>

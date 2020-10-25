@@ -3,7 +3,7 @@
   <ProjectSession>
     <PathDelim Value="\"/>
     <Version Value="12"/>
-    <BuildModes Count="5" Active="linux64">
+    <BuildModes Count="5" Active="linuxi386">
       <Item1 Name="linuxarmhf">
         <MacroValues Count="1">
           <Macro1 Name="LCLWidgetType" Value="nogui"/>
@@ -193,10 +193,12 @@
         <Item1 Mode="linuxarmhf" Option="233755810855"/>
       </SessionEnabledMatrixOptions>
     </BuildModes>
+    <ManyBuildModesSelection Value="win32,win64,linuxi386,linux64,linuxaarch64,freebsdi386,freebsdx64,linuxppc64,linuxarmhf,darwini386,darwinx64,darwinppc,darwinppc64"/>
     <Units Count="47">
       <Unit0>
         <Filename Value="fpclazup.lpr"/>
         <IsPartOfProject Value="True"/>
+        <IsVisibleTab Value="True"/>
         <TopLine Value="142"/>
         <CursorPos Y="164"/>
         <UsageCount Value="200"/>
@@ -228,30 +230,26 @@
         <Filename Value="installercore.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerCore"/>
-        <IsVisibleTab Value="True"/>
-        <EditorIndex Value="2"/>
+        <EditorIndex Value="-1"/>
         <TopLine Value="588"/>
-        <CursorPos X="41" Y="609"/>
+        <CursorPos Y="594"/>
         <UsageCount Value="200"/>
-        <Loaded Value="True"/>
       </Unit4>
       <Unit5>
         <Filename Value="installerfpc.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerFpc"/>
-        <EditorIndex Value="1"/>
-        <TopLine Value="3899"/>
-        <CursorPos X="59" Y="3909"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="2855"/>
+        <CursorPos Y="2879"/>
         <UsageCount Value="200"/>
-        <Loaded Value="True"/>
       </Unit5>
       <Unit6>
         <Filename Value="installerlazarus.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerLazarus"/>
-        <EditorIndex Value="6"/>
+        <EditorIndex Value="-1"/>
         <UsageCount Value="200"/>
-        <Loaded Value="True"/>
       </Unit6>
       <Unit7>
         <Filename Value="installerhelp.pas"/>
@@ -264,16 +262,15 @@
         <Filename Value="installeruniversal.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerUniversal"/>
-        <EditorIndex Value="5"/>
+        <EditorIndex Value="-1"/>
         <TopLine Value="1987"/>
         <CursorPos X="68" Y="1999"/>
         <UsageCount Value="200"/>
-        <Loaded Value="True"/>
       </Unit8>
       <Unit9>
         <Filename Value="fpcup.ini"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="7"/>
+        <EditorIndex Value="1"/>
         <TopLine Value="2164"/>
         <CursorPos X="15" Y="2176"/>
         <UsageCount Value="200"/>
@@ -284,11 +281,10 @@
         <Filename Value="installermanager.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerManager"/>
-        <EditorIndex Value="4"/>
+        <EditorIndex Value="-1"/>
         <TopLine Value="475"/>
         <CursorPos X="40" Y="491"/>
         <UsageCount Value="200"/>
-        <Loaded Value="True"/>
       </Unit10>
       <Unit11>
         <Filename Value="m_crosswin64.pas"/>
@@ -382,7 +378,7 @@
       <Unit22>
         <Filename Value="settings.ini"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="8"/>
+        <EditorIndex Value="2"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
         <DefaultSyntaxHighlighter Value="Ini"/>
@@ -391,8 +387,8 @@
         <Filename Value="m_crossinstaller.pas"/>
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="-1"/>
-        <TopLine Value="332"/>
-        <CursorPos X="15" Y="343"/>
+        <TopLine Value="79"/>
+        <CursorPos X="7" Y="92"/>
         <UsageCount Value="200"/>
       </Unit23>
       <Unit24>
@@ -531,7 +527,7 @@
       <Unit41>
         <Filename Value="revision.inc"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="9"/>
+        <EditorIndex Value="3"/>
         <CursorPos Y="4"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
@@ -557,11 +553,10 @@
       <Unit45>
         <Filename Value="fpcuputil.pas"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="3"/>
+        <EditorIndex Value="-1"/>
         <TopLine Value="3307"/>
         <CursorPos X="3" Y="3311"/>
         <UsageCount Value="170"/>
-        <Loaded Value="True"/>
       </Unit45>
       <Unit46>
         <Filename Value="dcpcrypt\Ciphers\dcpdes.pas"/>
@@ -577,5 +572,14 @@
       <FormatVersion Value="2"/>
       <Modes ActiveMode="docker"/>
     </RunParams>
+    <HistoryLists Count="2">
+      <List0 Name="LaunchingApplication" Type="File" Count="1">
+        <Item1 Value="C:\WINDOWS\system32\cmd.exe /C ${TargetCmdLine}"/>
+      </List0>
+      <List1 Name="CommandLineParameters" Count="2">
+        <Item1 Value="--fpcURL=&quot;stable&quot; --lazURL=&quot;stable&quot; --verbose --installdir=&quot;C:\fpclazbydeluxe\something&quot; --fpcsplit"/>
+        <Item2 Value="--installdir=&quot;C:\fpclazbydeluxe\something&quot; --fpcURL=&quot;stable&quot; --lazURL=&quot;stable&quot; --only=&quot;docker&quot; --fpcsplit"/>
+      </List1>
+    </HistoryLists>
   </ProjectSession>
 </CONFIG>

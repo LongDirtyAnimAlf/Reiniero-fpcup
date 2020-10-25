@@ -3,7 +3,7 @@
   <ProjectSession>
     <PathDelim Value="\"/>
     <Version Value="12"/>
-    <BuildModes Count="5" Active="linux64">
+    <BuildModes Count="5" Active="darwinx64">
       <Item1 Name="linuxarmhf">
         <MacroValues Count="1">
           <Macro1 Name="LCLWidgetType" Value="nogui"/>
