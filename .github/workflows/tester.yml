@@ -1,0 +1,76 @@
+# Tests building lazbuild using fplazup on Windows 32, Windows 64, Linux 64, MacOS 64 and AArch64 (cross compiled)
+# Builds FPC 3.2.0 & Lazarus trunk but reverts to a known revision that compiles (64045).
+
+name: Test
+
+on: push
+
+jobs:
+  test:
+    name: ${{ matrix.config.name }}
+    runs-on: ${{ matrix.config.os }}
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - os: windows-latest
+            name: 'Windows 32'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/1.8.2d/fpclazup-i386-win32.exe'
+            fpcup-opt: '--lazrevision=64045'
+            fpc-url: 'https://svn.freepascal.org/svn/fpc/tags/release_3_2_0'
+            laz-url: 'trunk'
+
+          - os: windows-latest
+            name: 'Windows 64'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/1.8.2d/fpclazup-x86_64-win64.exe'
+            fpcup-opt: '--lazrevision=64045'
+            fpc-url: 'https://svn.freepascal.org/svn/fpc/tags/release_3_2_0'
+            laz-url: 'trunk'
+
+          - os: ubuntu-latest
+            name: 'Linux 64'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/1.8.2d/fpclazup-x86_64-linux'
+            fpcup-opt: '--lazrevision=64045'
+            fpc-url: 'https://svn.freepascal.org/svn/fpc/tags/release_3_2_0'
+            laz-url: 'trunk'
+
+          - os: macos-latest
+            name: 'MacOS 64'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/1.8.2d/fpclazup-x86_64-darwin'
+            fpcup-opt: '--lclplatform=cocoa --lazrevision=64045'
+            fpc-url: 'https://svn.freepascal.org/svn/fpc/tags/release_3_2_0'
+            laz-url: 'trunk'
+
+          - os: ubuntu-latest
+            name: 'AArch64'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/1.8.2d/fpclazup-x86_64-linux'
+            fpcup-opt: '--lazrevision=64045'
+            fpc-url: 'https://svn.freepascal.org/svn/fpc/tags/release_3_2_0'
+            laz-url: 'trunk'
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Install Dependencies (Ubuntu)
+      if: matrix.config.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get -m -y install libgtk2.0-dev libpango1.0-dev
+    - name: Install Lazarus
+      run: |
+        curl --retry 5 -L -o fpcup ${{ matrix.config.fpcup-url }}
+        chmod +x fpcup
+        mkdir lazarus
+        ./fpcup --installdir=lazarus --fpcURL=${{ matrix.config.fpc-url }} --lazURL=${{ matrix.config.laz-url }} ${{ matrix.config.fpcup-opt }} --only=docker --noconfirm --verbose
+    - name: Install AArch64 Cross Compiler
+      if: matrix.config.name == 'AArch64'
+      run: |
+        curl --retry 5 -L -o libs.zip https://github.com/LongDirtyAnimAlf/fpcupdeluxe/releases/download/crosslibs_v1.1/CrossLibsLinuxAarch64.zip && unzip -o libs.zip -d lazarus/
+        curl --retry 5 -L -o bins.zip https://github.com/LongDirtyAnimAlf/fpcupdeluxe/releases/download/linuxx64crossbins_v1.0/CrossBinsLinuxAarch64.zip && unzip -o bins.zip -d lazarus/cross/bin
+        ./fpcup --installdir=lazarus --ostarget=linux --cputarget=aarch64 --only="FPCCleanOnly,FPCBuildOnly" --crossbindir=lazarus/cross/bin --crosslibdir=lazarus/cross/lib/aarch64-linux --noconfirm --verbose
+    - name: Test
+      run: |
+        ./lazarus/lazarus/lazbuild --help
