@@ -40,24 +40,6 @@ program fpcup;
 }
 {$mode objfpc}{$H+}
 
-{
-Possible additional verifications: check existing fpc locations, versions
-
-Command: tfplist or something containing log records with timestamp, sequence description
-
-Add something like fpcup.config in the settings or installed fpc/lazarus dir so we know for which fpc/laz combo this dir is used
-}
-
-{$IFDEF LINUX}
-  {$IFDEF FPC_CROSSCOMPILING}
-    {$linklib libc_nonshared.a}
-    {$IFDEF CPUARM}
-      // if we have a GUI, uncomment
-      // {$linklib GLESv2}
-    {$ENDIF}
-  {$ENDIF}
-{$ENDIF}
-
 {$warn 5023 off : no warning about unused units}
 
 uses
@@ -125,14 +107,11 @@ uses
   {$else}
   m_any_to_darwin386,
   m_any_to_darwinx64,
-  {$ifdef MSWINDOWS}
-  m_any_to_darwinpowerpc,
-  m_any_to_darwinpowerpc64,
-  {$endif MSWINDOWS}
-  m_any_to_darwinarm,
   m_any_to_darwinaarch64,
   m_any_to_iosarm,
   m_any_to_iosaarch64,
+  m_any_to_darwinpowerpc,
+  m_any_to_darwinpowerpc64,
   {$endif}
   {$IF defined(FREEBSD) or defined(NETBSD) or defined(OPENBSD)}
   m_freebsd_to_linux386,

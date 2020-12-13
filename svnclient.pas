@@ -113,43 +113,48 @@ begin
 
   while True do
   begin
-    // Look in path
-    // Windows: will also look for <SVNName>.exe
-    if not FileExists(FRepoExecutable) then
-      FRepoExecutable := Which(RepoExecutableName+GetExeExt)
-    else
-      break;
+    {$IFDEF DARWIN}
+    if not FileExists(FRepoExecutable)
+       then FRepoExecutable := '/Library/Developer/CommandLineTools/usr/bin/svn'
+       else break;
+    {$ENDIF}
 
     {$IFDEF MSWINDOWS}
     // Some popular locations for SlikSVN, Subversion, and TortoiseSVN:
     // Covers both 32 bit and 64 bit Windows.
     if not FileExists(FRepoExecutable)
-       then FRepoExecutable := GetEnvironmentVariable('ProgramFiles\Subversion\bin\' + RepoExecutableName + '.exe')
+       then FRepoExecutable := GetEnvironmentVariable('ProgramFiles')+'\Subversion\bin\' + RepoExecutableName + '.exe'
        else break;
     if not FileExists(FRepoExecutable)
-       then FRepoExecutable := GetEnvironmentVariable('ProgramFiles(x86)\Subversion\bin\' + RepoExecutableName + '.exe')
+       then FRepoExecutable := GetEnvironmentVariable('ProgramFiles(x86)')+'\Subversion\bin\' + RepoExecutableName + '.exe'
        else break;
     if not FileExists(FRepoExecutable)
-       then FRepoExecutable := GetEnvironmentVariable('ProgramFiles\SlikSvn\bin\' + RepoExecutableName + '.exe')
+       then FRepoExecutable := GetEnvironmentVariable('ProgramFiles')+'\SlikSvn\bin\' + RepoExecutableName + '.exe'
        else break;
     if not FileExists(FRepoExecutable)
-       then FRepoExecutable := GetEnvironmentVariable('ProgramFiles(x86)\SlikSvn\bin\' + RepoExecutableName + '.exe')
+       then FRepoExecutable := GetEnvironmentVariable('ProgramFiles(x86)')+'\SlikSvn\bin\' + RepoExecutableName + '.exe'
        else break;
     if not FileExists(FRepoExecutable)
-       then FRepoExecutable := GetEnvironmentVariable('ProgramFiles\TorToiseSVN\bin\' + RepoExecutableName + '.exe')
+       then FRepoExecutable := GetEnvironmentVariable('ProgramFiles')+'\TorToiseSVN\bin\' + RepoExecutableName + '.exe'
        else break;
     if not FileExists(FRepoExecutable)
-       then FRepoExecutable := GetEnvironmentVariable('ProgramFiles(x86)\TorToiseSVN\bin\' + RepoExecutableName + '.exe')
+       then FRepoExecutable := GetEnvironmentVariable('ProgramFiles(x86)')+'\TorToiseSVN\bin\' + RepoExecutableName + '.exe'
        else break;
     //Directory where current executable is:
     if not FileExists(FRepoExecutable)
        then FRepoExecutable := (SafeGetApplicationPath + RepoExecutableName + '.exe')
        else break;
-   {$ENDIF MSWINDOWS}
+    {$ENDIF MSWINDOWS}
+
+    // Look in path
+    // Windows: will also look for <SVNName>.exe
+    if not FileExists(FRepoExecutable) then
+      FRepoExecutable := Which(RepoExecutableName+GetExeExt);
+
     break;
   end;
 
-  if not FileExists(FRepoExecutable) then
+  if (not FileExists(FRepoExecutable)) then
   begin
     //current directory. Note: potential for misuse by malicious program.
     {$ifdef mswindows}
@@ -166,11 +171,25 @@ begin
   begin
     //rv:=TInstaller(Parent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' --version', Verbose);
     //if rv<>0 then
-    if (NOT CheckExecutable(FRepoExecutable, ['--version'], '')) then
+    if (NOT CheckExecutable(FRepoExecutable, ['--version'], '', true)) then
     begin
       FRepoExecutable := '';
       //ThreadLog('SVN client found, but error code during check: '+InttoStr(rv),etError);
       ThreadLog('SVN client found, but error code during check !',etError);
+    end
+    else
+    begin
+      if (CheckExecutable(FRepoExecutable, ['--version'], 'pc-msys', true)) then
+      begin
+        FRepoExecutable := '';
+        ThreadLog('SVN client found in path, but its from MSYS and that does not work with fpcupdeluxe.',etWarning);
+      end;
+      if (CheckExecutable(FRepoExecutable, ['--version'], 'pc-cygwin', true)) then
+      begin
+        FRepoExecutable := '';
+        ThreadLog('SVN client found in path, but its from CYGWIN and that does not work with fpcupdeluxe.',etWarning);
+      end;
+
     end;
   end
   else

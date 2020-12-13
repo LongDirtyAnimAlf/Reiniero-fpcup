@@ -141,14 +141,26 @@ type
   end;
 
   { TmORMotPXLInstaller }
-
   TmORMotPXLInstaller = class(TUniversalInstaller)
   public
     function BuildModule(ModuleName: string): boolean; override;
   end;
 
-  { TInternetToolsInstaller }
+  {$ifndef FPCONLY}
+  { TAWGGInstaller }
+  TAWGGInstaller = class(TUniversalInstaller)
+  public
+    function BuildModule(ModuleName: string): boolean; override;
+  end;
+  {$endif}
 
+  { TPas2jsInstaller }
+  TPas2jsInstaller = class(TUniversalInstaller)
+  public
+    function BuildModule(ModuleName: string): boolean; override;
+  end;
+
+  { TInternetToolsInstaller }
   TInternetToolsInstaller = class(TUniversalInstaller)
   public
     function GetModule(ModuleName: string): boolean; override;
@@ -744,6 +756,7 @@ begin
   try
     ProcessorResult:=Processor.ExecuteAndWait;
     result := (ProcessorResult=0);
+
     // runtime packages will return false, but output will have info about package being "only for runtime"
     if result then
     begin
@@ -756,7 +769,7 @@ begin
     else
     begin
       // if the package is only for runtime, just add an lpl file to inform Lazarus of its existence and location ->> set result to true
-      if (Pos('only for runtime',Processor.WorkerOutput.Text)>0) OR (RegisterPackageFeature)
+      if (Pos('only for runtime',Processor.WorkerOutput.Text)>0) OR (RegisterPackageFeature) OR (ProcessorResult=4)
          then result:=True
          else WritelnLog(localinfotext+'Error trying to add package '+PackageName+'. Details: '+FErrorLog.Text,true);
     end;
@@ -959,7 +972,7 @@ begin
       //So, take responsibility of correct install
       //All other packages are users responsibility !
 
-      if LowerCase(ModuleName)='suggestedpackages' then
+      if ModuleName=_SUGGESTED then
       begin
 
         {$ifdef Darwin}
@@ -1481,13 +1494,13 @@ begin
     // Run all InstallExecute<n> commands:
     // More detailed logging only if verbose or debug:
     if FVerbose then WritelnLog(infotext+'Building module '+ModuleName+' running all InstallExecute commands in: '+LineEnding+
-      sl.text,true);
+      sl.CommaText,true);
     result:=RunCommands('InstallExecute',sl);
 
     // Run all CreateInstaller<n> commands; for now Windows only
     {$IFDEF MSWINDOWS}
     if FVerbose then WritelnLog(infotext+'Building module '+ModuleName+' running all CreateInstaller commands in: '+LineEnding+
-      sl.text,true);
+      sl.CommaText,true);
     result:=CreateInstallers('CreateInstaller',sl, ModuleName);
     {$ENDIF MSWINDOWS}
     end
@@ -2292,6 +2305,160 @@ begin
 
     end;
   end;
+end;
+
+{$ifndef FPCONLY}
+function TAWGGInstaller.BuildModule(ModuleName: string): boolean;
+var
+  Workingdir,versionitis_exe:string;
+  idx:integer;
+  sl:TStringList;
+begin
+  result:=inherited;
+  result:=InitModule;
+  if not result then exit;
+
+  //Perform some extra magic for this module
+
+  Workingdir:='';
+
+  idx:=UniModuleList.IndexOf(ModuleName);
+  if idx>=0 then
+  begin
+    sl:=TStringList(UniModuleList.Objects[idx]);
+    Workingdir:=GetValueFromKey(LOCATIONMAGIC,sl);
+    if Workingdir='' then Workingdir:=GetValueFromKey(INSTALLMAGIC,sl);
+    Workingdir:=FixPath(Workingdir);
+    Workingdir:=Workingdir+DirectorySeparator+'src';
+  end;
+
+  Processor.Process.Parameters.Clear;
+  Processor.Executable := IncludeTrailingPathDelimiter(LazarusInstallDir)+LAZBUILDNAME+GetExeExt;
+  Processor.Process.CurrentDirectory := ExcludeTrailingPathDelimiter(Workingdir);
+  Processor.Process.Parameters.Add('--primary-config-path='+LazarusPrimaryConfigPath);
+  Processor.Process.Parameters.Add('--recursive');
+
+  Processor.Process.Parameters.Add(Workingdir+DirectorySeparator+'versionitis.lpi');
+  Processor.Process.Parameters.Add('--build-mode=default');
+
+  Infoln(infotext+Processor.GetExeInfo,etDebug);
+  ProcessorResult:=Processor.ExecuteAndWait;
+  result := (ProcessorResult=0);
+
+  if not result then exit;
+
+  {$ifdef Windows}
+  versionitis_exe:=Workingdir+DirectorySeparator+'win-versionitis'+GetExeExt;
+  FileUtil.CopyFile(Workingdir+DirectorySeparator+'versionitis'+GetExeExt,versionitis_exe);
+  {$else}
+  versionitis_exe:=Workingdir+DirectorySeparator+'versionitis'+GetExeExt;
+  {$endif}
+
+  // Tricky: copy awgg.lpi to prevent failure of versionitis
+  ForceDirectories(Workingdir+DirectorySeparator+'src');
+  FileUtil.CopyFile(Workingdir+DirectorySeparator+'awgg.lpi',Workingdir+DirectorySeparator+'src'+DirectorySeparator+'awgg.lpi');
+  FileUtil.CopyFile(Workingdir+DirectorySeparator+'src'+DirectorySeparator+'versionitis.pas',Workingdir+DirectorySeparator+'versionitis.pas');
+
+  Processor.Process.Parameters.Clear;
+  Processor.Executable := versionitis_exe;
+  Processor.Process.CurrentDirectory := ExcludeTrailingPathDelimiter(Workingdir);
+  Processor.Process.Parameters.Add('-verbose');
+
+  Infoln(infotext+Processor.GetExeInfo,etDebug);
+  ProcessorResult:=Processor.ExecuteAndWait;
+  result := (ProcessorResult=0);
+
+  if not result then exit;
+
+  Processor.Process.Parameters.Clear;
+  Processor.Executable := IncludeTrailingPathDelimiter(LazarusInstallDir)+LAZBUILDNAME+GetExeExt;
+  Processor.Process.CurrentDirectory := ExcludeTrailingPathDelimiter(Workingdir);
+  Processor.Process.Parameters.Add('--primary-config-path='+LazarusPrimaryConfigPath);
+  Processor.Process.Parameters.Add('--recursive');
+
+  Processor.Process.Parameters.Add(Workingdir+DirectorySeparator+'awgg.lpr');
+  Processor.Process.Parameters.Add('--build-mode=default');
+
+  Infoln(infotext+Processor.GetExeInfo,etDebug);
+  ProcessorResult:=Processor.ExecuteAndWait;
+  result := (ProcessorResult=0);
+end;
+{$endif}
+
+function TPas2jsInstaller.BuildModule(ModuleName: string): boolean;
+var
+  Workingdir,FilePath:string;
+  idx:integer;
+  sl:TStringList;
+  {$ifndef FPCONLY}
+  LazarusConfig: TUpdateLazConfig;
+  {$endif}
+begin
+  result:=inherited;
+  result:=InitModule;
+  if not result then exit;
+
+  //Perform some extra magic for this module
+
+  Workingdir:='';
+
+  idx:=UniModuleList.IndexOf(ModuleName);
+  if idx>=0 then
+  begin
+    sl:=TStringList(UniModuleList.Objects[idx]);
+    Workingdir:=GetValueFromKey(LOCATIONMAGIC,sl);
+    if Workingdir='' then Workingdir:=GetValueFromKey(INSTALLMAGIC,sl);
+    Workingdir:=FixPath(Workingdir);
+  end;
+
+  Processor.Process.Parameters.Clear;
+  Processor.Executable:=Make;
+  Processor.Process.CurrentDirectory := ExcludeTrailingPathDelimiter(Workingdir);
+  Processor.Process.Parameters.Add('PP='+FCompiler);
+  //Processor.Process.Parameters.Add('FPC='+FCompiler);
+
+  Processor.Process.Parameters.Add('clean');
+  Processor.Process.Parameters.Add('all');
+
+  Infoln(infotext+Processor.GetExeInfo,etDebug);
+  ProcessorResult:=Processor.ExecuteAndWait;
+  result := (ProcessorResult=0);
+
+  if not result then exit;
+
+  {$ifndef FPCONLY}
+  LazarusConfig:=TUpdateLazConfig.Create(LazarusPrimaryConfigPath);
+  try
+    // set defaults for pas2js
+    FilePath:=ConcatPaths([WorkingDir,'bin',GetFPCTarget(true),'pas2js'+GetExeExt]);
+    LazarusConfig.SetVariable(Pas2jsConfig, 'compiler/value', FilePath);
+    FilePath:=ConcatPaths([WorkingDir,'bin',GetFPCTarget(true),'compileserver'+GetExeExt]);
+    LazarusConfig.SetVariable(Pas2jsConfig, 'webserver/value', FilePath);
+  finally
+    LazarusConfig.Free;
+  end;
+
+  FilePath:=ConcatPaths([WorkingDir,'packages','rtl','pas2js_rtl.lpk']);
+  result:=InstallPackage(FilePath,WorkingDir,True);
+  if not result then exit;
+
+  FilePath:=ConcatPaths([WorkingDir,'packages','fcl-base','fcl_base_pas2js.lpk']);
+  result:=InstallPackage(FilePath,WorkingDir,True);
+  if not result then exit;
+
+  FilePath:=ConcatPaths([WorkingDir,'packages','fcl-db','pas2js_fcldb.lpk']);
+  result:=InstallPackage(FilePath,WorkingDir,True);
+  if not result then exit;
+
+  FilePath:=ConcatPaths([WorkingDir,'packages','fpcunit','fpcunit_pas2js.lpk']);
+  result:=InstallPackage(FilePath,WorkingDir,True);
+  if not result then exit;
+
+  FilePath:=ConcatPaths([LazarusSourceDir,'components','pas2js','pas2jsdsgn.lpk']);
+  result:=InstallPackage(FilePath,WorkingDir,False);
+  if not result then exit;
+  {$endif}
+
 end;
 
 function TInternetToolsInstaller.GetModule(ModuleName: string): boolean;

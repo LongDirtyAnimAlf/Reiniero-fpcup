@@ -128,18 +128,18 @@ const
 
   {$ifdef win64}
   OpenSSLSourceURL : array [0..3] of string = (
+    'https://indy.fulgan.com/SSL/openssl-1.0.2u-x64_86-win64.zip',
     'http://wiki.overbyte.eu/arch/openssl-1.0.2u-win64.zip',
-    'https://indy.fulgan.com/SSL/Archive/Experimental/openssl-1.0.2o-x64-VC2017.zip',
     'http://www.magsys.co.uk/download/software/openssl-1.0.2o-win64.zip',
-    'https://indy.fulgan.com/SSL/Archive/openssl-1.0.2k-x64_86-win64.zip'
+    'https://indy.fulgan.com/SSL/Archive/openssl-1.0.2p-x64_86-win64.zip'
     );
   {$endif}
   {$ifdef win32}
   OpenSSLSourceURL : array [0..3] of string = (
+    'https://indy.fulgan.com/SSL/openssl-1.0.2u-i386-win32.zip',
     'http://wiki.overbyte.eu/arch/openssl-1.0.2u-win32.zip',
-    'https://indy.fulgan.com/SSL/Archive/Experimental/openssl-1.0.2o-x32-VC2017.zip',
     'http://www.magsys.co.uk/download/software/openssl-1.0.2o-win32.zip',
-    'https://indy.fulgan.com/SSL/Archive/openssl-1.0.2k-i386-win32.zip'
+    'https://indy.fulgan.com/SSL/Archive/openssl-1.0.2p-i386-win32.zip'
     );
   {$endif}
 
@@ -207,6 +207,8 @@ const
 
   _DOCKER                  = 'Docker';
 
+  _SUGGESTED               = 'suggestedpackages';
+  _SUGGESTEDADD            = _SUGGESTED+'add';
 
   _UNIVERSALDEFAULT        = 'Universal'+_DEFAULT;
   _FPCCLEANBUILDONLY       = _FPC+_CLEAN+_BUILD+_ONLY;
@@ -241,6 +243,7 @@ const
   _ENDFINAL                = 'End';
   _END                     = _ENDFINAL+_SEP;
 
+  URL_ERROR                = 'sources error (URL mismatch)';
 
 type
   TARMARCH  = (default,armel,armeb,armhf);
@@ -593,22 +596,22 @@ begin
   begin
     if (NOT Assigned(FCrossInstaller)) OR ((FCrossInstaller.TargetCPU<>FCrossCPU_Target)  OR (FCrossInstaller.TargetOS<>FCrossOS_Target)) then
     begin
-      target := GetFPCTarget(false);
-      FCrossInstaller:=nil;
-      if assigned(CrossInstallers) then
-        for idx := 0 to Pred(CrossInstallers.Count) do
-          if CrossInstallers[idx] = target then
-          begin
-            FCrossInstaller:=TCrossInstaller(CrossInstallers.Objects[idx]);
-            break;
-          end;
-    end;
-    if (NOT Assigned(FCrossInstaller)) then
-    begin
-      Infoln(localinfotext+'Could not find crosscompiler logic for '+target+' !!',etError);
-      Infoln(localinfotext+'This is a fatal error. Exception wil be created.',etError);
-      Infoln(localinfotext+'Please file a bug-report.',etError);
-      raise Exception.CreateFmt('%s fpcup cross-logic not found. Please report this issue.',[target]);
+  target := GetFPCTarget(false);
+    FCrossInstaller:=nil;
+    if assigned(CrossInstallers) then
+      for idx := 0 to Pred(CrossInstallers.Count) do
+        if CrossInstallers[idx] = target then
+        begin
+          FCrossInstaller:=TCrossInstaller(CrossInstallers.Objects[idx]);
+          break;
+        end;
+  end;
+  if (NOT Assigned(FCrossInstaller)) then
+  begin
+    Infoln(localinfotext+'Could not find crosscompiler logic for '+target+' !!',etError);
+    Infoln(localinfotext+'This is a fatal error. Exception wil be created.',etError);
+    Infoln(localinfotext+'Please file a bug-report.',etError);
+    raise Exception.CreateFmt('%s fpcup cross-logic not found. Please report this issue.',[target]);
     end
     else
     begin
@@ -3089,7 +3092,7 @@ begin
     Infoln(infotext+'sources ok.',etInfo)
   else
   begin
-    Infoln(infotext+'sources error (URL mismatch).',aEvent);
+    Infoln(infotext+URL_ERROR+'.',aEvent);
     Infoln(infotext+'desired URL='+FURL,aEvent);
     Infoln(infotext+'source URL='+aRepoClient.Repository,aEvent);
 
@@ -3261,10 +3264,11 @@ begin
           if (Pos('fpcpatch_haiku.patch',PatchFilePath)>0) OR (Pos('fpcpatch_haiku_',PatchFilePath)>0) then PatchAccepted:=False;
           {$endif}
 
-          {$ifndef Haiku}
-          //only patch the Haiku FPU exception mask on Haiku itself
+          //{$ifndef Haiku}
+          ////only patch the Haiku FPU exception mask on Haiku itself
+          //this patch has been disabled: we always patch the sources to get things running on Haiku !!
           if Pos('fpcpatch_haikufpu',PatchFilePath)>0 then PatchAccepted:=False;
-          {$endif}
+          //{$endif}
 
           {$ifndef OpenBSD}
           //only patch the openbsd mask on OpenBSD itself
@@ -3346,7 +3350,8 @@ begin
           if (Pos('fpcupdeluxe',s)>0) then break; // we were here already ... ;-)
           if ((Pos('Default8087CW',s)>0) AND (Pos('$1332;',s)>0)) then
           begin
-            PatchList.Strings[i]:=StringReplace(s,'$1332;','$1333; // Patched by fpcupdeluxe to prevent FPU crash',[]);
+            //PatchList.Strings[i]:=StringReplace(s,'$1332;','$1333; // Patched by fpcupdeluxe to prevent FPU crash',[]);
+            PatchList.Strings[i]:=StringReplace(s,'$1332;','$137F; // Patched by fpcupdeluxe to prevent FPU crash',[]);
             PatchList.SaveToFile(PatchFilePath);
             break;
           end;
@@ -3705,6 +3710,8 @@ begin
               if NumbersExtr.Exec(RevString) then
                 result := NumbersExtr.Match[0];
             end;
+            result:=Trim(result);
+            result:=AnsiDequotedStr(result,'''');
           finally
             NumbersExtr.Free;
           end;
@@ -3846,7 +3853,7 @@ begin
     FMinorVersion := -1;
     FReleaseVersion := -1;
     FPatchVersion := -1;
-    VersionFromString(s,FMajorVersion,FMinorVersion,FReleaseVersion);
+    VersionFromString(s,FMajorVersion,FMinorVersion,FReleaseVersion,FPatchVersion);
     FPatchVersion:=GetReleaseCandidateFromSource(FSourceDirectory);
     if FPatchVersion=-1 then FPatchVersion:=ReleaseCandidateFromUrl(FURL);
   end;

@@ -37,6 +37,8 @@ unit fpcuputil;
 {$define ENABLECURL}
 {$define ENABLENATIVE}
 
+{.$define ENABLEEMAIL}
+
 {$ifdef Haiku}
 // synaser does not compile under Haiku
 {$undef ENABLENATIVE}
@@ -270,6 +272,8 @@ type
     {$endif}
   {$endif USEONLYCURL}
 
+
+function MulDiv( a, b, c : Integer ) : Integer;
 // Create shortcut on desktop to Target file
 procedure CreateDesktopShortCut(Target, TargetArguments, ShortcutName: string; AddContext:boolean=false) ;
 // Create shell script in user directory that links to Target
@@ -296,9 +300,10 @@ function FileNameFromURL(URL:string):string;
 function StripUrl(URL:string): string;
 function CompilerVersion(CompilerPath: string): string;
 function CompilerRevision(CompilerPath: string): string;
-procedure VersionFromString(const VersionSnippet:string;out Major,Minor,Build: Integer);
-function CalculateFullVersion(Major,Minor,Release:integer):dword;
-function CalculateNumericalVersion(VersionSnippet: string): word;
+procedure VersionFromString(const VersionSnippet:string;out Major,Minor,Build:integer; var Patch: Integer);
+function CalculateFullVersion(const Major,Minor,Release:integer):dword;overload;
+function CalculateFullVersion(const Major,Minor,Release,Patch:integer):qword;overload;
+function CalculateNumericalVersion(VersionSnippet: string): dword;
 function VersionFromUrl(URL:string): string;
 function ReleaseCandidateFromUrl(aURL:string): integer;
 // Download from HTTP (includes Sourceforge redirection support) or FTP
@@ -358,6 +363,7 @@ function IsLinuxMUSL:boolean;
 function GetLogicalCpuCount: integer;
 {$ifdef Darwin}
 function GetDarwinSDKVersion(aSDK: string):string;
+function GetDarwinSDKLocation:string;
 {$endif}
 function GetAndroidSDKDir:string;
 function GetAndroidNDKDir:string;
@@ -371,7 +377,7 @@ function LibWhich(aLibrary: string): boolean;
 function Which(const Executable: string): string;
 function IsExecutable(Executable: string):boolean;
 function ForceDirectoriesSafe(Const Dir: RawByteString): Boolean;
-function CheckExecutable(Executable:string;Parameters:array of string;ExpectOutput: string): boolean;
+function CheckExecutable(Executable:string;Parameters:array of string;ExpectOutput: string; beSilent:boolean=false): boolean;
 function GetJava: string;
 function GetJavac: string;
 function CheckJava: boolean;
@@ -441,7 +447,10 @@ uses
   //,SynCrtSock // SendEmail from the mORMot
   //,LCLIntf // OpenURL
   {$ifndef Haiku}
-  ,mimemess,mimepart,ssl_openssl,smtpsend
+  {$ifdef ENABLEEMAIL}
+  ,mimemess,mimepart,smtpsend
+  {$endif}
+  ,ssl_openssl
   {$endif}
   ,process
   ,processutils
@@ -464,7 +473,9 @@ const
   {$ENDIF MSWINDOWS}
 
 {$i revision.inc}
+{$ifdef ENABLEEMAIL}
 {$i secrets.inc}
+{$endif}
 
 type
   TOnWriteStream = procedure(Sender: TObject; APos: Int64) of object;
@@ -659,6 +670,10 @@ begin
 end;
 {$endif}
 
+function MulDiv( a, b, c : Integer ) : Integer;
+begin
+  result := int64(a)*int64(b) div c;
+end;
 
 function SafeExpandFileName (Const FileName : String): String;
 begin
@@ -888,6 +903,8 @@ var
   Ini:TIniFile;
   {$ENDIF}
   OldIniVersion,NewIniVersion:string;
+  Major,Minor,Build,Patch: Integer;
+  OldIniVersionNum,NewIniVersionNum:qword;
 begin
   result:=false;
 
@@ -931,7 +948,20 @@ begin
     OldIniVersion:=Ini.ReadString('fpcupinfo','inifileversion','0.0.0.0');
     Ini.Free;
 
-    if OldIniVersion<>NewIniVersion then
+    Major:=0;
+    Minor:=0;
+    Build:=0;
+    Patch:=0;
+    VersionFromString(OldIniVersion,Major,Minor,Build,Patch);
+    OldIniVersionNum:=CalculateFullVersion(Major,Minor,Build,Patch);
+    Major:=0;
+    Minor:=0;
+    Build:=0;
+    Patch:=0;
+    VersionFromString(NewIniVersion,Major,Minor,Build,Patch);
+    NewIniVersionNum:=CalculateFullVersion(Major,Minor,Build,Patch);
+
+    if (NewIniVersionNum>OldIniVersionNum) then
     begin
       BackupFileName:=ChangeFileExt(filename,'.bak');
       while FileExists(BackupFileName) do BackupFileName := BackupFileName + 'k';
@@ -1262,7 +1292,7 @@ begin
   end;
 end;
 
-procedure VersionFromString(const VersionSnippet:string;out Major,Minor,Build: Integer);
+procedure VersionFromString(const VersionSnippet:string;out Major,Minor,Build:integer; var Patch: Integer);
 var
   i,j:integer;
   found:boolean;
@@ -1311,9 +1341,24 @@ begin
     Inc(i);
   end;
   if found then Build:=j;
+
+  // skip random symbols to move towards next digit
+  while (Length(VersionSnippet)>=i) AND (NOT (VersionSnippet[i] in ['0'..'9'])) do Inc(i);
+  // skip a single random symbol to move towards next digit
+  //if (Length(VersionSnippet)>=i) then Inc(i);
+  // get patch version
+  j:=0;
+  found:=false;
+  while (Length(VersionSnippet)>=i) AND (VersionSnippet[i] in ['0'..'9']) do
+  begin
+    found:=true;
+    j:=j*10+Ord(VersionSnippet[i])-$30;
+    Inc(i);
+  end;
+  if found then Patch:=j;
 end;
 
-function CalculateFullVersion(Major,Minor,Release:integer):dword;
+function CalculateFullVersion(const Major,Minor,Release:integer):dword;
 begin
   if (Major>=0) AND (Major<=6) AND (Minor>=0) AND (Release>=0) then
     result:=((Major *  100 + Minor) * 100 + Release)
@@ -1321,14 +1366,24 @@ begin
     result:=0;
 end;
 
-function CalculateNumericalVersion(VersionSnippet: string): word;
+function CalculateFullVersion(const Major,Minor,Release,Patch:integer):qword;
+begin
+  result:=0;
+  if (Major>=0) then result:=(result+Major)*100;
+  if (Minor>=0) then result:=(result+Minor)*100;
+  if (Release>=0) then result:=(result+Release)*100;
+  if (Patch>=0) then result:=result+Patch;
+end;
+
+function CalculateNumericalVersion(VersionSnippet: string): dword;
 var
-  Major,Minor,Build: Integer;
+  Major,Minor,Build,Patch: Integer;
 begin
   Major:=0;
   Minor:=0;
   Build:=0;
-  VersionFromString(VersionSnippet,Major,Minor,Build);
+  Patch:=0;
+  VersionFromString(VersionSnippet,Major,Minor,Build,Patch);
   result:=CalculateFullVersion(Major,Minor,Build);
 end;
 
@@ -3004,6 +3059,15 @@ begin
   end;
   result:=Trim(s);
 end;
+function GetDarwinSDKLocation:string;
+var
+  Output:string;
+begin
+  Output:='';
+  RunCommand('xcrun',['--show-sdk-path'], Output);
+  if (Length(Output)>0) then
+    result:=Trim(Output);
+end;
 {$endif}
 
 function GetAndroidSDKDir:string;
@@ -3179,34 +3243,51 @@ begin
   begin
     for i:=Low(HAIKUSEARCHDIRS) to High(HAIKUSEARCHDIRS) do
     begin
+      Output:='';
       sd:=HAIKUSEARCHDIRS[i];
       {$ifndef CPUX86}
       if (RightStr(sd,4)='/x86') then continue;
       {$endif}
       RunCommand('find',[sd,'-type','f','-name',aLibrary],Output,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
       result:=(Pos(aLibrary,Output)>0);
-      if result then break;
+      if result then
+      begin
+        ThreadLog('Library searcher found '+aLibrary+' inside '+sd+'.',etDebug);
+        break;
+      end;
     end;
   end;
   {$endif}
 
   {$ifdef Unix}
+  {$ifndef Haiku}
   if NOT result then
   begin
     for i:=Low(UNIXSEARCHDIRS) to High(UNIXSEARCHDIRS) do
     begin
+      Output:='';
       sd:=UNIXSEARCHDIRS[i];
       RunCommand('find',[sd,'-type','f','-name',aLibrary],Output,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
       result:=(Pos(aLibrary,Output)>0);
-      if result then break;
+      if result then
+      begin
+        ThreadLog('Library searcher found '+aLibrary+' inside '+sd+'.',etDebug);
+        break;
+      end;
     end;
   end;
 
   if (NOT result) then
   begin
+    Output:='';
     RunCommand('sh',['-c','"ldconfig -p | grep '+aLibrary+'"'],Output,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
     result:=(Pos(aLibrary,Output)>0);
+    if result then
+    begin
+      ThreadLog('Library '+aLibrary+' found by ldconfig.',etDebug);
+    end;
   end;
+  {$endif}
   {$endif}
 end;
 
@@ -3335,7 +3416,7 @@ begin
   {$ENDIF}
 end;
 
-function CheckExecutable(const Executable:string; const Parameters:array of String; ExpectOutput: string; Level: TEventType): boolean;
+function CheckExecutable(const Executable:string; const Parameters:array of String; ExpectOutput: string; Level: TEventType; beSilent:boolean): boolean;
 var
   aResultCode: longint;
   ExeName: string;
@@ -3354,7 +3435,7 @@ begin
         if (NOT Result) then
         begin
           // This is not a warning/error message as sometimes we can use multiple different versions of executables
-          if Level<>etCustom then
+          if ((Level<>etCustom) AND (NOT beSilent)) then
           begin
             if (NOT FileExists(Executable)) then
               ThreadLog(Executable + ' not found.',Level)
@@ -3371,18 +3452,18 @@ begin
     on E: Exception do
     begin
       // This is not a warning/error message as sometimes we can use multiple different versions of executables
-      if Level<>etCustom then ThreadLog(Executable + ' is not a valid ' + ExeName + ' application (' + 'Exception: ' + E.ClassName + '/' + E.Message + ')', Level);
+      if ((Level<>etCustom) AND (NOT beSilent)) then ThreadLog(Executable + ' is not a valid ' + ExeName + ' application (' + 'Exception: ' + E.ClassName + '/' + E.Message + ')', Level);
     end;
   end;
-  if Result then
+  if ((Result) AND (NOT beSilent)) then
     ThreadLog('Found valid ' + ExeName + ' application.',etDebug);
 end;
 
-function CheckExecutable(Executable:string;Parameters:array of string;ExpectOutput: string): boolean;
+function CheckExecutable(Executable:string;Parameters:array of string;ExpectOutput: string; beSilent:boolean): boolean;
 begin
   //result:=IsExecutable(Executable);
   //if result then
-    result:=CheckExecutable(Executable, Parameters, ExpectOutput, etInfo);
+    result:=CheckExecutable(Executable, Parameters, ExpectOutput, etInfo, beSilent);
 end;
 
 function GetJavaBase(aJava:string): string;
@@ -3513,7 +3594,7 @@ begin
   {$ifdef Windows}
   result:=CheckExecutable(GetJava, ['-version'], '');
   {$else}
-  result:=CheckExecutable('java', ['-version'], '', etInfo);
+  result:=CheckExecutable('java', ['-version'], '');
   {$endif}
 end;
 
@@ -3627,9 +3708,15 @@ begin
   result:=lowercase({$i %FPCTARGETOS%});
 end;
 
+function GetTargetCPUOS:string;
+begin
+  result:=GetTargetCPU+'-'+GetTargetOS;
+end;
+
+
 function GetDistro:string;
 var
-  Major,Minor,Build,i,j: Integer;
+  Major,Minor,Build,Patch,i,j: Integer;
   AllOutput : TStringList;
   s,t:ansistring;
   success:boolean;
@@ -3732,7 +3819,7 @@ begin
       begin
         if Length(s)>0 then
         begin
-          VersionFromString(s,Major,Minor,Build);
+          VersionFromString(s,Major,Minor,Build,Patch);
           t:=t+' '+InttoStr(Major)+'.'+InttoStr(Minor)+'.'+InttoStr(Build);
         end;
       end;
@@ -3769,11 +3856,6 @@ begin
     end;
     result:=j;
   end;
-end;
-
-function GetTargetCPUOS:string;
-begin
-  result:=GetTargetCPU+'-'+GetTargetOS;
 end;
 
 function checkGithubRelease(const aURL:string):string;
@@ -3918,6 +4000,7 @@ begin
   {$ENDIF}
 end;
 
+{$ifdef ENABLEEMAIL}
 function DoRead(Ptr : Pointer; Size : size_t; nmemb: size_t; Data : Pointer) : size_t;cdecl;
 begin
   if Data=nil then result:=0 else
@@ -4052,6 +4135,12 @@ begin
   end;
   {$endif}
 end;
+{$else}
+function SendMail (Host, Subject, pTo, From, login,password: string; Body: TStrings):boolean;
+begin
+  result:=true;
+end;
+{$endif}
 
 {TNormalUnzipper}
 
@@ -4944,20 +5033,20 @@ begin
   begin
     WGETBinary:='wget';
   end;
-  FWGETOk:=CheckExecutable(WGETBinary,['-V'], '', etCustom);
+  FWGETOk:=CheckExecutable(WGETBinary,['-V'], '', true);
 
   {$ifdef MSWINDOWS}
   {$ifdef CPU64}
   if (NOT FWGETOk) then
   begin
     WGETBinary:='wget64.exe';
-    FWGETOk:=CheckExecutable(WGETBinary,['-V'], '', etCustom);
+    FWGETOk:=CheckExecutable(WGETBinary,['-V'], '', true);
   end;
   {$endif}
   if (NOT FWGETOk) then
   begin
     WGETBinary:='wget.exe';
-    FWGETOk:=CheckExecutable(WGETBinary,['-V'], '', etCustom);
+    FWGETOk:=CheckExecutable(WGETBinary,['-V'], '', true);
   end;
   {$endif MSWINDOWS}
   {$endif USEONLYCURL}

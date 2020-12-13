@@ -883,6 +883,13 @@ begin
   //Makefile error we are not interested in
   if AnsiContainsText(line,'CreateProcess(') then exit;
 
+  //Various harmless OpenBSD errors
+  if AnsiContainsText(line,'misused, please use') then exit;
+  if AnsiContainsText(line,'may return deterministic values') then exit;
+  if AnsiContainsText(line,'dangerous; do not use it') then exit;
+  if AnsiContainsText(line,'may conflict with') then exit;
+
+  //Various FPC messags
   if AnsiStartsText('Compiling Release Version',line) then exit;
   if AnsiStartsText('Compiling Debug Version',line) then exit;
 
@@ -936,6 +943,8 @@ begin
       if AnsiContainsText(line,'parsing used unit ') then exit;
       if AnsiContainsText(line,'extracting ') then exit;
       if AnsiContainsText(line,'directory not found for option') then exit;
+      if AnsiContainsText(line,'hint(s) issued') then exit;
+      if AnsiContainsText(line,'warning(s) issued') then exit;
 
       // during building of lazarus components, default compiler switches cause version and copyright info to be shown
       // do not know if this is allowed, but this version / copyright info is very redundant as it is shown everytime the compiler is called ...
@@ -950,6 +959,7 @@ begin
         if AnsiContainsText(line,'(e=1)') then exit;
         if AnsiContainsText(line,'error 87') then exit;
         if AnsiContainsText(line,'(e=87)') then exit;
+        if AnsiContainsText(line,'-iTP:') then exit;
         //if AnsiContainsText(line,'dependency dropped') then exit;
       end;
 

@@ -116,6 +116,7 @@ type
   TFPCInstaller = class(TBaseFPCInstaller)
   private
     FSoftFloat: boolean;
+    FUseLibc: boolean;
     FTargetCompilerName: string;
     FBootstrapCompiler: string;
     FBootstrapCompilerDirectory: string;
@@ -147,6 +148,7 @@ type
     // and UnInstallModule but executed only once
     function InitModule(aBootstrapVersion:string=''):boolean;
   public
+    property UseLibc: boolean read FUseLibc;
     property SoftFloat: boolean write FSoftFloat;
     //Directory that has compiler needed to compile compiler sources. If compiler doesn't exist, it will be downloaded
     property BootstrapCompilerDirectory: string write FBootstrapCompilerDirectory;
@@ -279,7 +281,7 @@ begin
   RemoveDir(IncludeTrailingPathDelimiter(aBaseDir)+'ide'+DirectorySeparator+'bin');
 
   OldPath:=IncludeTrailingPathDelimiter(aBaseDir)+'packages'+DirectorySeparator;
-  if SysUtils.FindFirst(OldPath+'*',faDirectory{$ifdef unix} or faSymLink {$endif unix},FileInfo)=0 then
+  if SysUtils.FindFirst(OldPath+'*',faDirectory{$ifdef unix} or {%H-}faSymLink {$endif unix},FileInfo)=0 then
   begin
     repeat
       if (FileInfo.Name<>'.') and (FileInfo.Name<>'..') and (FileInfo.Name<>'') then
@@ -295,7 +297,7 @@ begin
   end;
 
   OldPath:=IncludeTrailingPathDelimiter(aBaseDir)+'utils'+DirectorySeparator;
-  if SysUtils.FindFirst(OldPath+'*',faDirectory{$ifdef unix} or faSymLink {$endif unix},FileInfo)=0 then
+  if SysUtils.FindFirst(OldPath+'*',faDirectory{$ifdef unix} or {%H-}faSymLink {$endif unix},FileInfo)=0 then
   begin
     repeat
       if (FileInfo.Name<>'.') and (FileInfo.Name<>'..') and (FileInfo.Name<>'') then
@@ -315,7 +317,7 @@ begin
 
   // for (very) old versions of FPC : fcl and fv directories
   OldPath:=IncludeTrailingPathDelimiter(aBaseDir)+'fcl'+DirectorySeparator;
-  if SysUtils.FindFirst(OldPath+'*',faDirectory{$ifdef unix} or faSymLink {$endif unix},FileInfo)=0 then
+  if SysUtils.FindFirst(OldPath+'*',faDirectory{$ifdef unix} or {%H-}faSymLink {$endif unix},FileInfo)=0 then
   begin
     repeat
       if (FileInfo.Name<>'.') and (FileInfo.Name<>'..') and (FileInfo.Name<>'') then
@@ -330,7 +332,7 @@ begin
     SysUtils.FindClose(FileInfo);
   end;
   OldPath:=IncludeTrailingPathDelimiter(aBaseDir)+'fv'+DirectorySeparator;
-  if SysUtils.FindFirst(OldPath+'*',faDirectory{$ifdef unix} or faSymLink {$endif unix},FileInfo)=0 then
+  if SysUtils.FindFirst(OldPath+'*',faDirectory{$ifdef unix} or {%H-}faSymLink {$endif unix},FileInfo)=0 then
   begin
     repeat
       if (FileInfo.Name<>'.') and (FileInfo.Name<>'..') and (FileInfo.Name<>'') then
@@ -346,7 +348,7 @@ begin
   end;
 
   OldPath:=IncludeTrailingPathDelimiter(aBaseDir)+'compiler'+DirectorySeparator;
-  if SysUtils.FindFirst(OldPath+'*',faDirectory{$ifdef unix} or faSymLink {$endif unix},FileInfo)=0 then
+  if SysUtils.FindFirst(OldPath+'*',faDirectory{$ifdef unix} or {%H-}faSymLink {$endif unix},FileInfo)=0 then
   begin
     repeat
       if (FileInfo.Name<>'.') and (FileInfo.Name<>'..') and (FileInfo.Name<>'') then
@@ -528,12 +530,14 @@ var
   OldPath:String;
   Options:String;
   s1,s2:string;
-  Counter:integer;
   LibsAvailable,BinsAvailable:boolean;
   MakeCycle:TSTEPS;
   ARMArch:TARMARCH;
   {$ifdef Darwin}
   Minimum_OSX,Minimum_iOS:string;
+  {$endif}
+  {$ifdef MSWINDOWS}
+  Counter:integer;
   {$endif}
 begin
   result:=inherited;
@@ -745,11 +749,15 @@ begin
           Processor.Process.CurrentDirectory:=ExcludeTrailingPathDelimiter(FSourceDirectory);
 
           //Still not clear if jobs can be enabled for crosscompiler builds ... :-|
+          //However, on Windows, erroros occur frequently due to more jobs.
+          //So, again, disabling for the time being.
+          {
           if (NOT FNoJobs) then
           begin
             Processor.Process.Parameters.Add('--jobs='+IntToStr(FCPUCount));
             Processor.Process.Parameters.Add('FPMAKEOPT=--threads='+IntToStr(FCPUCount));
           end;
+          }
 
           Processor.Process.Parameters.Add('--directory='+ ExcludeTrailingPathDelimiter(FSourceDirectory));
           Processor.Process.Parameters.Add('FPCMAKE=' + IncludeTrailingPathDelimiter(FBinPath)+'fpcmake'+GetExeExt);
@@ -954,21 +962,10 @@ begin
             if Length(s2)>0 then Options:=Options+s2;
           end;
 
-          {$ifdef freebsd}
-          if (MakeCycle in [st_Compiler,st_CompilerInstall]) then
-               Options:=Options+' -dFPC_USE_LIBC';
-          {$endif}
-
-          // Revision should be something like : "[r]123456" !!
-          if (Length(ActualRevision)<2) OR (ActualRevision='failure') OR (NOT (ActualRevision[2] in ['0'..'9'])) then
+          s2:=GetRevision(ModuleName);
+          if (Length(s2)>0) then
           begin
-            s2:=GetRevision(ModuleName);
-            if (Length(s2)>0) then FActualRevision:=s2;
-          end;
-
-          if (Length(ActualRevision)>1) AND (ActualRevision<>'failure') then
-          begin
-            Processor.Process.Parameters.Add('REVSTR='+ActualRevision);
+            Processor.Process.Parameters.Add('REVSTR='+s2);
             Processor.Process.Parameters.Add('REVINC=force');
           end;
 
@@ -997,16 +994,7 @@ begin
           end;
           CrossOptions:=TrimRight(CrossOptions);
 
-          //Still not sure if this is needed
-          //To be checked
-          if (CrossInstaller.TargetOS=TOS.freebsd) then
-          begin
-            //if NOT (MakeCycle in [st_Compiler,st_CompilerInstall]) then
-            begin
-              //Processor.Process.Parameters.Add('COMPILER_OPTIONS=-dFPC_USE_LIBC');
-              CrossOptions:=CrossOptions+' -dFPC_USE_LIBC';
-            end;
-          end;
+          if UseLibc then CrossOptions:=CrossOptions+' -dFPC_USE_LIBC';
 
           if ((CrossInstaller.TargetCPU=TCPU.mipsel) AND (CrossInstaller.TargetOS=TOS.embedded)) then
           begin
@@ -1064,7 +1052,7 @@ begin
           if CrossInstaller.BinUtilsPath<>''then
           begin
              {$ifdef Darwin}
-             //if (CrossInstaller.TargetOS='iphonesim') then
+             //if (CrossInstaller.TargetOS=TOS.iphonesim) then
              begin
                CrossOptions:=CrossOptions+' -FD'+ExcludeTrailingPathDelimiter(CrossInstaller.BinUtilsPath);
                {
@@ -1076,6 +1064,7 @@ begin
                }
              end;
              {$else}
+             //CrossOptions:=CrossOptions+' -FD'+ExcludeTrailingPathDelimiter(CrossInstaller.BinUtilsPath);
              //just for testing/debugging
              //Options:=Options+' -sh -s-';
              {$endif}
@@ -1613,12 +1602,21 @@ begin
     end;
     }
   end;
+
+  s2:=GetDarwinSDKLocation;
+  if Length(s2)>0 then
+  begin
+    s1:='-XR'+s2+' '+s1;
+    s1:='-Fl'+s2+'/usr/lib '+s1;
+  end;
   {$ENDIF}
 
   // Revision should be something like : "[r]123456" !!
-  if (Length(ActualRevision)>1) AND (ActualRevision<>'failure') AND (ActualRevision[2] in ['0'..'9']) then
+  s2:=Trim(ActualRevision);
+  s2:=AnsiDequotedStr(s2,'''');
+  if (Length(s2)>1) AND (s2<>'failure') AND ((s2[1] in ['0'..'9']) OR (s2[2] in ['0'..'9'])) then
   begin
-    Processor.Process.Parameters.Add('REVSTR='+ActualRevision);
+    Processor.Process.Parameters.Add('REVSTR='+s2);
     Processor.Process.Parameters.Add('REVINC=force');
   end;
 
@@ -1635,10 +1633,9 @@ begin
     {$ifndef DARWIN}
       s1:=s1+' -Fl/usr/pkg/lib';
     {$endif}
-    {$ifdef FreeBSD}
-      s1:=s1+' -dFPC_USE_LIBC';
-    {$endif}
   {$endif}
+
+  if UseLibc then s1:=s1+' -dFPC_USE_LIBC';
 
   {$ifdef Haiku}
     s2:='';
@@ -1821,13 +1818,14 @@ end;
 
 function TFPCInstaller.GetCompilerVersionNumber(aVersion: string; const index:byte=0): integer;
 var
-  Major,Minor,Build: Integer;
+  Major,Minor,Build,Patch: Integer;
 begin
   result:=-1;
   Major:=-1;
   Minor:=-1;
   Build:=-1;
-  VersionFromString(aVersion,Major,Minor,Build);
+  Patch:=-1;
+  VersionFromString(aVersion,Major,Minor,Build,Patch);
   if index=0 then result:=Major;
   if index=1 then result:=Minor;
   if index=2 then result:=Build;
@@ -2010,6 +2008,9 @@ begin
   {$IFDEF CPUAARCH64}
   // we need at least 3.2.0 for aarch64
   if CalculateNumericalVersion(result)<CalculateNumericalVersion('3.2.0') then result:='3.2.0';
+  {$IFDEF DARWIN}
+  if CalculateNumericalVersion(result)<CalculateNumericalVersion(FPCTRUNKVERSION) then result:=FPCTRUNKVERSION;
+  {$ENDIF}
   {$ENDIF}
 
   {$IFDEF HAIKU}
@@ -2389,11 +2390,11 @@ end;
 function TFPCInstaller.InitModule(aBootstrapVersion:string):boolean;
 var
   aCompilerList:TStringList;
-  i,j,k:integer;
+  i,j,k,l:integer;
   aCompilerArchive,aStandardCompilerArchive:string;
   aCompilerFound,aFPCUPCompilerFound, aLookForBetterAlternative:boolean;
   {$IFDEF FREEBSD}
-  l,FreeBSDVersion:integer;
+  FreeBSDVersion:integer;
   {$ENDIF}
   s:string;
   {$ifdef Darwin}
@@ -2794,7 +2795,7 @@ begin
             aCompilerList:=TStringList.Create;
             try
               aCompilerList.Clear;
-              VersionFromString(aBootstrapVersion,i,j,k);
+              VersionFromString(aBootstrapVersion,i,j,k,{%H-}l);
               s:=FPCFTPSNAPSHOTURL+'/v'+InttoStr(i)+InttoStr(j)+'/'+GetTargetCPUOS+'/';
               result:=aDownLoader.getFTPFileList(s,aCompilerList);
               if result then
@@ -3032,7 +3033,7 @@ begin
       VersionSnippet:=CompilerVersion(s);
       if VersionSnippet<>'0.0.0' then
       begin
-        VersionFromString(VersionSnippet,FMajorVersion,FMinorVersion,FReleaseVersion);
+        VersionFromString(VersionSnippet,FMajorVersion,FMinorVersion,FReleaseVersion,FPatchVersion);
         s2:='FPC native builder: Detected source version FPC (compiler): ';
       end;
     end;
@@ -3258,6 +3259,22 @@ begin
     end;
     {$endif darwin}
   end;//(NOT (Self is TFPCCrossInstaller))
+
+  // Do we need to force the use of libc :
+  FUseLibc:=False;
+
+  if (Self is TFPCCrossInstaller) then
+  begin
+    if (CrossInstaller.TargetOS=TOS.dragonfly) then FUseLibc:=True;
+    if (CrossInstaller.TargetOS=TOS.freebsd) then FUseLibc:=True;
+    if (CrossInstaller.TargetOS=TOS.openbsd) AND (NumericalVersion>CalculateNumericalVersion('3.2.0')) then FUseLibc:=True;
+  end
+  else
+  begin
+    if (GetTargetOS=GetOS(TOS.dragonfly)) then FUseLibc:=True;
+    if (GetTargetOS=GetOS(TOS.freebsd)) then FUseLibc:=True;
+    if (GetTargetOS=GetOS(TOS.openbsd)) AND (NumericalVersion>CalculateNumericalVersion('3.2.0')) then FUseLibc:=True;
+  end;
 
   // Now: the real build of FPC !!!
   OperationSucceeded:=BuildModuleCustom(ModuleName);
@@ -3657,8 +3674,8 @@ begin
         ConfigText.Append(s);
         {$endif}
 
+        if UseLibc then ConfigText.Append('-dFPC_USE_LIBC');
         {$ifdef freebsd}
-        ConfigText.Append('-dFPC_USE_LIBC');
         ConfigText.Append('-FD/usr/local/bin');
         {$endif}
 
@@ -3693,12 +3710,13 @@ begin
         {$ENDIF UNIX}
 
         {$ifdef Darwin}
+        ConfigText.Append('# Add some extra OSX options');
+        ConfigText.Append('#IFDEF DARWIN');
+
         s:=GetDarwinSDKVersion('macosx');
         if Length(s)>0 then
         begin
-          ConfigText.Append('# Add minimum required OSX version for native compiling');
           ConfigText.Append('# Prevents crti not found linking errors');
-          ConfigText.Append('#IFDEF DARWIN');
           ConfigText.Append('#IFNDEF FPC_CROSSCOMPILING');
           //ConfigText.Append('#IFDEF CPU'+UpperCase(GetTargetCPU));
           if CompareVersionStrings(s,'10.8')>=0 then
@@ -3706,27 +3724,17 @@ begin
           else
             ConfigText.Append('-WM'+s);
           ConfigText.Append('#ENDIF');
-          {
-          if CompareVersionStrings(s,'10.14')>=0 then
-          begin
-            ConfigText.Append('# MacOS 10.14 Mojave and newer have libs and tools in new, yet non-standard directory');
-            ConfigText.Append('-FD/Library/Developer/CommandLineTools/usr/bin');
-            ConfigText.Append('#ifdef cpui386');
-            ConfigText.Append('-Fl/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib');
-            ConfigText.Append('#endif');
-            ConfigText.Append('#ifndef cpui386');
-            ConfigText.Append('#ifndef cpupowerpc');
-            ConfigText.Append('#ifndef cpupowerpc64');
-            ConfigText.Append('-XR/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk');
-            ConfigText.Append('#endif');
-            ConfigText.Append('#endif');
-            ConfigText.Append('#endif');
-            //ConfigText.Append('-FD/Library/Developer/CommandLineTools/usr/bin');
-            //ConfigText.Append('-XR/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk');
-          end;
-          }
-          ConfigText.Append('#ENDIF');
         end;
+
+        s:=GetDarwinSDKLocation;
+        if Length(s)>0 then
+        begin
+          ConfigText.Append('# MacOS 10.14 Mojave and newer have libs and tools in new, yet non-standard directory');
+          ConfigText.Append('-XR'+s);
+          ConfigText.Append('-Fl'+s+'/usr/lib');
+        end;
+
+        ConfigText.Append('#ENDIF');
         {$endif Darwin}
 
         {$ifndef FPCONLY}
@@ -3908,7 +3916,6 @@ begin
     begin  // clean out the correct compiler
       Processor.Process.Parameters.Add('OS_TARGET='+CrossInstaller.TargetOSName);
       Processor.Process.Parameters.Add('CPU_TARGET='+CrossInstaller.TargetCPUName);
-      //if Length(CrossInstaller.SubArch)>0 then Processor.Process.Parameters.Add('SUBARCH='+CrossInstaller.SubArch);
       if Length(CrossOS_SubArch)>0 then Processor.Process.Parameters.Add('SUBARCH='+CrossOS_SubArch);
     end
     else
@@ -4183,6 +4190,7 @@ begin
   inherited Create;
 
   FCompiler := '';
+  FUseLibc  := false;
 
   FTargetCompilerName:=GetCompilerName(GetTargetCPU);
 

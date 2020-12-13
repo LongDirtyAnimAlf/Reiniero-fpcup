@@ -109,14 +109,14 @@ begin
   // Some popular locations for Tortoisegit:
   // Covers both 32 bit and 64 bit Windows.
   if not FileExists(FRepoExecutable) then
-    FRepoExecutable := GetEnvironmentVariable('ProgramFiles\TortoiseGit\bin\' + RepoExecutableName + '.exe');
+    FRepoExecutable := GetEnvironmentVariable('ProgramFiles')+'\TortoiseGit\bin\' + RepoExecutableName + '.exe';
   if not FileExists(FRepoExecutable) then
-    FRepoExecutable := GetEnvironmentVariable('ProgramFiles(x86)\TortoiseGit\bin\' + RepoExecutableName + '.exe');
+    FRepoExecutable := GetEnvironmentVariable('ProgramFiles(x86)')+'\TortoiseGit\bin\' + RepoExecutableName + '.exe';
   // Commandline git tools
   if not FileExists(FRepoExecutable) then
-    FRepoExecutable := GetEnvironmentVariable('ProgramFiles\Git\bin\' + RepoExecutableName + '.exe');
+    FRepoExecutable := GetEnvironmentVariable('ProgramFiles')+'\Git\bin\' + RepoExecutableName + '.exe';
   if not FileExists(FRepoExecutable) then
-    FRepoExecutable := GetEnvironmentVariable('ProgramFiles(x86)\Git\bin\' + RepoExecutableName + '.exe');
+    FRepoExecutable := GetEnvironmentVariable('ProgramFiles(x86)')+'\Git\bin\' + RepoExecutableName + '.exe';
   if not FileExists(FRepoExecutable) then
     FRepoExecutable := 'C:\Program Files (x86)\Git\bin\' + RepoExecutableName + '.exe';
 
@@ -142,7 +142,7 @@ begin
     // Check for valid git executable:
     //rv:=TInstaller(Parent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' --version', Verbose);
     //if rv<>0 then
-    if (NOT CheckExecutable(RepoExecutable, ['--version'], '')) then
+    if (NOT CheckExecutable(FRepoExecutable, ['--version'], '', true)) then
     begin
       FRepoExecutable := '';
       //ThreadLog('GIT client found, but error code during check: '+InttoStr(rv),etError);

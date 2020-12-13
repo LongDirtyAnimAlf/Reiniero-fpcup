@@ -1758,6 +1758,10 @@ begin
       LazarusConfig.SetVariableIfNewFile(EnvironmentConfig, 'EnvironmentOptions/TestBuildDirectory/History/Item2/Value', 'C:\Users\Public\Documents');
       {$ENDIF MSWINDOWS}
 
+      // Set message filter to none to be able to detect linking errors.
+      LazarusConfig.SetVariableIfNewFile(EnvironmentConfig, 'MsgView/Filters/Filter1/MinUrgency', 'None');
+      LazarusConfig.SetVariableIfNewFile(EnvironmentConfig, 'MsgView/Filters/Filter1/FilterNotesWithoutPos', 'False');
+
       // add default projects path
       DebuggerPath := IncludeTrailingPathDelimiter(FBaseDirectory) + 'projects';
       ForceDirectoriesSafe(DebuggerPath);
@@ -1944,6 +1948,7 @@ begin
     begin
       Processor.Process.Parameters.Add('OS_TARGET=' + CrossInstaller.TargetOSName);
       Processor.Process.Parameters.Add('CPU_TARGET=' + CrossInstaller.TargetCPUName);
+      if Length(CrossOS_SubArch)>0 then Processor.Process.Parameters.Add('SUBARCH='+CrossOS_SubArch);
     end
     else
     begin
