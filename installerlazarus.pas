@@ -319,6 +319,8 @@ begin
     // up from there.
     CrossInstaller.SetCrossOpt(CrossOPT); //pass on user-requested cross compile options
     CrossInstaller.SetSubArch(CrossOS_SubArch);
+    CrossInstaller.SetABI(CrossOS_ABI);
+
     if not CrossInstaller.GetBinUtils(FBaseDirectory) then
       Infoln(infotext+'Failed to get crossbinutils', etError)
     else if not CrossInstaller.GetLibs(FBaseDirectory) then
@@ -1228,6 +1230,9 @@ begin
     //VersionSnippet:=DelChars(s, '''');
     s:=TrimSet(s, [#39]);
     s:=Trim(s);
+    //x:=Length(s);
+    //while (x>0) AND (NOT (s[x] in ['0'..'9','.'])) do Dec(x);
+    //if (x<Length(s)) then Delete(S,x,MaxInt);
     if Length(s)>0 then result:=s;
     CloseFile(TxtFile);
   end;
@@ -1878,6 +1883,23 @@ begin
     DeleteFile(IncludeTrailingPathDelimiter(FInstallDirectory) + LAZARUSCFG);
   end;
 
+  if (ModuleName=_LAZARUS) then
+  begin
+    if CrossCompiling then
+    begin
+      CrossInstaller.SetCrossOpt(CrossOPT);
+      CrossInstaller.SetSubArch(CrossOS_SubArch);
+      CrossInstaller.SetABI(CrossOS_ABI);
+    end
+    else
+    begin
+      //Infoln(infotext+'If your primary config path has changed, you may want to remove ' + IncludeTrailingPathDelimiter(
+      //  FInstallDirectory) + 'lazarus.cfg which points to the primary config path.', etInfo);
+      Infoln(infotext+'Deleting Lazarus primary config file ('+LAZARUSCFG+').', etInfo);
+      DeleteFile(IncludeTrailingPathDelimiter(FInstallDirectory) + LAZARUSCFG);
+    end;
+  end;
+
   {$ifdef MSWINDOWS}
   // If doing crosswin32-64 or crosswin64-32, make distclean will not only clean the LCL
   // but also existing lhelp.exe if present. Temporarily copy that so we can restore it later.
@@ -1948,7 +1970,7 @@ begin
     begin
       Processor.Process.Parameters.Add('OS_TARGET=' + CrossInstaller.TargetOSName);
       Processor.Process.Parameters.Add('CPU_TARGET=' + CrossInstaller.TargetCPUName);
-      if Length(CrossOS_SubArch)>0 then Processor.Process.Parameters.Add('SUBARCH='+CrossOS_SubArch);
+      if (CrossInstaller.SubArch<>TSubarch.saNone) then Processor.Process.Parameters.Add('SUBARCH='+CrossInstaller.SubArchName);
     end
     else
     begin
@@ -2119,6 +2141,16 @@ begin
 end;
 
 function TLazarusInstaller.GetModule(ModuleName: string): boolean;
+const
+ VERSIONEXPRESSION='$FPC_VERSION';
+ CPUEXPRESSION='$CPU_TARGET';
+ OSEXPRESSION='$OS_TARGET';
+ REGEXPACKAGE =
+   '[package]'+LineEnding+
+   'name=regexpr'+LineEnding+
+   'version='+VERSIONEXPRESSION+LineEnding+
+   '[require]'+LineEnding+
+   'packages_'+OSEXPRESSION+'_'+CPUEXPRESSION+'='+LineEnding;
 {$ifdef Darwin}
 {$ifdef LCLQT5}
 function CreateQT5Symlinks(aApp:string):boolean;
@@ -2195,9 +2227,58 @@ begin
 
   if aRepoClient=nil then
   begin
-    Infoln(infotext+'Using FTP for download of ' + ModuleName + ' sources.',etWarning);
+    result:=true;
+    Infoln(infotext+'Downloading ' + ModuleName + ' sources.',etInfo);
     result:=DownloadFromFTP(ModuleName);
     FActualRevision:=FPreviousRevision;
+    if result and Ultibo then
+    begin
+
+      FilePath:=ConcatPaths([FFPCInstallDir,'units',GetFPCTarget(true),'regexpr'])+PathDelim+'Package.fpc';
+      //if FileExists(FilePath) then SysUtils.DeleteFile(FilePath);
+      if (NOT FileExists(FilePath)) then
+      begin
+        s:=REGEXPACKAGE;
+        s:=StringReplace(s,VERSIONEXPRESSION,CompilerVersion(FCompiler),[]);
+        s:=StringReplace(s,CPUEXPRESSION,GetTargetCPU,[]);
+        s:=StringReplace(s,OSEXPRESSION,GetTargetOS,[]);
+
+        UpdateWarnings:=TStringList.Create;
+        try
+          UpdateWarnings.Text:=s;
+          UpdateWarnings.SaveToFile(FilePath);
+        finally
+          UpdateWarnings.Free;
+        end;
+      end;
+
+      Processor.Executable := ConcatPaths([FFPCInstallDir,'bin',GetFPCTarget(true)])+PathDelim+'fpcmake'+GetExeExt;
+      Processor.Process.Parameters.Clear;
+
+      s:=Processor.Environment.GetVar('FPCDIR');
+      try
+        Processor.Environment.SetVar('FPCDIR',ConcatPaths([FFPCInstallDir,'units',GetFPCTarget(true)]));
+        Processor.Process.Parameters.Add('-T' + GetTargetCPU + '-' + GetTargetOS);
+
+        Processor.Process.CurrentDirectory := ExcludeTrailingPathDelimiter(FSourceDirectory);
+        ProcessorResult := Processor.ExecuteAndWait;
+
+        Processor.Process.CurrentDirectory := ConcatPaths([FSourceDirectory,'ide']);
+        ProcessorResult := Processor.ExecuteAndWait;
+
+        Processor.Process.CurrentDirectory := ConcatPaths([FSourceDirectory,'components']);
+        ProcessorResult := Processor.ExecuteAndWait;
+
+        Processor.Process.CurrentDirectory := ConcatPaths([FSourceDirectory,'tools']);
+        ProcessorResult := Processor.ExecuteAndWait;
+      finally
+        Processor.Environment.SetVar('FPCDIR',s);
+      end;
+
+      //FActualRevision:='';
+      //FPreviousRevision:=FActualRevision;
+
+    end;
   end
   else
   begin
@@ -2208,6 +2289,7 @@ begin
       if (aRepoClient.ClassType=FGitClient.ClassType)
          then result:=DownloadFromGit(ModuleName, FPreviousRevision, FActualRevision, UpdateWarnings)
          else result:=DownloadFromSVN(ModuleName, FPreviousRevision, FActualRevision, UpdateWarnings);
+
       if UpdateWarnings.Count>0 then
       begin
         WritelnLog(UpdateWarnings);
@@ -2215,13 +2297,11 @@ begin
     finally
       UpdateWarnings.Free;
     end;
-
   end;
 
   if result then
   begin
     SourceVersion:=GetVersion;
-
     if (SourceVersion<>'0.0.0') then
     begin
       s:=GetRevisionFromVersion(ModuleName,SourceVersion);

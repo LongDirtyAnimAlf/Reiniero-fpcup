@@ -92,16 +92,54 @@ const
   SEARCHFILE='as';
 
 type
-  TCPU = (cpuNone,i386,x86_64,arm,aarch64,powerpc,powerpc64,mips,mipsel,avr,jvm,i8086,sparc,sparc64,riscv32,riscv64,m68k,xtensa);
-  TOS  = (osNone,win32,win64,linux,android,darwin,freebsd,openbsd,aix,wince,iphonesim,embedded,java,msdos,haiku,solaris,dragonfly,netbsd,morphos,aros,amiga,go32v2,freertos,ios);
+  TCPU      = (cpuNone,i386,x86_64,arm,aarch64,powerpc,powerpc64,mips,mipsel,avr,jvm,i8086,sparc,sparc64,riscv32,riscv64,m68k,xtensa);
+  TOS       = (osNone,win32,win64,linux,android,darwin,freebsd,openbsd,aix,wince,iphonesim,embedded,java,msdos,haiku,solaris,dragonfly,netbsd,morphos,aros,amiga,go32v2,freertos,ios,ultibo);
+  TSUBARCH  = (saNone,armv4,armv4t,armv6,armv6m,armv7a,armv7em,armv7m,avr1,avr2,avr25,avr35,avr4,avr5,avr51,avr6,avrtiny,avrxmega3,pic32mx,rv32imac,lx6,lx106);
+  //TABI      = (default,sysv,aix,darwin,elfv2,eabi,armeb,eabihf,oldwin32gnu,aarch64ios,riscvhf,linux386_sysv,windowed,call0);
+  TABI      = (default,sysv,elfv2,eabi,eabihf,aarch64ios,riscvhf,windowed,call0);
+  TARMARCH  = (none,armel,armeb,armhf);
 
-  TCPUOS = record
-    CPU:TCPU;
-    OS:TOS;
+  TSUBARCHS = set of TSUBARCH;
+  TABIS = set of TABI;
+
+const
+  SUBARCH_OS         = [{TOS.osNone,}TOS.embedded,TOS.freertos,TOS.ultibo];
+  SUBARCH_CPU        = [{TCPU.cpuNone,}TCPU.arm,TCPU.avr,TCPU.mipsel,TCPU.riscv32,TCPU.xtensa];
+  SUBARCH_ARM        = [TSUBARCH.armv4..TSUBARCH.armv7m];
+  SUBARCH_AVR        = [TSUBARCH.avr1..TSUBARCH.avrxmega3];
+  SUBARCH_MIPSEL     = [TSUBARCH.pic32mx];
+  SUBARCH_RISCV32    = [TSUBARCH.rv32imac];
+  SUBARCH_XTENSA     = [TSUBARCH.lx6..TSUBARCH.lx106];
+
+  ABI_ARM            = [TABI.default,TABI.eabi,TABI.eabihf];
+  ABI_XTENSA         = [TABI.default,TABI.windowed,TABI.call0];
+
+type
+  TSearchSetting = (ssUp,ssAuto,ssCustom);
+
+const
+  ARMArchFPCStr : array[TARMARCH] of string=(
+    '','-dFPC_ARMEL','-dFPC_ARMEB','-dFPC_ARMHF'
+  );
+  FPCUP_AUTO_MAGIC  = 'FPCUP_AUTO';
+
+  FPC_SUBARCH_MAGIC = '$FPCSUBARCH';
+  FPC_ABI_MAGIC     = '$FPCABI';
+
+type
+  TCrossUtil = record
+    Setting:TSearchSetting;
+    LibDir:string;
+    BinDir:string;
+    CrossBuildOptions:string;
+    CrossARMArch:TARMARCH;
+    Compiler:string;
+    Available:boolean;
   end;
 
-  CompilerType=(ctBootstrap,ctInstalled);
-  SearchMode=(smFPCUPOnly,smAuto,smManual);
+  TCrossUtils = array[TCPU,TOS,TSUBARCH] of TCrossUtil;
+
+  TCompilerType=(ctBootstrap,ctInstalled);
 
   { TCrossInstaller }
   TCrossInstaller = class(TObject)
@@ -109,21 +147,24 @@ type
     function GetCrossModuleName:string;
     function GetTargetCPUName:string;
     function GetTargetOSName:string;
+    function GetSubarchName:string;
+    function GetABIName:string;
   protected
     FBinUtilsPrefix: string; //can be empty, if a prefix is used to separate binutils for different archs in the same directory, use it
     FBinUtilsPath: string; //the cross compile binutils (as, ld etc). Could be the same as regular path if a binutils prefix is used.
     FBinutilsPathInPath: boolean;
     FBinUtilsDirectoryID: string; //where to find the binutils themselves
-    FCompilerUsed: CompilerType;
-    FSearchMode: SearchMode;
+    FCompilerUsed: TCompilerType;
+    FSearchMode: TSearchSetting;
     FCrossModuleNamePrefix: string; //used for identifying module to user in messages
     FCrossOpts: TStringList; //Options to be added to CROSSOPT by the calling code. XP= (binutils prefix) is already done, no need to add it
     FFPCCFGSnippet: string; //snippet to be added to fpc.cfg in order to find binutils/libraries etc
     FLibsPath: string; //path for target environment libraries
     FTargetCPU: TCPU; //cpu for the target environment. Follows FPC names
     FTargetOS: TOS; //operating system for the target environment. Follows FPC names
+    FSubArch: TSUBARCH; //optional subarch for embedded targets
+    FABI: TABI; //optional subarch for embedded targets
     FRegisterName: string;
-    FSubArch: string; //optional subarch for embedded targets
     FLibsFound,FBinsFound,FCrossOptsAdded:boolean;
     FSolarisOI:boolean;
     FMUSL:boolean;
@@ -150,15 +191,17 @@ type
     // Parses space-delimited crossopt parameters and sets the CrossOpt property
     procedure SetCrossOpt(CrossOpts: string);
     // Pass subarch if any
-    procedure SetSubArch(SubArch: string);
+    procedure SetSubArch(SubArch: TSUBARCH);
+    // Pass ABI if any
+    procedure SetABI(ABI: TABI);
     procedure ShowInfo(info: string = ''; Level: TEventType = etInfo);
     // Reset some variables to default values
     procedure Reset; virtual;
     // Which compiler should be used for cross compilation.
     // Normally the bootstrap compiler, but cross compilers may need the installed compiler
     // (often a trunk version, though there's no tests yet that check trunk is installed)
-    property CompilerUsed: CompilerType read FCompilerUsed;
-    property SearchModeUsed: SearchMode read FSearchMode write FSearchMode;
+    property CompilerUsed: TCompilerType read FCompilerUsed;
+    property SearchModeUsed: TSearchSetting read FSearchMode write FSearchMode;
     property CrossModuleName: string read GetCrossModuleName;
     // Represents arguments for CROSSOPT parameter
     // No need to add XP= (binutils prefix): calling code will do this
@@ -182,10 +225,14 @@ type
     property DirName:string read FBinUtilsDirectoryID;
     property TargetCPU:TCPU read FTargetCPU;
     property TargetOS:TOS read FTargetOS;
+    property SubArch:TSUBARCH read FSubArch;
+    property ABI:TABI read FABI;
     property TargetCPUName: string read GetTargetCPUName;
     property TargetOSName: string read GetTargetOSName;
+    property SubArchName:string read GetSubarchName;
+    property ABIName:string read GetABIName;
     property RegisterName:string read FRegisterName;
-    property SubArch:string read FSubArch;
+
     property SolarisOI: boolean write FSolarisOI;
     property MUSL: boolean write FMUSL;
     constructor Create;
@@ -196,12 +243,21 @@ function GetCPU(aCPU:TCPU):string;
 function GetTCPU(aCPU:string):TCPU;
 function GetOS(aOS:TOS):string;
 function GetTOS(aOS:string):TOS;
-function GetCPUOSCombo(aCPU,aOS:string):TCPUOS;
+function GetSubarch(aSubarch:TSUBARCH):string;
+function GetTSubarch(aSubarch:string):TSUBARCH;
+function GetSubarchs(aCPU:TCPU;aOS:TOS):TSUBARCHS;
+function GetARMArch(aARMarch:TARMARCH):string;
+function GetTARMArch(aARMArch:string):TARMARCH;
+function GetARMArchFPCDefine(aARMArch:TARMARCH):string;
+function GetABI(aABI:TABI):string;
+function GetTABI(aABI:string):TABI;
+function GetABIs(aCPU:TCPU;aOS:TOS):TABIS;
 
 procedure RegisterCrossCompiler(Platform:string;aCrossInstaller:TCrossInstaller);
 function GetExeExt: string;
 
 var
+  CrossUtils:TCrossUtils;
   CrossInstallers:TStringList=nil;
 
 implementation
@@ -225,6 +281,8 @@ begin
   result:=TCPU.cpuNone;
   if length(aCPU)>0 then
   begin
+    if aCPU='armv6' then xCPU:=TCPU.arm
+    else
     if aCPU='ppc' then xCPU:=TCPU.powerpc
     else
     if aCPU='ppc64' then xCPU:=TCPU.powerpc64
@@ -234,7 +292,7 @@ begin
     begin
       xCPU:=TCPU(GetEnumValueSimple(TypeInfo(TCPU),aCPU));
       if Ord(xCPU) < 0 then
-        raise Exception.CreateFmt('Invalid CPU name "%s" for GetCPUOSCombo.', [aCPU]);
+        raise Exception.CreateFmt('Invalid CPU name "%s" for GetCPU.', [aCPU]);
     end;
     result:=xCPU;
   end;
@@ -254,6 +312,12 @@ begin
   result:=TOS.osNone;
   if length(aOS)>0 then
   begin
+    if (Pos('linux',aOS)>0) then xOS:=TOS.linux
+    else
+    if (Pos('solaris',aOS)>0) then xOS:=TOS.solaris
+    else
+    if aOS='windows' then xOS:=TOS.win32
+    else
     if aOS='i-sim' then xOS:=TOS.iphonesim
     else
     if aOS='i-simulator' then xOS:=TOS.iphonesim
@@ -265,23 +329,105 @@ begin
     begin
       xOS:=TOS(GetEnumValueSimple(TypeInfo(TOS),aOS));
       if Ord(xOS) < 0 then
-        raise Exception.CreateFmt('Invalid OS name "%s" for GetCPUOSCombo.', [aOS]);
+        raise Exception.CreateFmt('Invalid OS name "%s" for GetOS.', [aOS]);
     end;
     result:=xOS;
   end;
 end;
 
-function GetCPUOSCombo(aCPU,aOS:string):TCPUOS;
+function GetSubarch(aSubarch:TSUBARCH):string;
 begin
-  result.CPU:=TCPU.cpuNone;
-  result.OS:=TOS.osNone;
-  result.CPU:=GetTCPU(aCPU);
-  if ( (LowerCase(aOS)='windows') OR (LowerCase(aOS)='mswindows') ) then
+  if (aSubarch<Low(TSUBARCH)) OR (aSubarch>High(TSUBARCH)) then
+    raise Exception.Create('Invalid Subarch for GetSubarch.');
+  result:=GetEnumNameSimple(TypeInfo(TSUBARCH),Ord(aSubarch));
+end;
+
+function GetTSubarch(aSubarch:string):TSUBARCH;
+var
+  xSubarch:TSUBARCH;
+begin
+  result:=TSUBARCH.saNone;
+  if (Length(aSubarch)>0) then
   begin
-    if result.CPU=TCPU.i386 then result.OS:=TOS.win32;
-    if result.CPU=TCPU.x86_64 then result.OS:=TOS.win64;
-  end
-  else result.OS:=GetTOS(aOS);
+    xSubarch:=TSUBARCH(GetEnumValueSimple(TypeInfo(TSUBARCH),aSubarch));
+    if Ord(xSubarch) < 0 then
+      raise Exception.CreateFmt('Invalid Subarch name "%s" for GetSubarch.', [xSubarch]);
+    result:=xSubarch;
+  end;
+end;
+
+function GetSubarchs(aCPU:TCPU;aOS:TOS):TSUBARCHS;
+begin
+  result:=[TSUBARCH.saNone];
+  if ((aOS in SUBARCH_OS) AND (aCPU in SUBARCH_CPU)) then
+  begin
+    case aCPU of
+      TCPU.arm:      if (aOS<>TOS.ultibo) then result:=SUBARCH_ARM;
+      TCPU.avr:      if (aOS=TOS.embedded) then result:=SUBARCH_AVR;
+      TCPU.mipsel:   if (aOS=TOS.embedded) then result:=SUBARCH_MIPSEL;
+      TCPU.riscv32:  if (aOS=TOS.embedded) then result:=SUBARCH_RISCV32;
+      TCPU.xtensa:   if (aOS<>TOS.ultibo) then result:=SUBARCH_XTENSA;
+    end;
+    // Limit some special targets
+    if (aOS=TOS.ultibo) then result:=[TSUBARCH.armv6,TSUBARCH.armv7a];
+    if ((aOS=TOS.freertos) AND (aCPU=TCPU.arm)) then result:=[TSUBARCH.armv6m,TSUBARCH.armv7em,TSUBARCH.armv7m];
+  end;
+end;
+
+function GetARMArch(aARMarch:TARMARCH):string;
+begin
+  if (aARMarch<Low(TARMARCH)) OR (aARMarch>High(TARMARCH)) then
+    raise Exception.Create('Invalid ARMarch for GetARMarch.');
+  result:=GetEnumNameSimple(TypeInfo(TARMARCH),Ord(aARMarch));
+end;
+
+function GetTARMArch(aARMArch:string):TARMARCH;
+begin
+  if Length(aARMArch)=0 then
+    result:=TARMARCH.none
+  else
+    result:=TARMARCH(GetEnumValueSimple(TypeInfo(TARMARCH),aARMArch));
+  if Ord(result) < 0 then
+    raise Exception.CreateFmt('Invalid ARM Arch name "%s" for GetARMArch.', [aARMArch]);
+end;
+
+function GetARMArchFPCDefine(aARMArch:TARMARCH):string;
+begin
+  result:=ARMArchFPCStr[aARMArch];
+end;
+
+function GetABI(aABI:TABI):string;
+begin
+  if aABI=TABI.default then
+    result:=''
+  else
+  begin
+    if (aABI<Low(TABI)) OR (aABI>High(TABI)) then
+      raise Exception.Create('Invalid ABI for GetABI.');
+    result:=GetEnumNameSimple(TypeInfo(TABI),Ord(aABI));
+  end;
+end;
+
+function GetTABI(aABI:string):TABI;
+begin
+  if Length(aABI)=0 then
+    result:=TABI.default
+  else
+    result:=TABI(GetEnumValueSimple(TypeInfo(TABI),aABI));
+  if Ord(result) < 0 then
+    raise Exception.CreateFmt('Invalid ARM ABI name "%s" for GetTABI.', [aABI]);
+end;
+
+function GetABIs(aCPU:TCPU;aOS:TOS):TABIS;
+begin
+  result:=[TABI.default];
+  if ((aOS in SUBARCH_OS) AND (aCPU in SUBARCH_CPU)) then
+  begin
+    case aCPU of
+      TCPU.arm:      if (aOS<>TOS.ultibo) then result:=ABI_ARM;
+      TCPU.xtensa:   if (aOS<>TOS.ultibo) then result:=ABI_XTENSA;
+    end;
+  end;
 end;
 
 function GetExeExt: string;
@@ -316,15 +462,30 @@ begin
   result:=GetOS(TargetOS);
 end;
 
+function TCrossInstaller.GetSubarchName:string;
+begin
+  result:=GetSubarch(Subarch);
+end;
+
+function TCrossInstaller.GetABIName:string;
+begin
+  result:=GetABI(ABI);
+end;
 
 procedure TCrossInstaller.AddFPCCFGSnippet(aSnip: string);
 var
   aSnippd:string;
-  i:integer;
 begin
   if Length(Trim(aSnip))=0 then exit;
 
-  aSnippd:=StringReplace(aSnip,' ',LineEnding,[rfReplaceAll]);
+  aSnippd:=aSnip;
+
+  aSnippd:=StringReplace(aSnippd,'#IFDEF ','#IFDEF_',[rfReplaceAll]);
+  aSnippd:=StringReplace(aSnippd,'#ENDIF ','#ENDIF_',[rfReplaceAll]);
+  aSnippd:=StringReplace(aSnippd,' ',LineEnding,[rfReplaceAll]);
+  aSnippd:=StringReplace(aSnippd,'#IFDEF_','#IFDEF ',[rfReplaceAll]);
+  aSnippd:=StringReplace(aSnippd,'#ENDIF_','#ENDIF ',[rfReplaceAll]);
+
   if (Pos(aSnippd,FFPCCFGSnippet)>0) then exit;
 
   if Length(FPCCFGSnippet)>0 then
@@ -435,7 +596,7 @@ var
 begin
   result:=false;
 
-  if SearchModeUsed=smManual then exit;
+  if SearchModeUsed=TSearchSetting.ssCustom then exit;
 
   // first search local paths based on libraries provided for or adviced by fpc itself
   sd:=IncludeTrailingPathDelimiter(BasePath);
@@ -473,7 +634,7 @@ begin
     if LibsOrBins
        then sd:=sd+'lib'
        else sd:=sd+'bin';
-    if Length(DirName)>0 then sd:=sd+DirectorySeparator+DirName;
+    if (Length(DirName)>0) then sd:=sd+DirectorySeparator+DirName;
     sd:=SafeExpandFileName(sd);
     result:=SearchUtil(sd, LookFor, LibsOrBins);
     if ((NOT result) AND (NOT LibsOrBins)) then
@@ -484,7 +645,7 @@ begin
   end;
 
   {$IFDEF UNIX}
-  if (SearchModeUsed=smAuto) then
+  if (SearchModeUsed=TSearchSetting.ssAuto) then
   begin
     if LibsOrBins
        then sd:='lib'
@@ -533,7 +694,16 @@ begin
 
   // Add user-selected CROSSOPT to fpc.cfg snippet
   // Descendents can add more fpc.cfg snippets but shouldn't remove what the user chose
-  for i:=0 to FCrossOpts.Count-1 do AddFPCCFGSnippet(FCrossOpts[i]);
+  if (SubArch<>TSUBARCH.saNone) then
+    AddFPCCFGSnippet('#IFDEF CPU'+UpperCase(Self.SubArchName));
+  for i:=0 to FCrossOpts.Count-1 do
+  begin
+    if ((SubArch<>TSUBARCH.saNone) AND AnsiContainsText(FCrossOpts[i],'-Cp'+Self.SubArchName)) then continue;
+    AddFPCCFGSnippet(FCrossOpts[i]);
+  end;
+  if (SubArch<>TSUBARCH.saNone) then
+    AddFPCCFGSnippet('#ENDIF '+UpperCase(Self.SubArchName));
+
   FCrossOptsAdded:=true;
 end;
 
@@ -555,10 +725,16 @@ begin
   end;
 end;
 
-procedure TCrossInstaller.SetSubArch(SubArch: string);
+procedure TCrossInstaller.SetSubArch(SubArch: TSUBARCH);
 begin
   FSubArch:=SubArch;
 end;
+
+procedure TCrossInstaller.SetABI(ABI: TABI);
+begin
+  FABI:=ABI;
+end;
+
 
 procedure TCrossInstaller.ShowInfo(info: string = ''; Level: TEventType = etInfo);
 begin
@@ -579,7 +755,8 @@ begin
   FBinsFound:=false;
   FCrossOptsAdded:=false;
   FCrossOpts.Clear;
-  FSubArch:='';
+  FSubArch:=TSUBARCH.saNone;
+  FABI:=TABI.default;
 
   FRegisterName:=TargetCPUName+'-'+TargetOSName;
   FBinUtilsDirectoryID:=FRegisterName;
@@ -626,8 +803,205 @@ begin
   inherited Destroy;
 end;
 
+procedure InitDefaultCrossSettings;
+var
+  CPU:TCPU;
+  OS:TOS;
+  SUBARCH:TSUBARCH;
+  Subarchs:TSUBARCHS;
+  s1,s2:string;
+  aCrossOptionSetting:string;
+  aARMABISetting:TARMARCH;
+begin
+  for OS := Low(TOS) to High(TOS) do
+  begin
+    for CPU := Low(TCPU) to High(TCPU) do
+    begin
+
+      s1:=GetCPU(CPU)+'-'+GetOS(OS);
+
+      Subarchs:=GetSubarchs(CPU,OS);
+
+      for SUBARCH in Subarchs do
+      begin
+        if (SUBARCH<>TSUBARCH.saNone) then
+          s2:=s1+'-'+GetSubarch(SUBARCH)
+        else
+          s2:=s1;
+
+        CrossUtils[CPU,OS,SUBARCH].Setting:=TSearchSetting.ssUp;
+        CrossUtils[CPU,OS,SUBARCH].LibDir:='';
+        CrossUtils[CPU,OS,SUBARCH].BinDir:='';
+        CrossUtils[CPU,OS,SUBARCH].Compiler:='';
+
+        aCrossOptionSetting:='';
+        aARMABISetting:=TARMARCH.none;
+
+        // Set defaults for CrossBuildOptions
+
+        //arm (unix, non-android) predefined settings
+        if (
+          (CPU=TCPU.arm)
+          AND (NOT (OS in SUBARCH_OS))
+          AND (NOT (OS in [TOS.android,TOS.win32,TOS.win64,TOS.iphonesim,TOS.java,TOS.msdos,TOS.solaris,TOS.morphos,TOS.aros,TOS.amiga,TOS.go32v2]))
+          ) then
+        begin
+          // default: armhf
+          aARMABISetting:=TARMARCH.armhf;
+
+          if (OS=TOS.wince) then
+          begin
+            //Disable for now : setting ARMV6 or higher gives problems with FPC 3.0.4 and lower
+            //aCrossOptionSetting:='-CpARMV6 ';
+          end
+          else
+          if ((OS=TOS.darwin) OR (OS=TOS.ios)) then
+          begin
+            aCrossOptionSetting:='-CpARMV7 -CfVFPV3 -CaEABI ';
+          end
+          else
+          begin
+            aCrossOptionSetting:='-Cp'+DEFAULTARMCPU+' -CfVFPV3 -OoFASTMATH -CaEABIHF ';
+          end;
+        end;
+
+        //android predefined settings
+        if (OS=TOS.android) then
+        begin
+          if (CPU=TCPU.i386) then
+          begin
+            aCrossOptionSetting:='-CfSSSE3 ';
+          end;
+          if (CPU=TCPU.x86_64) then
+          begin
+            aCrossOptionSetting:='-CfSSE42 ';
+          end;
+          if (CPU=TCPU.arm) then
+          begin
+            // default: armhf
+            // don't worry: this -dFPC_ARMHF option will still build a normal ppcrossarm (armel) for Android
+            // adding this option will allow ppcrossarm compiler to generate ARMHF when needed
+            // but I stand corrected if this assumption is wrong
+            aARMABISetting:=TARMARCH.armhf;
+
+            // Use hard floats, using armeabi-v7a Android ABI.
+            // Note: do not use -CaEABIHF on Android, to not use
+            // armeabi-v7a-hard ABI. Reasons:
+            // - armeabi-v7a-hard ABI is not adviced anymore by Google,
+            //   see "ARM Hard Float ABI Removal" on
+            //   https://android.googlesource.com/platform/ndk/+/353e653824b79c43b948429870d0abeedebde386/docs/HardFloatAbi.md
+            // - it prevents calling functions from libraries not using
+            //   armeabi-v7a-hard ABI (but only using armeabi-v7a) like
+            //   http://repo.or.cz/openal-soft/android.git or
+            //   https://github.com/michaliskambi/tremolo-android .
+            aCrossOptionSetting:='-Cp'+DEFAULTARMCPU+' -CfVFPV3 -CaEABI ';
+          end;
+        end;
+
+        //freertos and embedded predefined settings
+        if (OS in [TOS.embedded,TOS.freertos]) then
+        begin
+
+          if ((CPU=TCPU.avr) AND (OS=TOS.embedded)) then
+          begin
+            // for Uno (ATMega328P) use avr5
+            // for Mega (ATMega2560) use avr6
+            if SUBARCH=TSubarch.avr5 then
+              aCrossOptionSetting:='-Cpavr5 ';
+            if SUBARCH=TSubarch.avr6 then
+              aCrossOptionSetting:='-Cpavr6 ';
+          end;
+
+          if (CPU=TCPU.xtensa) then
+          begin
+            if SUBARCH=TSubarch.lx6 then
+              aCrossOptionSetting:='-Cplx6 -Cfhard ';
+          end;
+
+          if (CPU=TCPU.arm) then
+          begin
+            aARMABISetting:=TARMARCH.armhf;
+            aCrossOptionSetting:='-Cp'+GetSubarch(SUBARCH)+' ';
+            if (SUBARCH<>TSubarch.armv7em) then
+              aCrossOptionSetting:=aCrossOptionSetting+' -CaEABI '
+            else
+              aCrossOptionSetting:=aCrossOptionSetting+' -CfFPV4_SP_D16 -OoFASTMATH -CaEABIHF '
+          end;
+
+          if ((CPU=TCPU.mipsel) AND (OS=TOS.embedded)) then
+          begin
+            if SUBARCH=TSubarch.pic32mx then
+              aCrossOptionSetting:='-Cpmips32 ';
+          end;
+
+        end;
+
+        //ultibo predefined settings
+        if (OS=TOS.ultibo) then
+        begin
+          if (CPU=TCPU.arm) then
+          begin
+            // Always hardfloat !!
+            aARMABISetting:=TARMARCH.armhf;
+
+            if SUBARCH=TSubarch.armv6 then
+              aCrossOptionSetting:='-CpARMV6 -CfVFPV2 -CIARM -CaEABIHF -OoFASTMATH ';
+            if SUBARCH=TSubarch.armv7a then
+              aCrossOptionSetting:='-CpARMV7A -CfVFPV3 -CIARM -CaEABIHF -OoFASTMATH ';
+          end;
+        end;
+
+        //msdos predefined settings
+        if (OS=TOS.msdos) then
+        begin
+          if (CPU=TCPU.i8086) then
+          begin
+            {$IFDEF DARWIN}
+            aCrossOptionSetting:='-WmLarge ';
+            {$ELSE}
+            aCrossOptionSetting:='-WmMedium ';
+            {$ENDIF DARWIN}
+          end;
+        end;
+
+        //ppc64 predefined settings
+        if (CPU=TCPU.powerpc64) then
+        begin
+          if ((OS=TOS.linux)) then
+          begin
+            // for now, little endian only on Linux (IBM CPU's) !!
+            aCrossOptionSetting:='-Cb- -Caelfv2 ';
+          end;
+        end;
+
+        //freebsd predefined settings
+        if (OS=TOS.freebsd) then
+        begin
+          //This is already done in the FPC installer itself.
+          //To be checked if that is the right choice.
+          //aCrossOptionSetting:='-dFPC_USE_LIBC ';
+        end;
+
+        //Store predefined setting.
+        CrossUtils[CPU,OS,SUBARCH].CrossBuildOptions:=aCrossOptionSetting;
+
+        // Set defaults for ARM ABI
+        if CPU=TCPU.arm then
+        begin
+          CrossUtils[CPU,OS,SUBARCH].CrossARMArch:=aARMABISetting;
+        end;
+
+      end;
+    end;
+  end;
+end;
+
+initialization
+  InitDefaultCrossSettings;
+
 finalization
   if assigned(CrossInstallers) then
     CrossInstallers.Destroy;
+
 end.
 

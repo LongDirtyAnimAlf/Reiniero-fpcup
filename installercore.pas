@@ -143,9 +143,9 @@ const
     );
   {$endif}
 
-  SnipMagicBegin='# begin fpcup do not remove '; //look for this/add this in fpc.cfg cross-compile snippet. Note: normally followed by FPC CPU-os code
-  SnipMagicEnd='# end fpcup do not remove'; //denotes end of fpc.cfg cross-compile snippet
-  FPCSnipMagic='# If you don''t want so much verbosity use'; //denotes end of standard fpc.cfg
+  SnipMagicBegin = '# begin fpcup do not remove '; //look for this/add this in fpc.cfg cross-compile snippet. Note: normally followed by FPC CPU-os code
+  SnipMagicEnd   = '# end fpcup do not remove'; //denotes end of fpc.cfg cross-compile snippet
+  FPCSnipMagic   = '# If you don''t want so much verbosity use'; //denotes end of standard fpc.cfg
 
   //Sequence contants for statemachine
 
@@ -245,18 +245,9 @@ const
 
   URL_ERROR                = 'sources error (URL mismatch)';
 
-type
-  TARMARCH  = (default,armel,armeb,armhf);
-
-  //TTargetSet=array[tcpu,tos] of boolean;
-
 const
   ppcSuffix : array[TCPU] of string=(
     'none','386','x64','arm','a64','ppc','ppc64', 'mips', 'mipsel','avr','jvm','8086','sparc','sparc64','rv32','rv64','68k','xtensa'
-  );
-
-  ARMArchFPCStr : array[TARMARCH] of string=(
-    '','-dFPC_ARMEL','-dFPC_ARMEB','-dFPC_ARMHF'
   );
 
 type
@@ -280,15 +271,17 @@ type
 
   TInstaller = class(TObject)
   private
-    FURL: string;
-    FKeepLocalChanges: boolean;
-    FReApplyLocalChanges: boolean;
-    FCrossInstaller:TCrossInstaller;
-    FCrossCPU_Target: TCPU; //When cross-compiling: CPU, e.g. x86_64
-    FCrossOS_Target: TOS; //When cross-compiling: OS, e.g. win64
-    FCrossOS_SubArch: string; //When cross-compiling for embedded: CPU, e.g. for Teensy SUBARCH=ARMV7EM
-    FCrossToolsDirectory: string;
-    FCrossLibraryDirectory: string;
+    FURL                   : string;
+    FUltibo                : boolean;
+    FKeepLocalChanges      : boolean;
+    FReApplyLocalChanges   : boolean;
+    FCrossInstaller        : TCrossInstaller;
+    FCrossCPU_Target       : TCPU; //When cross-compiling: CPU, e.g. x86_64
+    FCrossOS_Target        : TOS; //When cross-compiling: OS, e.g. win64
+    FCrossOS_SubArch       : TSUBARCH; //When cross-compiling for embedded: CPU, e.g. for Teensy SUBARCH=ARMV7EM
+    FCrossOS_ABI           : TABI; //When cross-compiling for arm: hardfloat or softfloat calling convention
+    FCrossToolsDirectory   : string;
+    FCrossLibraryDirectory : string;
     procedure SetURL(value:string);
     procedure SetSourceDirectory(value:string);
     procedure SetBaseDirectory(value:string);
@@ -443,7 +436,9 @@ type
     // Compiler options passed on to make as OPT= or FPCOPT=
     property CompilerOptions: string write FCompilerOptions;
     // SubArch for target embedded
-    property CrossOS_SubArch: string read FCrossOS_SubArch;
+    property CrossOS_SubArch: TSUBARCH read FCrossOS_SubArch;
+    // When cross-compiling for arm: hardfloat or softfloat calling convention
+    property CrossOS_ABI: TABI read FCrossOS_ABI;
     // Options for cross compiling. User can specify his own, but cross compilers can set defaults, too
     property CrossOPT: string read FCrossOPT write FCrossOPT;
     property CrossToolsDirectory:string read FCrossToolsDirectory write FCrossToolsDirectory;
@@ -469,6 +464,8 @@ type
     property SolarisOI: boolean write FSolarisOI;
     // do we have musl instead of libc
     property MUSL: boolean write FMUSL;
+    // Are we installing Ultibo
+    property Ultibo: boolean read FUltibo;
     property Log: TLogger write FLog;
     // Directory where make (and the other binutils on Windows) is located
     property MakeDirectory: string write FMakeDir;
@@ -496,7 +493,8 @@ type
     function GetCompilerName(Cpu_Target:TCPU):string;overload;
     function GetCompilerName(Cpu_Target:string):string;overload;
     function GetCrossCompilerName(Cpu_Target:TCPU):string;
-    procedure SetTarget(aCPU:TCPU;aOS:TOS;aSubArch:string);virtual;
+    procedure SetTarget(aCPU:TCPU;aOS:TOS;aSubArch:TSUBARCH);virtual;
+    procedure SetABI(aABI:TABI);
     // append line ending and write to log and, if specified, to console
     procedure WritelnLog(msg: TStrings; ToConsole: boolean = true);overload;
     procedure WritelnLog(msg: string; ToConsole: boolean = true);overload;
@@ -742,6 +740,7 @@ begin
     FMinorVersion := -1;
     FReleaseVersion := -1;
     FPatchVersion := -1;
+    FUltibo:=(Pos('github.com/ultibohub',FURL)>0);
   end;
 end;
 
@@ -1688,20 +1687,23 @@ begin
     end;
   end;
 
-  if aBeforeRevision<>FRET_UNKNOWN_REVISION then
+  if Assigned(UpdateWarnings) then
   begin
-    aClient.LocalModifications(UpdateWarnings); //Get list of modified files
-    if UpdateWarnings.Count > 0 then
+    if aBeforeRevision<>FRET_UNKNOWN_REVISION then
     begin
-      UpdateWarnings.Insert(0, {BeginSnippet+' '+}aModuleName + ': WARNING: found modified files.');
-      if FKeepLocalChanges=false then
+      aClient.LocalModifications(UpdateWarnings); //Get list of modified files
+      if UpdateWarnings.Count > 0 then
       begin
-        DiffFile:=IncludeTrailingPathDelimiter(FSourceDirectory) + 'REV' + aBeforeRevision + '.diff';
-        CreateStoreRepositoryDiff(DiffFile, UpdateWarnings,aClient);
-        UpdateWarnings.Add({BeginSnippet+' '+}aModuleName + ': reverting to original before updating.');
-        aClient.Revert; //Remove local changes
-      end
-      else UpdateWarnings.Add({BeginSnippet+' '+}aModuleName + ': leaving modified files as is before updating.');
+        UpdateWarnings.Insert(0, {BeginSnippet+' '+}aModuleName + ': WARNING: found modified files.');
+        if FKeepLocalChanges=false then
+        begin
+          DiffFile:=IncludeTrailingPathDelimiter(FSourceDirectory) + 'REV' + aBeforeRevision + '.diff';
+          CreateStoreRepositoryDiff(DiffFile, UpdateWarnings,aClient);
+          UpdateWarnings.Add({BeginSnippet+' '+}aModuleName + ': reverting to original before updating.');
+          aClient.Revert; //Remove local changes
+        end
+        else UpdateWarnings.Add({BeginSnippet+' '+}aModuleName + ': leaving modified files as is before updating.');
+      end;
     end;
   end;
 
@@ -1762,7 +1764,7 @@ begin
       begin
          Output:='';
 
-         UpdateWarnings.Add(aModuleName + ': reapplying local changes.');
+         if Assigned(UpdateWarnings) then UpdateWarnings.Add(aModuleName + ': reapplying local changes.');
 
          // check for default values
          if ((FPatchCmd='patch'+GetExeExt) OR (FPatchCmd='gpatch'+GetExeExt))
@@ -2054,7 +2056,7 @@ function TInstaller.DownloadFromFTP(ModuleName: string): boolean;
 var
   i:integer;
   FilesList:TStringList;
-  FPCArchive,aName,aFile:string;
+  FPCArchive,FPCArchiveDir,aName,aFile:string;
 begin
   result:=false;
 
@@ -2063,8 +2065,9 @@ begin
   if (NOT DirectoryIsEmpty(ExcludeTrailingPathDelimiter(FSourceDirectory))) then
   begin
     Infoln(localinfotext+ModuleName+' sources are already there.',etWarning);
-    Infoln(localinfotext+ModuleName+' build-process will continue with existing sources.',etWarning);
-    exit(true);
+    Infoln(localinfotext+ModuleName+' sources will be replaced.',etWarning);
+    //Infoln(localinfotext+ModuleName+' build-process will continue with existing sources.',etWarning);
+    //exit(true);
   end;
 
   Infoln(localinfotext+'Getting '+ModuleName+' sources.',etInfo);
@@ -2072,6 +2075,8 @@ begin
   FPCArchive := GetTempFileNameExt('FPCUPTMP','zip');
   result:=GetFile(FURL,FPCArchive);
   if (result AND (NOT FileExists(FPCArchive))) then result:=false;
+
+  FPCArchiveDir := GetTempDirName('FPCUPTMP');
 
   if result then
   begin
@@ -2081,7 +2086,7 @@ begin
     with TNormalUnzipper.Create do
     begin
       try
-        result:=DoUnZip(FPCArchive,FSourceDirectory,[]);
+        result:=DoUnZip(FPCArchive,FPCArchiveDir,[]);
       finally
         Free;
       end;
@@ -2091,7 +2096,7 @@ begin
   if result then
   begin
     aName:='';
-    FilesList:=FindAllDirectories(FSourceDirectory,False);
+    FilesList:=FindAllDirectories(FPCArchiveDir,False);
     if FilesList.Count=1 then aName:=FilesList[0];
     FreeAndNil(FilesList);
     if Pos(LowerCase(ModuleName),LowerCase(ExtractFileName(aName)))>0 then
@@ -2117,8 +2122,23 @@ begin
       DeleteDirectory(aName,False);
       FreeAndNil(FilesList);
     end;
-  end;
 
+    // We now have all files.
+    // Move-copy them to the source directory
+    Infoln(infotext+'Moving files towards desired source directory.',etInfo);
+    Infoln(infotext+'This is time-consuming. Please wait.',etInfo);
+    FilesList:=FindAllFiles(FPCArchiveDir, '', True);
+    for i:=0 to (FilesList.Count-1) do
+    begin
+      aFile:=FilesList[i];
+      aName:=ConcatPaths([FSourceDirectory,ExtractRelativePath(IncludeTrailingPathDelimiter(FPCArchiveDir),ExtractFilePath(aFile))]);
+      ForceDirectoriesSafe(aName);
+      MoveFile(aFile,IncludeTrailingPathDelimiter(aName)+ExtractFileName(aFile));
+    end;
+    FreeAndNil(FilesList);
+
+  end;
+  DeleteDirectory(FPCArchiveDir,False);
   SysUtils.Deletefile(FPCArchive); //Get rid of temp file.
 end;
 
@@ -2348,8 +2368,7 @@ begin
 
   Infoln(localinfotext+'No OpenSLL library files available for SSL. Going to download them.',etWarning);
 
-
-  //if (NOT CheckWin32Version(6,2)) then
+  if (NOT OperationSucceeded) {AND (NOT CheckWin32Version(6,2))} then
   begin
     if SVNClient.ValidClient then
     begin
@@ -2373,6 +2392,22 @@ begin
        then Infoln(localinfotext+'SVN OpenSLL library files download from '+OPENSSL_URL_LATEST_SVN+' ok.',etWarning)
   end;
 
+  // Direct download OpenSSL from from Lazarus binaries
+  if (NOT OperationSucceeded) AND (NOT SVNClient.ValidClient) then
+  begin
+    OpenSSLFileName:='libeay32.dll';
+    OperationSucceeded:=GetFile(OPENSSL_URL_LATEST_SVN+'/'+OpenSSLFileName,SafeGetApplicationPath+OpenSSLFileName,true,true);
+    if OperationSucceeded then
+    begin
+      OpenSSLFileName:='ssleay32.dll';
+      OperationSucceeded:=GetFile(OPENSSL_URL_LATEST_SVN+'/'+OpenSSLFileName,SafeGetApplicationPath+OpenSSLFileName,true,true);
+    end;
+
+    if OperationSucceeded
+       then Infoln(localinfotext+'Direct OpenSLL library files download from '+OPENSSL_URL_LATEST_SVN+' ok.',etWarning)
+  end;
+
+  // Direct download OpenSSL from public sources
   if (NOT OperationSucceeded) then
   begin
     OpenSSLFileName := GetTempFileNameExt('FPCUPTMP','zip');
@@ -2436,21 +2471,6 @@ begin
        else Infoln(localinfotext+'Could not download/install openssl library archive.', etError);
 
     SysUtils.Deletefile(OpenSSLFileName); //Get rid of temp zip if success.
-  end;
-
-  // Real last resort: direct download OpenSSL from from Lazarus binaries
-  if (NOT OperationSucceeded) AND (NOT SVNClient.ValidClient) then
-  begin
-    OpenSSLFileName:='libeay32.dll';
-    OperationSucceeded:=GetFile(OPENSSL_URL_LATEST_SVN+'/'+OpenSSLFileName,SafeGetApplicationPath+OpenSSLFileName,true,true);
-    if OperationSucceeded then
-    begin
-      OpenSSLFileName:='ssleay32.dll';
-      OperationSucceeded:=GetFile(OPENSSL_URL_LATEST_SVN+'/'+OpenSSLFileName,SafeGetApplicationPath+OpenSSLFileName,true,true);
-    end;
-
-    if OperationSucceeded
-       then Infoln(localinfotext+'Direct OpenSLL library files download from '+OPENSSL_URL_LATEST_SVN+' ok.',etWarning)
   end;
 
   result := OperationSucceeded;
@@ -2933,11 +2953,33 @@ begin
   {$ENDIF UNIX}
 end;
 
-procedure TInstaller.SetTarget(aCPU:TCPU;aOS:TOS;aSubArch:string);
+procedure TInstaller.SetTarget(aCPU:TCPU;aOS:TOS;aSubArch:TSUBARCH);
 begin
   FCrossCPU_Target:=aCPU;
   FCrossOS_Target:=aOS;
   FCrossOS_SubArch:=aSubArch;
+end;
+
+procedure TInstaller.SetABI(aABI:TABI);
+begin
+  //
+  if (FCrossCPU_Target=TCPU.arm) then
+    FCrossOS_ABI:=aABI
+  else
+  begin
+    if (FCrossOS_Target=TOS.ios) then
+    begin
+      FCrossOS_ABI:=aABI;
+      if (aABI<>TABI.default) OR (aABI<>TABI.aarch64ios) then
+        raise Exception.CreateFmt('Invalid ARM ABI "%s" for SetABI for iOS.', [aABI]);
+    end
+    else
+    begin
+      FCrossOS_ABI:=TABI.default;
+      if (aABI<>TABI.default) then
+        raise Exception.CreateFmt('Invalid ARM ABI "%s" for SetABI.', [aABI]);
+    end;
+  end;
 end;
 
 function TInstaller.GetSuitableRepoClient:TRepoClient;
@@ -3900,7 +3942,19 @@ begin
   if TargetCPU<>TCPU.cpuNone then
   begin
     if Cross then
+    begin
+      // See fpc.pp
+      {$ifndef darwin}
       s:='ppcross'+ppcSuffix[TargetCPU]
+      {$else not darwin}
+      { the mach-o format supports "fat" binaries whereby }
+      { a single executable contains machine code for     }
+      { several architectures -> it is counter-intuitive  }
+      { and non-standard to use different binary names    }
+      { for cross-compilers vs. native compilers          }
+      s:='ppc'+ppcSuffix[TargetCPU];
+      {$endif not darwin}
+    end
     else
       s:='ppc'+ppcSuffix[TargetCPU];
   end;
@@ -4166,7 +4220,8 @@ begin
 
   FCrossCPU_Target:=TCPU.cpuNone;
   FCrossOS_Target:=TOS.osNone;
-  FCrossOS_SubArch:='';
+  FCrossOS_SubArch:=TSUBARCH.saNone;
+  FCrossOS_ABI:=TABI.default;
 
   FMajorVersion   := -1;
   FMinorVersion   := -1;
@@ -4175,6 +4230,7 @@ begin
 
   FMUSL      := false;
   FSolarisOI := false;
+  FUltibo    := false;
 
   {$ifdef Linux}
   FMUSLLinker:='/lib/ld-musl-'+GetTargetCPU+'.so.1';

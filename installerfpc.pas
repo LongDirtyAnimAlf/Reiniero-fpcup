@@ -115,8 +115,8 @@ type
 
   TFPCInstaller = class(TBaseFPCInstaller)
   private
-    FSoftFloat: boolean;
-    FUseLibc: boolean;
+    FSoftFloat  : boolean;
+    FUseLibc    : boolean;
     FTargetCompilerName: string;
     FBootstrapCompiler: string;
     FBootstrapCompilerDirectory: string;
@@ -203,7 +203,7 @@ type
     constructor Create;
     destructor Destroy; override;
     function InsertFPCCFGSnippet(FPCCFG,Snippet: string): boolean;
-    procedure SetTarget(aCPU:TCPU;aOS:TOS;aSubArch:string);override;
+    procedure SetTarget(aCPU:TCPU;aOS:TOS;aSubArch:TSUBARCH);override;
     property CrossCompilerName: string read FCrossCompilerName;
   end;
 
@@ -506,7 +506,7 @@ begin
   Infoln(FPCCFGINFOTEXT+'Inserting snippet in '+FPCCFG+' done.',etInfo);
 end;
 
-procedure TFPCCrossInstaller.SetTarget(aCPU:TCPU;aOS:TOS;aSubArch:string);
+procedure TFPCCrossInstaller.SetTarget(aCPU:TCPU;aOS:TOS;aSubArch:TSUBARCH);
 begin
   inherited;
   if Assigned(CrossInstaller) then FCrossCompilerName:=GetCrossCompilerName(CrossInstaller.TargetCPU);
@@ -530,12 +530,10 @@ var
   OldPath:String;
   Options:String;
   s1,s2:string;
+  UnitSearchPath:string;
   LibsAvailable,BinsAvailable:boolean;
   MakeCycle:TSTEPS;
   ARMArch:TARMARCH;
-  {$ifdef Darwin}
-  Minimum_OSX,Minimum_iOS:string;
-  {$endif}
   {$ifdef MSWINDOWS}
   Counter:integer;
   {$endif}
@@ -563,33 +561,34 @@ begin
     //pass on user-requested cross compile options
     CrossInstaller.SetCrossOpt(CrossOPT);
     CrossInstaller.SetSubArch(CrossOS_SubArch);
+    CrossInstaller.SetABI(CrossOS_ABI);
 
     // get/set cross binary utils !!
     BinsAvailable:=false;
-    CrossInstaller.SearchModeUsed:=smFPCUPOnly; // default;
+    CrossInstaller.SearchModeUsed:=TSearchSetting.ssUp; // default;
     if Length(CrossToolsDirectory)>0 then
     begin
       // we have a crosstools setting
-      if (CrossToolsDirectory='FPCUP_AUTO')
-         then CrossInstaller.SearchModeUsed:=smAuto
-         else CrossInstaller.SearchModeUsed:=smManual;
+      if (CrossToolsDirectory=FPCUP_AUTO_MAGIC)
+         then CrossInstaller.SearchModeUsed:=TSearchSetting.ssAuto
+         else CrossInstaller.SearchModeUsed:=TSearchSetting.ssCustom;
     end;
-    if CrossInstaller.SearchModeUsed=smManual
+    if CrossInstaller.SearchModeUsed=TSearchSetting.ssCustom
        then BinsAvailable:=CrossInstaller.GetBinUtils(CrossToolsDirectory)
        else BinsAvailable:=CrossInstaller.GetBinUtils(FBaseDirectory);
     if (not BinsAvailable) then Infoln('Failed to get crossbinutils', etError);
 
     // get/set cross libraries !!
     LibsAvailable:=false;
-    CrossInstaller.SearchModeUsed:=smFPCUPOnly;
+    CrossInstaller.SearchModeUsed:=TSearchSetting.ssUp;
     if Length(CrossLibraryDirectory)>0 then
     begin
       // we have a crosslibrary setting
-      if (CrossLibraryDirectory='FPCUP_AUTO')
-         then CrossInstaller.SearchModeUsed:=smAuto
-         else CrossInstaller.SearchModeUsed:=smManual;
+      if (CrossLibraryDirectory=FPCUP_AUTO_MAGIC)
+         then CrossInstaller.SearchModeUsed:=TSearchSetting.ssAuto
+         else CrossInstaller.SearchModeUsed:=TSearchSetting.ssCustom;
     end;
-    if CrossInstaller.SearchModeUsed=smManual
+    if CrossInstaller.SearchModeUsed=TSearchSetting.ssCustom
       then LibsAvailable:=CrossInstaller.GetLibs(CrossLibraryDirectory)
       else LibsAvailable:=CrossInstaller.GetLibs(FBaseDirectory);
     if (not LibsAvailable) then Infoln('Failed to get crosslibrary', etError);
@@ -622,56 +621,6 @@ begin
       try
         if CrossInstaller.BinUtilsPathInPath then
            SetPath(IncludeTrailingPathDelimiter(CrossInstaller.BinUtilsPath),false,true);
-
-        {$ifdef Darwin}
-        //Get minimum Mac OS X deployment version: 10.4, 10.5.1, ... (Darwin)
-        //Get minimum iOS deployment version: 8.0, 8.0.2, ... (iphonesim)
-        //Add minimum required OSX/iOS version to prevent "crti not found" errors.
-        Minimum_OSX:='';
-        Minimum_iOS:='';
-
-        // Check/set OSX deployment version
-        i:=StringListStartsWith(CrossInstaller.CrossOpt,'-WM');
-        if i=-1 then
-        begin
-          s1:='';
-          {$ifdef Darwin}
-          if (CrossInstaller.TargetCPU=TCPU.i386) OR (CrossInstaller.TargetCPU=TCPU.x86_64) then
-          begin
-            s1:=GetDarwinSDKVersion('macosx');
-            if CompareVersionStrings(s1,'10.8')>=0 then
-            begin
-              s1:='10.8';
-            end;
-          end;
-          {$endif}
-          if Length(s1)>0 then
-          begin
-            Minimum_OSX:='-WM'+s1;
-          end;
-        end else Minimum_OSX:=CrossInstaller.CrossOpt[i];
-
-        // Check/set iOS deployment version
-        i:=StringListStartsWith(CrossInstaller.CrossOpt,'-WP');
-        if i=-1 then
-        begin
-          s1:='';
-          {$ifdef Darwin}
-          if (CrossInstaller.TargetCPU=TCPU.aarch64) OR (CrossInstaller.TargetCPU=TCPU.arm) then
-          begin
-            s1:=GetDarwinSDKVersion('iphoneos');
-          end;
-          if (CrossInstaller.TargetCPU=TCPU.i386) OR (CrossInstaller.TargetCPU=TCPU.x86_64) then
-          begin
-            s1:=GetDarwinSDKVersion('iphonesimulator');
-          end;
-          {$endif}
-          if Length(s1)>0 then
-          begin
-            Minimum_iOS:='-WP'+s1;
-          end;
-        end else Minimum_iOS:=CrossInstaller.CrossOpt[i];
-        {$endif}
 
         for MakeCycle:=Low(TSTEPS) to High(TSTEPS) do
         begin
@@ -711,20 +660,45 @@ begin
                 //s1:=s1+'-Fu'+ConcatPaths([FInstallDirectory,'units','$FPCTARGET','rtl','org','freepascal','rtl'])+LineEnding;
                 s1:=s1+'-Fu'+ConcatPaths([FInstallDirectory,'units',CrossInstaller.RegisterName,'rtl','org','freepascal','rtl'])+LineEnding;
 
+              if (CrossInstaller.TargetOS in SUBARCH_OS) then
+              begin
+                if (CrossInstaller.TargetOS=TOS.ultibo) then
+                  UnitSearchPath:=ConcatPaths([FInstallDirectory,'units',CrossInstaller.TargetOSName+'-'+FPC_SUBARCH_MAGIC])
+                else
+                begin
+                  if CrossInstaller.TargetCPU=TCPU.arm then
+                    UnitSearchPath:=ConcatPaths([FInstallDirectory,'units',CrossInstaller.RegisterName,FPC_SUBARCH_MAGIC,FPC_ABI_MAGIC])
+                  else
+                    UnitSearchPath:=ConcatPaths([FInstallDirectory,'units',CrossInstaller.RegisterName,FPC_SUBARCH_MAGIC]);
+                end;
+                // Lazarus gives an error when units are located in a non-standard directory.
+                // Therefor: add a universal searchpath for units also ... bit tricky
+                // Must be the first entry ... so it will be used as the last ... :-|
+                if (CrossInstaller.TargetOS in [TOS.embedded]) then
+                begin
+                  s1:=s1+'-Fu'+ConcatPaths([FInstallDirectory,'units',CrossInstaller.RegisterName,'*','rtl'])+LineEnding;
+                end;
+
+                s1:=s1+'-Fu'+UnitSearchPath+DirectorySeparator+'rtl'+LineEnding;
+                s1:=s1+'-Fu'+UnitSearchPath+DirectorySeparator+'packages'+LineEnding;
+              end;
+
               if (Length(s1)=0) then s1:='# Dummy (blank) config for auto-detect cross-compilers'+LineEnding;
             end;
 
             //Edit dedicated settings of config snippet
             InsertFPCCFGSnippet(FPCCfg,
               SnipMagicBegin+CrossInstaller.RegisterName+LineEnding+
+              '# Inserted by fpcup '+DateTimeToStr(Now)+LineEnding+
               '# Cross compile settings dependent on both target OS and target CPU'+LineEnding+
               '#IFDEF FPC_CROSSCOMPILING'+LineEnding+
-              '#IFDEF '+uppercase(CrossInstaller.TargetOSName)+LineEnding+
+              '#IFDEF '+UpperCase(CrossInstaller.TargetOSName)+LineEnding+
               '#IFDEF CPU'+s2+LineEnding+
-              '# Inserted by fpcup '+DateTimeToStr(Now)+LineEnding+
               s1+
-              '#ENDIF'+LineEnding+
-              '#ENDIF'+LineEnding+
+              '#ENDIF CPU'+s2+LineEnding+
+              '#ENDIF '+UpperCase(CrossInstaller.TargetOSName)+LineEnding+
+              //'#ENDIF'+LineEnding+
+              //'#ENDIF'+LineEnding+
               '#ENDIF'+LineEnding+
               SnipMagicEnd);
 
@@ -789,6 +763,7 @@ begin
           Processor.Process.Parameters.Add('INSTALL_BINDIR='+FBinPath);
           {$ENDIF}
           // Tell make where to find the target binutils if cross-compiling:
+          // Not strictly necessary: the cross-options have this already:
           if CrossInstaller.BinUtilsPath<>'' then
              Processor.Process.Parameters.Add('CROSSBINDIR='+ExcludeTrailingPathDelimiter(CrossInstaller.BinUtilsPath));
 
@@ -814,15 +789,13 @@ begin
           case MakeCycle of
             st_Compiler:
             begin
-              {$ifdef Darwin}
-              if Length(Minimum_OSX)>0 then Options:=Options+' '+Minimum_OSX;
-              {$endif}
               Processor.Process.Parameters.Add('FPC='+ChosenCompiler);
               Processor.Process.Parameters.Add('compiler_cycle');
             end;
             st_CompilerInstall:
             begin
-              {$if (defined(Linux)) AND (defined (CPUX86_64))}
+              {$if (defined(Linux))}
+              {$if (defined(CPUAARCH64)) OR (defined(CPUX86_64))}
               if FMUSL then
               begin
                 // copy over the [cross-]compiler
@@ -836,9 +809,6 @@ begin
                 end;
               end;
               {$endif}
-
-              {$ifdef Darwin}
-              if Length(Minimum_OSX)>0 then Options:=Options+' '+Minimum_OSX;
               {$endif}
               Processor.Process.Parameters.Add('FPC='+ChosenCompiler);
               Processor.Process.Parameters.Add('compiler_install');
@@ -863,9 +833,6 @@ begin
             end;
             st_Packages:
             begin
-              {$ifdef Darwin}
-              if Length(Minimum_OSX)>0 then Options:=Options+' '+Minimum_OSX;
-              {$endif}
               s1:=CrossCompilerName;
               s2:=IncludeTrailingPathDelimiter(FBinPath)+s1;
               if (NOT FileExists(s2)) then
@@ -910,6 +877,29 @@ begin
 
           Processor.Process.Parameters.Add('CROSSINSTALL=1');
 
+          if (CrossInstaller.TargetOS in [TOS.ultibo,TOS.embedded,TOS.freertos]) then
+          begin
+            if (MakeCycle in [st_RtlInstall,st_PackagesInstall]) then
+            begin
+              if (CrossInstaller.TargetOS in SUBARCH_OS) then
+              begin
+                if (CrossInstaller.TargetOS=TOS.ultibo) then
+                  UnitSearchPath:=ConcatPaths([FInstallDirectory,'units',CrossInstaller.TargetOSName+'-'+CrossInstaller.SubArchName])
+                else
+                begin
+                  if CrossInstaller.TargetCPU=TCPU.arm then
+                    UnitSearchPath:=ConcatPaths([FInstallDirectory,'units',CrossInstaller.RegisterName,CrossInstaller.SubArchName,CrossInstaller.ABIName])
+                  else
+                    UnitSearchPath:=ConcatPaths([FInstallDirectory,'units',CrossInstaller.RegisterName,CrossInstaller.SubArchName]);
+                end;
+                if (MakeCycle=st_RtlInstall) then
+                  Processor.Process.Parameters.Add('INSTALL_UNITDIR='+UnitSearchPath+DirectorySeparator+'rtl');
+                if (MakeCycle=st_PackagesInstall) then
+                  Processor.Process.Parameters.Add('INSTALL_UNITDIR='+UnitSearchPath+DirectorySeparator+'packages');
+              end;
+            end;
+          end;
+
           if (CrossInstaller.TargetCPU=TCPU.jvm) then
           begin
             if (MakeCycle in [st_Packages,st_PackagesInstall,st_NativeCompiler]) then
@@ -919,13 +909,22 @@ begin
             end;
           end;
 
+          if ((CrossInstaller.TargetCPU=TCPU.arm) AND (CrossInstaller.TargetOS=TOS.freertos)) then
+          begin
+            if (MakeCycle in [st_Packages,st_PackagesInstall,st_NativeCompiler]) then
+            begin
+              //Infoln(infotext+'Skipping build step '+GetEnumNameSimple(TypeInfo(TSTEPS),Ord(MakeCycle))+' for '+CrossInstaller.TargetCPUName+'.',etInfo);
+              continue;
+            end;
+          end;
+
           {$endif crosssimple}
 
           Processor.Process.Parameters.Add('CPU_SOURCE='+GetTargetCPU);
           Processor.Process.Parameters.Add('OS_SOURCE='+GetTargetOS);
           Processor.Process.Parameters.Add('OS_TARGET='+CrossInstaller.TargetOSName); //cross compile for different OS...
           Processor.Process.Parameters.Add('CPU_TARGET='+CrossInstaller.TargetCPUName); // and processor.
-          if Length(CrossInstaller.SubArch)>0 then Processor.Process.Parameters.Add('SUBARCH='+CrossInstaller.SubArch);
+          if (CrossInstaller.SubArch<>TSubarch.saNone) then Processor.Process.Parameters.Add('SUBARCH='+CrossInstaller.SubArchName);
 
           //Processor.Process.Parameters.Add('OSTYPE='+CrossInstaller.TargetOS);
           Processor.Process.Parameters.Add('NOGDBMI=1'); // prevent building of IDE to be 100% sure
@@ -1011,65 +1010,11 @@ begin
 
           if CrossInstaller.LibsPath<>''then
           begin
-             // https://wiki.freepascal.org/FPC_AIX_Port#Cross-compiling
-             if (CrossInstaller.TargetOS=TOS.aix) then
-             begin
-               CrossOptions:=CrossOptions+' -XR'+ExcludeTrailingPathDelimiter(CrossInstaller.LibsPath);
-             end;
-
-             {$ifndef Darwin}
-             CrossOptions:=CrossOptions+' -Xd';
-             CrossOptions:=CrossOptions+' -Fl'+ExcludeTrailingPathDelimiter(CrossInstaller.LibsPath);
-
-             if (CrossInstaller.TargetOS=TOS.darwin) then
-             begin
-               // add extra libs located in ...\system for Mac SDK
-               // does not do harm on other systems if they are not there
-               CrossOptions:=CrossOptions+' -Fl'+IncludeTrailingPathDelimiter(CrossInstaller.LibsPath)+'system';
-             end;
-             {$endif}
-
-             {$ifdef Darwin}
-             if (CrossInstaller.TargetOS=TOS.darwin) OR (CrossInstaller.TargetOS=TOS.iphonesim) then
-             begin
-               s1:=SafeExpandFileName(IncludeTrailingPathDelimiter(CrossInstaller.LibsPath)+'..'+DirectorySeparator+'..');
-               CrossOptions:=CrossOptions+' -XR'+ExcludeTrailingPathDelimiter(s1);
-             end
-             else
-             begin
-               CrossOptions:=CrossOptions+' -Xd';
-               CrossOptions:=CrossOptions+' -Fl'+ExcludeTrailingPathDelimiter(CrossInstaller.LibsPath);
-             end;
-             {$endif}
-
-            // if we have libs ... chances are +/-100% that we have bins, so set path to include bins !
-            // but only in case we did not do it before
-            // not sure if this is realy needed
-            //if NOT CrossInstaller.BinUtilsPathInPath then
-            //   SetPath(IncludeTrailingPathDelimiter(CrossInstaller.BinUtilsPath),true,false);
+            {$ifndef Darwin}
+            CrossOptions:=CrossOptions+' -Xd';
+            CrossOptions:=CrossOptions+' -Fl'+ExcludeTrailingPathDelimiter(CrossInstaller.LibsPath);
+            {$endif}
           end;
-
-          if CrossInstaller.BinUtilsPath<>''then
-          begin
-             {$ifdef Darwin}
-             //if (CrossInstaller.TargetOS=TOS.iphonesim) then
-             begin
-               CrossOptions:=CrossOptions+' -FD'+ExcludeTrailingPathDelimiter(CrossInstaller.BinUtilsPath);
-               {
-               s1:=SafeExpandFileName(IncludeTrailingPathDelimiter(CrossInstaller.BinUtilsPath)+'..'+DirectorySeparator+'..');
-               if (MakeCycle in [st_RTL]) then
-               begin
-                 CrossOptions:=CrossOptions+' -ao-isysroot '+ExcludeTrailingPathDelimiter(s1);
-               end;
-               }
-             end;
-             {$else}
-             //CrossOptions:=CrossOptions+' -FD'+ExcludeTrailingPathDelimiter(CrossInstaller.BinUtilsPath);
-             //just for testing/debugging
-             //Options:=Options+' -sh -s-';
-             {$endif}
-          end;
-
 
           {$ifdef Darwin}
           Options:=Options+' -ap';
@@ -1139,25 +1084,32 @@ begin
             {$IFDEF UNIX}
             if (result) AND (MakeCycle=st_CompilerInstall) then
             begin
-              s2:=ConcatPaths([FSourceDirectory,'compiler',CrossCompilerName]);
-              //The compiler gets installed here
-              //s2:=ConcatPaths([FInstallDirectory,'lib','bin',GetFPCVersion,CrossCompilerName]);
-              {$ifdef Darwin}
-              // on Darwin, the normal compiler names are used for the final cross-target compiler !!
-              // very tricky !
-              s1:=ConcatPaths([FBinPath,GetCompilerName(CrossInstaller.TargetCPU)]);
-              {$else}
-              s1:=ConcatPaths([FBinPath,CrossCompilerName]);
-              {$endif}
-
-              //fpSymlink(pchar(s2),pchar(s1));
-
-              // copy over the cross-compiler towards the FPC bin-directory, with the right compilername.
+              // Get the correct name of the cross-compiler in source-directory
+              s1:='ppcross'+ppcSuffix[CrossInstaller.TargetCPU];
+              s2:=ConcatPaths([FSourceDirectory,'compiler',s1]);
               if FileExists(s2) then
               begin
-                Infoln(infotext+'Copy cross-compiler ('+CrossCompilerName+') into: '+FBinPath,etInfo);
-                FileUtil.CopyFile(s2,s1);
-                fpChmod(s1,&755);
+                {$ifdef Darwin}
+                if CrossCompilerName=GetCompilerName(GetTargetCPU) then
+                begin
+                  Infoln(infotext+'Cross-compiler and native compiler share the same name: '+CrossCompilerName+'.',etInfo);
+                  Infoln(infotext+'Skipping manual compiler-copy to bin-directory ! To be investigated.',etInfo);
+                  // Perhaps we need to contruct a "fat" binary
+                  // lipo -create s1 CrossCompilerName -output s1
+                  // TODO
+                  // I do not know what to do at the moment
+                end
+                else
+                {$endif Darwin}
+                begin
+                  // copy over / rename the cross-compiler towards the FPC bin-directory, with the right compilername.
+                  Infoln(infotext+'Copy cross-compiler ('+s1+') into: '+FBinPath,etInfo);
+                  s1:=ConcatPaths([FBinPath,CrossCompilerName]);
+                  //FileUtil.CopyFile(s2,s1);
+                  SysUtils.DeleteFile(s1);
+                  SysUtils.RenameFile(s2,s1);
+                  fpChmod(s1,&755);
+                end;
               end;
             end;
             {$ENDIF UNIX}
@@ -1202,29 +1154,40 @@ begin
         else
         begin
 
+          // Get the correct name of the cross-compiler in source-directory
+          s1:='ppcross'+ppcSuffix[CrossInstaller.TargetCPU];
+          s2:=ConcatPaths([FSourceDirectory,'compiler',s1]);
           {$ifdef crosssimple}
           {$IFDEF UNIX}
-          s2:=ConcatPaths([FSourceDirectory,'compiler',CrossCompilerName]);
-          //s2:=ConcatPaths([FInstallDirectory,'lib','bin',GetFPCVersion,CrossCompilerName]);
-          {$ifdef Darwin}
-          // on Darwin, the normal compiler names are used for the final cross-target compiler !!
-          // very tricky !
-          s1:=ConcatPaths([FBinPath,GetCompilerName(CrossInstaller.TargetCPU)]);
-          {$else}
-          s1:=ConcatPaths([FBinPath,CrossCompilerName]);
-          {$endif}
-          // copy over the cross-compiler towards the FPC bin-directory, with the right compilername.
           if FileExists(s2) then
           begin
-            Infoln(infotext+'Copy cross-compiler ('+CrossCompilerName+') into: '+FBinPath,etInfo);
-            FileUtil.CopyFile(s2,s1);
-            fpChmod(s1,&755);
+            {$ifdef Darwin}
+            if CrossCompilerName=GetCompilerName(GetTargetCPU) then
+            begin
+              Infoln(infotext+'Cross-compiler and native compiler share the same name: '+CrossCompilerName+'.',etInfo);
+              Infoln(infotext+'Skipping manual compiler-copy to bin-directory ! To be investigated.',etInfo);
+              // Perhaps we need to contruct a "fat" binary
+              // lipo -create s1 CrossCompilerName -output s1
+              // TODO
+              // I do not know what to do at the moment
+            end
+            else
+            {$endif Darwin}
+            begin
+              // copy over / rename the cross-compiler towards the FPC bin-directory, with the right compilername.
+              Infoln(infotext+'Copy cross-compiler ('+s1+') into: '+FBinPath,etInfo);
+              s1:=ConcatPaths([FBinPath,CrossCompilerName]);
+              //FileUtil.CopyFile(s2,s1);
+              SysUtils.DeleteFile(s1);
+              SysUtils.RenameFile(s2,s1);
+              fpChmod(s1,&755);
+            end;
           end;
           {$ENDIF}
           {$endif crosssimple}
 
           // delete cross-compiler in source-directory
-          SysUtils.DeleteFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+DirectorySeparator+CrossCompilerName);
+          SysUtils.DeleteFile(s2);
 
           {$IFDEF UNIX}
           result:=CreateFPCScript;
@@ -2296,7 +2259,12 @@ begin
       if (ExtractFileName(BootstrapFilePath)<>CompilerName) then
       begin
         // Give the bootstrapper its correct name
-        if FileExists(BootstrapFilePath) then FileUtil.CopyFile(BootstrapFilePath, BootstrapFileArchiveDir+CompilerName);
+        if FileExists(BootstrapFilePath) then
+        begin
+          //FileUtil.CopyFile(BootstrapFilePath, BootstrapFileArchiveDir+CompilerName);
+          SysUtils.DeleteFile(BootstrapFileArchiveDir+CompilerName);
+          SysUtils.RenameFile(BootstrapFilePath,BootstrapFileArchiveDir+CompilerName);
+        end;
       end;
     end;
 
@@ -2313,8 +2281,14 @@ begin
       begin
         Infoln(localinfotext+'Success. Going to copy '+BootstrapFilePath+' to '+FBootstrapCompiler,etInfo);
         SysUtils.DeleteFile(FBootstrapCompiler); //ignore errors
+
         // We might be moving files across partitions so we cannot use renamefile
-        OperationSucceeded:=FileUtil.CopyFile(BootstrapFilePath, FBootstrapCompiler);
+        // However, this gives errors on Darwin due to the copied file not being signed.
+        // So, use rename and fall-over to copy in case of error
+        //OperationSucceeded:=FileUtil.CopyFile(BootstrapFilePath, FBootstrapCompiler);
+        OperationSucceeded:=SysUtils.RenameFile(BootstrapFilePath,FBootstrapCompiler);
+        if (NOT OperationSucceeded) then OperationSucceeded:=FileUtil.CopyFile(BootstrapFilePath, FBootstrapCompiler);
+
         //Sysutils.DeleteFile(ArchiveDir + CompilerName);
       end else OperationSucceeded:=False;
     end;
@@ -3082,8 +3056,13 @@ begin
       begin
         s:=GetCompilerName(GetTargetCPU);
         s:=Which(s);
-        //Copy the compiler to out bootstrap directory
+        {$ifdef Darwin}
+        // Due to codesigning, do not copy, but just use it.
+        if FileExists(s) then FCompiler:=s;
+        {$else}
+        //Copy the compiler to our bootstrap directory
         if FileExists(s) then FileUtil.CopyFile(s,FCompiler);
+        {$endif}
         if NOT FileExists(s) then
         begin
           s:='fpc'+GetExeExt;
@@ -3287,9 +3266,12 @@ begin
     if FileExists(IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler/'+TargetCompilerName) then
     begin
       Infoln(infotext+'Copy compiler ('+TargetCompilerName+') into: '+FBinPath,etDebug);
-      FileUtil.CopyFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler/'+TargetCompilerName,
-        IncludeTrailingPathDelimiter(FBinPath)+TargetCompilerName);
-      fpChmod(IncludeTrailingPathDelimiter(FBinPath)+TargetCompilerName,&755);
+      s:=IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler/'+TargetCompilerName;
+      s2:=IncludeTrailingPathDelimiter(FBinPath)+TargetCompilerName;
+      //FileUtil.CopyFile(s,s2);
+      SysUtils.DeleteFile(s2);
+      SysUtils.RenameFile(s,s2);
+      fpChmod(s2,&755);
     end;
 
     // create link 'units' below FInstallDirectory to
@@ -3476,7 +3458,6 @@ begin
         end;
       end;
 
-
       s := FPCCfg;
       if (NOT FileExists(s)) then
       begin
@@ -3488,6 +3469,132 @@ begin
       begin
         Infoln(infotext+'Found existing '+ExtractFileName(s)+' in '+ExtractFileDir(s)+'. Not touching it !');
       end;
+
+      if Ultibo then
+      begin
+        // Creating Ultibo configuration files
+
+        s := IncludeTrailingPathDelimiter(FBinPath) + 'RPI.CFG';
+        if (NOT FileExists(s)) then
+        begin
+          //create RPI.CFG
+          AssignFile(TxtFile,s);
+          Rewrite(TxtFile);
+          try
+            writeln(TxtFile,'#');
+            writeln(TxtFile,'# Raspberry Pi (A/B/A+/B+/Zero) specific config file');
+            writeln(TxtFile,'#');
+            writeln(TxtFile,'-CfVFPV2');
+            writeln(TxtFile,'-CIARM');
+            writeln(TxtFile,'-CaEABIHF');
+            writeln(TxtFile,'-OoFASTMATH');
+            writeln(TxtFile,'-dRPI');
+            writeln(TxtFile,'-XParm-none-eabi-');
+            s2:=ConcatPaths([FInstallDirectory,'units','ultibo-'+FPC_SUBARCH_MAGIC]);
+            writeln(TxtFile,'-Fu'+s2+DirectorySeparator+'rtl');
+            writeln(TxtFile,'-Fu'+s2+DirectorySeparator+'packages');
+            writeln(TxtFile,'-Fu'+s2+DirectorySeparator+'lib');
+            writeln(TxtFile,'-Fu'+s2+DirectorySeparator+'lib'+DirectorySeparator+'vc4');
+          finally
+            CloseFile(TxtFile);
+          end;
+        end
+        else
+        begin
+          Infoln(infotext+'Found existing '+ExtractFileName(s)+' in '+ExtractFileDir(s)+'. Not touching it !');
+        end;
+
+        s := IncludeTrailingPathDelimiter(FBinPath) + 'RPI2.CFG';
+        if (NOT FileExists(s)) then
+        begin
+          //create RPI2.CFG
+          AssignFile(TxtFile,s);
+          Rewrite(TxtFile);
+          try
+            writeln(TxtFile,'#');
+            writeln(TxtFile,'# Raspberry Pi 2B specific config file');
+            writeln(TxtFile,'#');
+            writeln(TxtFile,'-CfVFPV3');
+            writeln(TxtFile,'-CIARM');
+            writeln(TxtFile,'-CaEABIHF');
+            writeln(TxtFile,'-OoFASTMATH');
+            writeln(TxtFile,'-dRPI2');
+            writeln(TxtFile,'-XParm-none-eabi-');
+            s2:=ConcatPaths([FInstallDirectory,'units','ultibo-'+FPC_SUBARCH_MAGIC]);
+            writeln(TxtFile,'-Fu'+s2+DirectorySeparator+'rtl');
+            writeln(TxtFile,'-Fu'+s2+DirectorySeparator+'packages');
+            writeln(TxtFile,'-Fu'+s2+DirectorySeparator+'lib');
+            writeln(TxtFile,'-Fu'+s2+DirectorySeparator+'lib'+DirectorySeparator+'vc4');
+          finally
+            CloseFile(TxtFile);
+          end;
+        end
+        else
+        begin
+          Infoln(infotext+'Found existing '+ExtractFileName(s)+' in '+ExtractFileDir(s)+'. Not touching it !');
+        end;
+
+        s := IncludeTrailingPathDelimiter(FBinPath) + 'RPI3.CFG';
+        if (NOT FileExists(s)) then
+        begin
+          //create RPI3.CFG
+          AssignFile(TxtFile,s);
+          Rewrite(TxtFile);
+          try
+            writeln(TxtFile,'#');
+            writeln(TxtFile,'# Raspberry Pi 3B specific config file');
+            writeln(TxtFile,'#');
+            writeln(TxtFile,'-CfVFPV3');
+            writeln(TxtFile,'-CIARM');
+            writeln(TxtFile,'-CaEABIHF');
+            writeln(TxtFile,'-OoFASTMATH');
+            writeln(TxtFile,'-dRPI3');
+            writeln(TxtFile,'-XParm-none-eabi-');
+            s2:=ConcatPaths([FInstallDirectory,'units','ultibo-'+FPC_SUBARCH_MAGIC]);
+            writeln(TxtFile,'-Fu'+s2+DirectorySeparator+'rtl');
+            writeln(TxtFile,'-Fu'+s2+DirectorySeparator+'packages');
+            writeln(TxtFile,'-Fu'+s2+DirectorySeparator+'lib');
+            writeln(TxtFile,'-Fu'+s2+DirectorySeparator+'lib'+DirectorySeparator+'vc4');
+          finally
+            CloseFile(TxtFile);
+          end;
+        end
+        else
+        begin
+          Infoln(infotext+'Found existing '+ExtractFileName(s)+' in '+ExtractFileDir(s)+'. Not touching it !');
+        end;
+
+        s := IncludeTrailingPathDelimiter(FBinPath) + 'QEMUVPB.CFG';
+        if (NOT FileExists(s)) then
+        begin
+          //create QEMUVPB.CFG
+          AssignFile(TxtFile,s);
+          Rewrite(TxtFile);
+          try
+            writeln(TxtFile,'#');
+            writeln(TxtFile,'# QEMU VersatilePB specific config file');
+            writeln(TxtFile,'#');
+            writeln(TxtFile,'-CfVFPV3');
+            writeln(TxtFile,'-CIARM');
+            writeln(TxtFile,'-CaEABIHF');
+            writeln(TxtFile,'-OoFASTMATH');
+            writeln(TxtFile,'-dQEMUVPB');
+            writeln(TxtFile,'-XParm-none-eabi-');
+            s2:=ConcatPaths([FInstallDirectory,'units','ultibo-'+FPC_SUBARCH_MAGIC]);
+            writeln(TxtFile,'-Fu'+s2+DirectorySeparator+'rtl');
+            writeln(TxtFile,'-Fu'+s2+DirectorySeparator+'packages');
+            writeln(TxtFile,'-Fu'+s2+DirectorySeparator+'lib');
+          finally
+            CloseFile(TxtFile);
+          end;
+        end
+        else
+        begin
+          Infoln(infotext+'Found existing '+ExtractFileName(s)+' in '+ExtractFileDir(s)+'. Not touching it !');
+        end;
+
+      end;
+
     end;
 
     // if, for one reason or another, there is no cfg file, create a minimal one by ourselves
@@ -3710,9 +3817,9 @@ begin
         {$ENDIF UNIX}
 
         {$ifdef Darwin}
+        ConfigText.Append('');
         ConfigText.Append('# Add some extra OSX options');
         ConfigText.Append('#IFDEF DARWIN');
-
         s:=GetDarwinSDKVersion('macosx');
         if Length(s)>0 then
         begin
@@ -3725,16 +3832,26 @@ begin
             ConfigText.Append('-WM'+s);
           ConfigText.Append('#ENDIF');
         end;
-
-        s:=GetDarwinSDKLocation;
-        if Length(s)>0 then
-        begin
-          ConfigText.Append('# MacOS 10.14 Mojave and newer have libs and tools in new, yet non-standard directory');
-          ConfigText.Append('-XR'+s);
-          ConfigText.Append('-Fl'+s+'/usr/lib');
-        end;
-
         ConfigText.Append('#ENDIF');
+
+        s:=GetDarwinSDKVersion('macosx');
+        if  (Length(s)=0) OR (CompareVersionStrings(s,'10.14')>=0) then
+        begin
+          ConfigText.Append('');
+          if (Length(s)>0) then
+            ConfigText.Append('# MacOS 10.14 Mojave and newer have libs and tools in new, yet non-standard directory');
+          s:=GetDarwinSDKLocation;
+          if (Length(s)>0) AND (DirectoryExists(s)) then
+          begin
+            ConfigText.Append('#IFDEF DARWIN');
+            ConfigText.Append('-XR'+s);
+            ConfigText.Append('#ENDIF');
+            ConfigText.Append('-Fl'+s+'/usr/lib');
+          end;
+          s:=GetDarwinToolsLocation;
+          if (Length(s)>0) AND (DirectoryExists(s)) then
+            ConfigText.Append('-FD'+s);
+        end;
         {$endif Darwin}
 
         {$ifndef FPCONLY}
@@ -3863,6 +3980,10 @@ begin
     // Delete any existing buildstamp file
     Sysutils.DeleteFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'build-stamp.'+CPUOS_Signature);
     Sysutils.DeleteFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'base.build-stamp.'+CPUOS_Signature);
+    //pass on user-requested cross compile options
+    CrossInstaller.SetCrossOpt(CrossOPT);
+    CrossInstaller.SetSubArch(CrossOS_SubArch);
+    CrossInstaller.SetABI(CrossOS_ABI);
   end else CPUOS_Signature:=GetFPCTarget(true);
 
   {$IFDEF MSWINDOWS}
@@ -3879,9 +4000,13 @@ begin
   end;
   {$ENDIF}
 
-  if FileExists(FCompiler)
-     then aCleanupCompiler:=FCompiler
-     else aCleanupCompiler:=IncludeTrailingPathDelimiter(FBootstrapCompilerDirectory)+GetCompilerName(GetTargetCPU);
+  aCleanupCompiler:=IncludeTrailingPathDelimiter(FBinPath)+GetCompilerName(GetTargetCPU);
+  if (NOT FileExists(aCleanupCompiler)) then
+  begin
+    if FileExists(FCompiler)
+       then aCleanupCompiler:=FCompiler
+       else aCleanupCompiler:=IncludeTrailingPathDelimiter(FBootstrapCompilerDirectory)+GetCompilerName(GetTargetCPU);
+  end;
 
   if FileExists(aCleanupCompiler) then
   begin
@@ -3916,7 +4041,7 @@ begin
     begin  // clean out the correct compiler
       Processor.Process.Parameters.Add('OS_TARGET='+CrossInstaller.TargetOSName);
       Processor.Process.Parameters.Add('CPU_TARGET='+CrossInstaller.TargetCPUName);
-      if Length(CrossOS_SubArch)>0 then Processor.Process.Parameters.Add('SUBARCH='+CrossOS_SubArch);
+      if (CrossInstaller.SubArch<>TSubarch.saNone) then Processor.Process.Parameters.Add('SUBARCH='+CrossInstaller.SubArchName);
     end
     else
     begin
@@ -4049,10 +4174,10 @@ end;
 
 function TFPCInstaller.GetModule(ModuleName: string): boolean;
 var
-  UpdateWarnings: TStringList;
-  aRepoClient:TRepoClient;
-  s:string;
-  SourceVersion:string;
+  UpdateWarnings : TStringList;
+  aRepoClient    : TRepoClient;
+  s              : string;
+  SourceVersion  : string;
 begin
   result:=inherited;
   result:=InitModule;
@@ -4063,13 +4188,28 @@ begin
 
   SourceVersion:='0.0.0';
 
+  if Ultibo then
+    FSourceDirectory:=StringReplace(FSourceDirectory,DirectorySeparator+'source','',[]);
+
   aRepoClient:=GetSuitableRepoClient;
 
   if aRepoClient=nil then
   begin
-    Infoln(infotext+'Using FTP for download of ' + ModuleName + ' sources.',etWarning);
+    result:=true;
+    Infoln(infotext+'Downloading ' + ModuleName + ' sources.',etInfo);
     result:=DownloadFromFTP(ModuleName);
     FActualRevision:=FPreviousRevision;
+    if result and Ultibo then
+    begin
+      // Get Ultibo Core also
+      s:=URL;
+      URL:=StringReplace(URL,'/FPC','/Core',[]);
+      Infoln(infotext+'Downloading Ultibo Core sources.',etInfo);
+      result:=DownloadFromFTP('Core');
+      URL:=s;
+      FActualRevision:='32846';
+      FPreviousRevision:=FActualRevision;
+    end;
   end
   else
   begin
@@ -4080,6 +4220,7 @@ begin
       if (aRepoClient.ClassType=FGitClient.ClassType)
          then result:=DownloadFromGit(ModuleName, FPreviousRevision, FActualRevision, UpdateWarnings)
          else result:=DownloadFromSVN(ModuleName, FPreviousRevision, FActualRevision, UpdateWarnings);
+
       if UpdateWarnings.Count>0 then
       begin
         WritelnLog(UpdateWarnings);
@@ -4090,10 +4231,12 @@ begin
 
   end;
 
+  if Ultibo then
+    FSourceDirectory:=IncludeTrailingPathDelimiter(FSourceDirectory)+'source';
+
   if result then
   begin
-    SourceVersion:=GetVersion;
-
+  SourceVersion:=GetVersion;
     if (SourceVersion<>'0.0.0') then
     begin
       s:=GetRevisionFromVersion(ModuleName,SourceVersion);
@@ -4189,10 +4332,10 @@ constructor TFPCInstaller.Create;
 begin
   inherited Create;
 
+  FTargetCompilerName:=GetCompilerName(GetTargetCPU);
+
   FCompiler := '';
   FUseLibc  := false;
-
-  FTargetCompilerName:=GetCompilerName(GetTargetCPU);
 
   InitDone:=false;
 end;

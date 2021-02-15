@@ -332,6 +332,7 @@ function FileCorrectLineEndings(const SrcFilename, DestFilename: string): boolea
 function FixPath(const s:string):string;
 function FileIsReadOnly(const s:string):boolean;
 function MaybeQuoted(const s:string):string;
+function MaybeQuotedSpacesOnly(const s:string):string;
 // Like ExpandFilename but does not expand an empty string to current directory
 function SafeExpandFileName (Const FileName : String): String;
 // Get application name
@@ -364,6 +365,8 @@ function GetLogicalCpuCount: integer;
 {$ifdef Darwin}
 function GetDarwinSDKVersion(aSDK: string):string;
 function GetDarwinSDKLocation:string;
+function GetDarwinToolsLocation:string;
+function GetXCodeLocation:string;
 {$endif}
 function GetAndroidSDKDir:string;
 function GetAndroidNDKDir:string;
@@ -393,7 +396,7 @@ function GetTargetCPUOS:string;
 function GetDistro:string;
 function GetFreeBSDVersion:byte;
 function checkGithubRelease(const aURL:string):string;
-{$IF FPC_FULLVERSION < 30300}
+{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION < 30200)}
 Function Pos(Const Substr : string; Const Source : string; Offset : Sizeint = 1) : SizeInt;
 {$ENDIF}
 {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION < 30000)}
@@ -2267,8 +2270,9 @@ begin
         Ss.Free;
       end;
 
-      result:=(Length(Content)>0);
+      result:=((Length(Content)>0) AND (Pos('Not Found',Content)=0));
 
+      Json:=nil;
       if result then
       begin
         try
@@ -2587,6 +2591,13 @@ begin
     result:=s;
 end;
 
+function MaybeQuotedSpacesOnly(const s:string):string;
+begin
+  if (Pos(' ',s)>0) then
+    result:='"'+s+'"'
+  else
+    result:=s;
+end;
 
 function StringsStartsWith(const SearchIn:array of string; SearchFor:string; StartIndex:integer; CS:boolean): integer;
 var
@@ -3023,41 +3034,65 @@ var
   Output,s:string;
   i,j:integer;
 begin
-  Output:='';
   s:='';
   j:=0;
-  //if ExecuteCommandCompat('xcodebuild -version -sdk '+aSDK, Output, False) <> 0 then
-  RunCommand('xcodebuild',['-version','-sdk',aSDK], Output);
+
+  if (Length(s)=0) then
   begin
-    i:=Pos(SearchTarget,Output);
-    if i>0 then
+    if (Length(aSDK)=0) OR (aSDK='macosx') then
     begin
-      i:=i+length(SearchTarget);
-      while (Length(Output)>i) AND (Output[i] in ['0'..'9','.']) do
+      Output:='';
+      RunCommand('xcrun',['--show-sdk-version'], Output);
+      if (Length(Output)>0) then
       begin
-        s:=s+Output[i];
-        Inc(i);
-      end;
-    end
-    else
-    begin
-      //xcodebuild not working ... try something completely different ...
-      if aSDK='macosx' then
-      begin
-        RunCommand('sw_vers',['-productVersion'], Output);
-        if (Length(Output)>0) then
+        i:=1;
+        while (i<=Length(Output)) AND (Output[i] in ['0'..'9','.']) do
         begin
-          i:=1;
-          while (Length(Output)>i) AND (Output[i] in ['0'..'9','.']) do
-          begin
-            s:=s+Output[i];
-            Inc(i);
-          end;
+          s:=s+Output[i];
+          Inc(i);
         end;
       end;
     end;
   end;
-  result:=Trim(s);
+
+  if (Length(s)=0) then
+  begin
+    Output:='';
+    //if ExecuteCommandCompat('xcodebuild -version -sdk '+aSDK, Output, False) <> 0 then
+    RunCommand('xcodebuild',['-version','-sdk',aSDK], Output);
+    begin
+      i:=Pos(SearchTarget,Output);
+      if i>0 then
+      begin
+        i:=i+length(SearchTarget);
+        while (i<=Length(Output)) AND (Output[i] in ['0'..'9','.']) do
+        begin
+          s:=s+Output[i];
+          Inc(i);
+        end;
+      end
+    end;
+  end;
+
+  if (Length(s)=0) then
+  begin
+    if aSDK='macosx' then
+    begin
+      Output:='';
+      RunCommand('sw_vers',['-productVersion'], Output);
+      if (Length(Output)>0) then
+      begin
+        i:=1;
+        while (i<=Length(Output)) AND (Output[i] in ['0'..'9','.']) do
+        begin
+          s:=s+Output[i];
+          Inc(i);
+        end;
+      end;
+    end;
+  end;
+
+  result:=s;
 end;
 function GetDarwinSDKLocation:string;
 var
@@ -3065,8 +3100,34 @@ var
 begin
   Output:='';
   RunCommand('xcrun',['--show-sdk-path'], Output);
+  Output:=Trim(Output);
   if (Length(Output)>0) then
-    result:=Trim(Output);
+    result:=Output;
+end;
+function GetDarwinToolsLocation:string;
+const
+  BINARY = 'clang';
+var
+  Output:string;
+begin
+  Output:='';
+  RunCommand('xcrun',['-f',BINARY], Output);
+  Output:=Trim(Output);
+  if (Length(Output)>0) then
+  begin
+    Delete(Output,Length(Output)-Length(BINARY),MaxInt);
+    result:=Output;
+  end;
+end;
+function GetXCodeLocation:string;
+var
+  Output:string;
+begin
+  Output:='';
+  RunCommand('xcode-select',['--print-path'], Output);
+  Output:=Trim(Output);
+  if (Length(Output)>0) then
+    result:=Output;
 end;
 {$endif}
 
@@ -3213,7 +3274,6 @@ begin
       result:=GetEnumValue(aTypeInfo,aEnum);
   end;
 end;
-
 
 function LibWhich(aLibrary: string): boolean;
 {$ifdef Unix}
@@ -3957,7 +4017,7 @@ begin
   end;
 end;
 
-{$IF FPC_FULLVERSION < 30300}
+{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION < 30200)}
 Function Pos(Const Substr : string; Const Source : string; Offset : Sizeint = 1) : SizeInt;
 var
   i,MaxLen : SizeInt;
@@ -4917,7 +4977,7 @@ begin
           aDataStream.Position:=0;
           aDataStream.Size:=0;
           Get(URL,aDataStream);
-          //HTTPMethod('GET',URL,aDataStream,[200,301,302,303,307,308]);
+          //HTTPMethod('GET',URL,aDataStream,[200,404]);
           response:=ResponseStatusCode;
           result:=(response=200);
           //result:=(response>=100) and (response<300);

@@ -146,13 +146,11 @@ type
     function BuildModule(ModuleName: string): boolean; override;
   end;
 
-  {$ifndef FPCONLY}
   { TAWGGInstaller }
   TAWGGInstaller = class(TUniversalInstaller)
   public
     function BuildModule(ModuleName: string): boolean; override;
   end;
-  {$endif}
 
   { TPas2jsInstaller }
   TPas2jsInstaller = class(TUniversalInstaller)
@@ -181,8 +179,6 @@ type
   // check if enabled modules are allowed !
   function CheckIncludeModule(ModuleName: string):boolean;
   function SetConfigFile(aConfigFile: string):boolean;
-  function GetARMArch(aARMArch:string):TARMARCH;
-  function GetARMArchFPCDefine(aARMArch:TARMARCH):string;
 
 var
   sequences:string;
@@ -2307,7 +2303,6 @@ begin
   end;
 end;
 
-{$ifndef FPCONLY}
 function TAWGGInstaller.BuildModule(ModuleName: string): boolean;
 var
   Workingdir,versionitis_exe:string;
@@ -2383,16 +2378,13 @@ begin
   ProcessorResult:=Processor.ExecuteAndWait;
   result := (ProcessorResult=0);
 end;
-{$endif}
 
 function TPas2jsInstaller.BuildModule(ModuleName: string): boolean;
 var
   Workingdir,FilePath:string;
   idx:integer;
   sl:TStringList;
-  {$ifndef FPCONLY}
   LazarusConfig: TUpdateLazConfig;
-  {$endif}
 begin
   result:=inherited;
   result:=InitModule;
@@ -2426,7 +2418,8 @@ begin
 
   if not result then exit;
 
-  {$ifndef FPCONLY}
+  Self.GetFPCTarget(true);
+
   LazarusConfig:=TUpdateLazConfig.Create(LazarusPrimaryConfigPath);
   try
     // set defaults for pas2js
@@ -2457,7 +2450,6 @@ begin
   FilePath:=ConcatPaths([LazarusSourceDir,'components','pas2js','pas2jsdsgn.lpk']);
   result:=InstallPackage(FilePath,WorkingDir,False);
   if not result then exit;
-  {$endif}
 
 end;
 
@@ -2975,23 +2967,6 @@ begin
   if (CurrentConfigFile=SafeGetApplicationPath+CONFIGFILENAME) then
      result:=SaveInisFromResource(SafeGetApplicationPath+CONFIGFILENAME,'fpcup_ini');
 end;
-
-
-function GetARMArch(aARMArch:string):TARMARCH;
-begin
-  if Length(aARMArch)=0 then
-    result:=TARMARCH.default
-  else
-    result:=TARMARCH(GetEnumValue(TypeInfo(TARMARCH),aARMArch));
-  if Ord(result) < 0 then
-    raise Exception.CreateFmt('Invalid ARM Arch name "%s" for GetARMArch.', [aARMArch]);
-end;
-
-function GetARMArchFPCDefine(aARMArch:TARMARCH):string;
-begin
-  result:=ARMArchFPCStr[aARMArch];
-end;
-
 
 initialization
   IniGeneralSection:=TStringList.create;

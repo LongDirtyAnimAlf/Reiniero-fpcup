@@ -191,7 +191,7 @@ type
     {$endif}
     FCrossOPT: string;
     FCrossOS_Target: TOS;
-    FCrossOS_SubArch: string;
+    FCrossOS_SubArch: TSUBARCH;
     FFPCDesiredRevision: string;
     FFPCDesiredBranch: string;
     FFPCSourceDirectory: string;
@@ -241,7 +241,7 @@ type
     FSolarisOI:boolean;
     FMUSL:boolean;
     FRunInfo:string;
-    function GetCrossCombo_Target:TCPUOS;
+    function GetCrossCombo_Target:string;
     {$ifndef FPCONLY}
     function GetLazarusPrimaryConfigPath: string;
     procedure SetLazarusSourceDirectory(AValue: string);
@@ -295,8 +295,8 @@ type
     property ConfigFile: string read FConfigFile write FConfigFile;
     property CrossCPU_Target:TCPU read FCrossCPU_Target write FCrossCPU_Target;
     property CrossOS_Target:TOS read FCrossOS_Target write FCrossOS_Target;
-    property CrossOS_SubArch:string read FCrossOS_SubArch write FCrossOS_SubArch;
-    property CrossCombo_Target:TCPUOS read GetCrossCombo_Target;
+    property CrossOS_SubArch:TSUBARCH read FCrossOS_SubArch write FCrossOS_SubArch;
+    property CrossCombo_Target:string read GetCrossCombo_Target;
 
     // Widgetset for which the user wants to compile the LCL (not the IDE).
     // Empty if default LCL widgetset used for current platform
@@ -394,7 +394,7 @@ type
   TState=record
     instr:TKeyword;
     param:string;
-    end;
+  end;
 
   { TSequencer }
 
@@ -801,7 +801,7 @@ begin
   Result.Sorted := True;
   Result.Duplicates := dupIgnore;
 
-  s:=IncludeTrailingPathDelimiter(FPCSourceDirectory)+'rtl'+DirectorySeparator+'embedded'+DirectorySeparator+MAKEFILENAME;
+  s:=IncludeTrailingPathDelimiter(FPCSourceDirectory)+'rtl'+DirectorySeparator+GetOS(CrossOS_Target)+DirectorySeparator+FPCMAKEFILENAME;
 
   if FileExists(s) then
   begin
@@ -917,11 +917,11 @@ begin
       aSequence:=_DEFAULT;
       {$ifdef win32}
       // Run Windows specific cross compiler or regular version
-      if Pos(_CROSSWIN,SkipModules)=0 then aSequence:='Defaultwin32';
+      if Pos(_CROSSWIN,SkipModules)=0 then aSequence:=_DEFAULT+'win32';
       {$endif}
       {$ifdef win64}
       //not yet
-      //if Pos(_CROSSWIN,SkipModules)=0 then aSequence:='Defaultwin64';
+      //if Pos(_CROSSWIN,SkipModules)=0 then aSequence:=_DEFAULT+'win64';
       {$endif}
       {$IF defined(CPUAARCH64) or defined(CPUARM) or defined(CPUARMHF) or defined(HAIKU) or defined(CPUPOWERPC64)}
       aSequence:=_DEFAULTSIMPLE;
@@ -981,11 +981,11 @@ begin
   inherited Destroy;
 end;
 
-
-function TFPCupManager.GetCrossCombo_Target:TCPUOS;
+function TFPCupManager.GetCrossCombo_Target:string;
 begin
-  result.CPU:=FCrossCPU_Target;
-  result.OS:=FCrossOS_Target;
+  result:=GetCPU(FCrossCPU_Target)+'-'+GetOS(FCrossOS_Target);
+  if (FCrossOS_SubArch<>TSUBARCH.saNone) then
+    result:=result+'-'+GetSubarch(FCrossOS_SubArch);
 end;
 
 { TSequencer }
@@ -1374,10 +1374,16 @@ function TSequencer.GetInstaller(ModuleName: string): boolean;
 var
   CrossCompiling:boolean;
   aCompiler:string;
+  LocalFPCSourceDir:string;
 begin
   result:=true;
 
   CrossCompiling:=(FParent.CrossCPU_Target<>TCPU.cpuNone) or (FParent.CrossOS_Target<>TOS.osNone);
+
+  if (Pos('github.com/ultibohub',FParent.FPCURL)>0) then
+    LocalFPCSourceDir:=IncludeTrailingPathDelimiter(FParent.FPCSourceDirectory)+'source'
+  else
+    LocalFPCSourceDir:=FParent.FPCSourceDirectory;
 
   //check if this is a known module:
 
@@ -1405,7 +1411,7 @@ begin
     else
       FInstaller:=TFPCNativeInstaller.Create;
 
-    FInstaller.SourceDirectory:=FParent.FPCSourceDirectory;
+    FInstaller.SourceDirectory:=LocalFPCSourceDir;
     FInstaller.InstallDirectory:=FParent.FPCInstallDirectory;
     (FInstaller as TFPCInstaller).BootstrapCompilerDirectory:=FParent.BootstrapCompilerDirectory;
     (FInstaller as TFPCInstaller).SourcePatches:=FParent.FPCPatches;
@@ -1454,6 +1460,7 @@ begin
       FInstaller:=TLazarusNativeInstaller.Create;
 
     // source- and install-dir are the same for Lazarus ... could be changed
+
     FInstaller.SourceDirectory:=FParent.LazarusSourceDirectory;
     FInstaller.InstallDirectory:=FParent.LazarusInstallDirectory;
 
@@ -1464,7 +1471,7 @@ begin
     // LCL_Platform is only used when building LCL, but the Lazarus module
     // will take care of that.
     (FInstaller as TLazarusInstaller).LCL_Platform:=FParent.LCL_Platform;
-    (FInstaller as TLazarusInstaller).FPCSourceDir:=FParent.FPCSourceDirectory;
+    (FInstaller as TLazarusInstaller).FPCSourceDir:=LocalFPCSourceDir;
     (FInstaller as TLazarusInstaller).FPCInstallDir:=FParent.FPCInstallDirectory;
     (FInstaller as TLazarusInstaller).PrimaryConfigPath:=FParent.LazarusPrimaryConfigPath;
     (FInstaller as TLazarusInstaller).SourcePatches:=FParent.FLazarusPatches;
@@ -1488,7 +1495,7 @@ begin
         FInstaller.free; // get rid of old FInstaller
       end;
     FInstaller:=THelpFPCInstaller.Create;
-    FInstaller.SourceDirectory:=FParent.FPCSourceDirectory;
+    FInstaller.SourceDirectory:=LocalFPCSourceDir;
   end
   {$ifndef FPCONLY}
   else if ModuleName=_HELPLAZARUS
@@ -1508,7 +1515,7 @@ begin
     FInstaller.SourceDirectory:=FParent.LazarusSourceDirectory;
     FInstaller.InstallDirectory:=FParent.LazarusInstallDirectory;
     (FInstaller as THelpLazarusInstaller).FPCBinDirectory:=IncludeTrailingPathDelimiter(FParent.FPCInstallDirectory);
-    (FInstaller as THelpLazarusInstaller).FPCSourceDirectory:=IncludeTrailingPathDelimiter(FParent.FPCSourceDirectory);
+    (FInstaller as THelpLazarusInstaller).FPCSourceDirectory:=IncludeTrailingPathDelimiter(LocalFPCSourceDir);
     (FInstaller as THelpLazarusInstaller).LazarusPrimaryConfigPath:=FParent.LazarusPrimaryConfigPath;
   end
   {$endif}
@@ -1527,9 +1534,7 @@ begin
       end;
 
       case ModuleName of
-        {$ifndef FPCONLY}
         'awgg'          : FInstaller:=TAWGGInstaller.Create;
-        {$endif}
         'mORMotPXL'     : FInstaller:=TmORMotPXLInstaller.Create;
         'internettools' : FInstaller:=TInternetToolsInstaller.Create;
         'pas2js-rtl'    :FInstaller:=TPas2jsInstaller.Create;
@@ -1540,7 +1545,7 @@ begin
       FCurrentModule:=ModuleName;
       //assign properties
       (FInstaller as TUniversalInstaller).FPCInstallDir:=FParent.FPCInstallDirectory;
-      (FInstaller as TUniversalInstaller).FPCSourceDir:=FParent.FPCSourceDirectory;
+      (FInstaller as TUniversalInstaller).FPCSourceDir:=LocalFPCSourceDir;
       // Use compileroptions for chosen FPC compile options...
       FInstaller.CompilerOptions:=FParent.FPCOPT;
       // ... but more importantly, pass Lazarus compiler options needed for IDE rebuild
@@ -1606,6 +1611,13 @@ begin
       // By setting the target.
       FInstaller.SetTarget(FParent.CrossCPU_Target,FParent.CrossOS_Target,FParent.CrossOS_SubArch);
       FInstaller.CrossOPT:=FParent.CrossOPT;
+      if AnsiContainsText(FParent.CrossOPT,'-CAEABIHF') then
+        FInstaller.SetABI(TABI.eabihf)
+      else
+        if AnsiContainsText(FParent.CrossOPT,'-CAEABI') then
+          FInstaller.SetABI(TABI.eabi)
+      else
+        FInstaller.SetABI(TABI.default);
       FInstaller.CrossLibraryDirectory:=FParent.CrossLibraryDirectory;
       FInstaller.CrossToolsDirectory:=FParent.CrossToolsDirectory;
     end
