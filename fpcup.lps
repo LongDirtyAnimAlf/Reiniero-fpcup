@@ -3,7 +3,7 @@
   <ProjectSession>
     <PathDelim Value="\"/>
     <Version Value="12"/>
-    <BuildModes Count="5" Active="Default">
+    <BuildModes Count="5" Active="win32">
       <Item1 Name="linuxarmhf">
         <MacroValues Count="1">
           <Macro1 Name="LCLWidgetType" Value="nogui"/>
@@ -202,7 +202,6 @@
       <Unit0>
         <Filename Value="fpcup.lpr"/>
         <IsPartOfProject Value="True"/>
-        <IsVisibleTab Value="True"/>
         <TopLine Value="108"/>
         <CursorPos X="17" Y="113"/>
         <UsageCount Value="200"/>
@@ -270,8 +269,8 @@
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerUniversal"/>
         <EditorIndex Value="1"/>
-        <TopLine Value="2435"/>
-        <CursorPos X="3" Y="2461"/>
+        <TopLine Value="2352"/>
+        <CursorPos X="3" Y="2378"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
       </Unit8>
@@ -289,9 +288,10 @@
         <Filename Value="installermanager.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerManager"/>
+        <IsVisibleTab Value="True"/>
         <EditorIndex Value="2"/>
-        <TopLine Value="1511"/>
-        <CursorPos X="9" Y="1532"/>
+        <TopLine Value="1364"/>
+        <CursorPos X="137" Y="1381"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
       </Unit10>

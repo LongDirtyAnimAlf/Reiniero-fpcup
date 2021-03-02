@@ -1,6 +1,6 @@
-unit m_any_to_freertosxtensa;
-{ Cross compiles from any platform with correct binutils to Embedded Mipsel
-Copyright (C) 2017 Alf
+unit m_any_to_freertosarm;
+{ Cross compiles from any platform with correct binutils to Embedded ARM
+Copyright (C) 2020 Alf
 
 This library is free software; you can redistribute it and/or modify it
 under the terms of the GNU Library General Public License as published by
@@ -38,61 +38,44 @@ uses
 implementation
 
 uses
-  {$ifdef Unix}
-  BaseUnix,
-  {$endif}
-  FileUtil, m_crossinstaller, fpcuputil;
+  m_crossinstaller, fpcuputil;
 
 type
+  TAny_FreeRTOSArm = class(TCrossInstaller)
+  private
+    FAlreadyWarned: boolean; //did we warn user about errors and fixes already?
+  public
+    function GetLibs(Basepath:string):boolean;override;
+    function GetBinUtils(Basepath:string):boolean;override;
+    constructor Create;
+    destructor Destroy; override;
+  end;
 
-{ TAny_FreeRTOSXtensa }
-TAny_FreeRTOSXtensa = class(TCrossInstaller)
-private
-  FAlreadyWarned: boolean; //did we warn user about errors and fixes already?
-public
-  function GetLibs(Basepath:string):boolean;override;
-  function GetBinUtils(Basepath:string):boolean;override;
-  constructor Create;
-  destructor Destroy; override;
-end;
+{ TAny_FreeRTOSArm }
 
-{ TAny_FreeRTOSXtensa }
-
-function TAny_FreeRTOSXtensa.GetLibs(Basepath:string): boolean;
+function TAny_FreeRTOSArm.GetLibs(Basepath:string): boolean;
 const
   StaticLibName1='libfreertos.a';
-  StaticLibName2='libc.a';
+  StaticLibName2='libc_nano.a';
 var
-  PresetLibPath:string;
-  StaticLibNameESP:string;
-  S:string;
   aABI:TABI;
 begin
   result:=FLibsFound;
+
   if result then exit;
 
-  StaticLibNameESP:='';
-
   if (FSubArch<>TSUBARCH.saNone) then
-  begin
-    if (FSubArch=TSUBARCH.lx6) then StaticLibNameESP:='libesp32.a';
-    if (FSubArch=TSUBARCH.lx106) then StaticLibNameESP:='libesp8266.a';
-    ShowInfo('Cross-libs: We have a subarch: '+SubarchName);
-  end
-  else ShowInfo('Cross-libs: No subarch defined. Expect fatal errors.',etError);
+    ShowInfo('Cross-libs: We have a subarch: '+SubarchName)
+  else
+    ShowInfo('Cross-libs: No subarch defined. Expect fatal errors.',etError);
 
   // simple: check presence of library file in basedir
-
-  if (Length(StaticLibNameESP)>0) then
-  begin
-    if not result then
-      result:=SearchLibrary(Basepath,StaticLibNameESP);
-    // search local paths based on libbraries provided for or adviced by fpc itself
-    if not result then
-      result:=SimpleSearchLibrary(BasePath,DirName,StaticLibNameESP);
-    if ((not result) AND (FSubArch<>TSUBARCH.saNone)) then
-      result:=SimpleSearchLibrary(BasePath,IncludeTrailingPathDelimiter(DirName)+SubarchName,StaticLibNameESP);
-  end;
+  result:=SearchLibrary(Basepath,LIBCNAME);
+  // search local paths based on libbraries provided for or adviced by fpc itself
+  if not result then
+    result:=SimpleSearchLibrary(BasePath,DirName,LIBCNAME);
+  if ((not result) AND (FSubArch<>TSUBARCH.saNone)) then
+    result:=SimpleSearchLibrary(BasePath,IncludeTrailingPathDelimiter(DirName)+SubarchName,LIBCNAME);
 
   // do the same as above, but look for a static freertos lib
   if not result then
@@ -113,6 +96,7 @@ begin
   if ((not result) AND (FSubArch<>TSUBARCH.saNone)) then
     result:=SimpleSearchLibrary(BasePath,IncludeTrailingPathDelimiter(DirName)+SubarchName,StaticLibName2);
 
+  // search local paths based on libbraries provided for or adviced by https://github.com/michael-ring/freertos4fpc
   if ((not result) AND (FSubArch<>TSUBARCH.saNone)) then
   begin
     result:=SimpleSearchLibrary(BasePath,ConcatPaths([DirName,SubarchName]),StaticLibName2);
@@ -146,33 +130,17 @@ begin
     end;
   end;
 
-  if (true) then
-  begin
-    PresetLibPath:=GetUserDir;
-    {$IFDEF UNIX}
-    //if FpGeteuid=0 then PresetLibPath:='/usr/local/lib';
-    {$ENDIF}
-    PresetLibPath:=ConcatPaths([PresetLibPath,'.espressif','tools','xtensa-esp32-elf']);
-    S:=FindFileInDir(StaticLibName2,PresetLibPath);
-    if (Length(S)>0) then
-    begin
-      PresetLibPath:=ExtractFilePath(S);
-      AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(PresetLibPath));
-    end;
-  end;
-
 end;
 
-function TAny_FreeRTOSXtensa.GetBinUtils(Basepath:string): boolean;
+function TAny_FreeRTOSArm.GetBinUtils(Basepath:string): boolean;
 var
   AsFile,aOption: string;
-  S,PresetBinPath:string;
   i:integer;
 begin
   result:=inherited;
   if result then exit;
 
-  FBinUtilsPrefix:=GetCPU(TargetCPU)+'-esp32-elf-';
+  FBinUtilsPrefix:=GetCPU(TargetCPU)+'-none-eabi-';
 
   // Start with any names user may have given
   AsFile:=FBinUtilsPrefix+'as'+GetExeExt;
@@ -181,97 +149,41 @@ begin
   if not result then
     result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
 
-  if (not result) then
-  begin
-    PresetBinPath:=GetUserDir;
-    {$IFDEF LINUX}
-    if FpGetEUid=0 then PresetBinPath:='/usr/local/bin';
-    {$ENDIF}
-    PresetBinPath:=ConcatPaths([PresetBinPath,'.espressif','tools','xtensa-esp32-elf']);
-    S:=FindFileInDir(AsFile,PresetBinPath);
-    if (Length(S)>0) then
-    begin
-      PresetBinPath:=ExtractFilePath(S);
-      result:=SearchBinUtil(PresetBinPath,AsFile);
-    end;
-  end;
-
-  if (not result) then
-  begin
-    PresetBinPath:=Trim(GetEnvironmentVariable('IDF_TOOLS_PATH'));
-    if (Length(PresetBinPath)>0) then
-    begin
-      S:=FindFileInDir(AsFile,PresetBinPath);
-      if (Length(S)>0) then
-      begin
-        PresetBinPath:=ExtractFilePath(S);
-        result:=SearchBinUtil(PresetBinPath,AsFile);
-      end;
-    end;
-  end;
-
   SearchBinUtilsInfo(result);
 
   if result then
   begin
     FBinsFound:=true;
-
     // Configuration snippet for FPC
     AddFPCCFGSnippet('-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath));
     AddFPCCFGSnippet('-XP'+FBinUtilsPrefix); {Prepend the binutils names};
-
-    AddFPCCFGSnippet('-Wpesp32');
-
-    S:=Trim(GetEnvironmentVariable('IDF_PATH'));
-    if (Length(S)=0) then
-    begin
-      //AsFile:=ConcatPaths(['esp-idf','components','esptool_py','esptool','esptool.py']);
-      PresetBinPath:=FBinUtilsPath;
-      S:=FindFileInDir('esptool.py',PresetBinPath);
-      if (Length(S)=0) then
-      begin
-        // go one directory up
-        PresetBinPath:=ExpandFileName(IncludeTrailingPathDelimiter(FBinUtilsPath)+'..');
-        S:=FindFileInDir('esptool.py',PresetBinPath);
-      end;
-      if (Length(S)>0) then
-      begin
-        repeat
-          S:=ExtractFileDir(S);
-          AsFile:=ExtractFileName(S);
-        until ((AsFile='components') OR (Length(AsFile)=0));
-        S:=ExtractFileDir(S);
-        if (Length(S)>0) then
-          AddFPCCFGSnippet('-Ff'+S); {Set the IDF SDK path};
-      end;
-    end;
-
   end;
 end;
 
-constructor TAny_FreeRTOSXtensa.Create;
+constructor TAny_FreeRTOSArm.Create;
 begin
   inherited Create;
-  FTargetCPU:=TCPU.xtensa;
+  FTargetCPU:=TCPU.arm;
   FTargetOS:=TOS.freertos;
   Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
 
-destructor TAny_FreeRTOSXtensa.Destroy;
+destructor TAny_FreeRTOSArm.Destroy;
 begin
   inherited Destroy;
 end;
 
 var
-  Any_FreeRTOSXtensa:TAny_FreeRTOSXtensa;
+  Any_FreeRTOSArm:TAny_FreeRTOSArm;
 
 initialization
-  Any_FreeRTOSXtensa:=TAny_FreeRTOSXtensa.Create;
-  RegisterCrossCompiler(Any_FreeRTOSXtensa.RegisterName,Any_FreeRTOSXtensa);
+  Any_FreeRTOSArm:=TAny_FreeRTOSArm.Create;
+  RegisterCrossCompiler(Any_FreeRTOSArm.RegisterName,Any_FreeRTOSArm);
 
 finalization
-  Any_FreeRTOSXtensa.Destroy;
+  Any_FreeRTOSArm.Destroy;
+
 end.
 

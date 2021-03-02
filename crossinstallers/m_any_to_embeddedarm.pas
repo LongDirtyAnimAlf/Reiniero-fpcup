@@ -62,8 +62,6 @@ function TAny_Embeddedarm.GetLibs(Basepath:string): boolean;
 const
   LibName='libgcc.a';
 var
-  aSubarchName:string;
-  aIndex:integer;
   aABI:TABI;
 begin
   // Arm-embedded does not need libs by default, but user can add them.
@@ -72,11 +70,9 @@ begin
   if result then exit;
 
   if (FSubArch<>TSUBARCH.saNone) then
-  begin
-    aSubarchName:=GetSubarch(FSubArch);
-    ShowInfo('Cross-libs: We have a subarch: '+aSubarchName);
-  end
-  else ShowInfo('Cross-libs: No subarch defined. Expect fatal errors.',etError);
+    ShowInfo('Cross-libs: We have a subarch: '+SubArchName)
+  else
+    ShowInfo('Cross-libs: No subarch defined. Expect fatal errors.',etError);
 
   // begin simple: check presence of library file in basedir
   result:=SearchLibrary(Basepath,LibName);
@@ -86,57 +82,35 @@ begin
 
   if ((not result) AND (FSubArch<>TSUBARCH.saNone)) then
   begin
-    result:=SimpleSearchLibrary(BasePath,ConcatPaths([DirName,aSubarchName]),LibName);
+    result:=SimpleSearchLibrary(BasePath,ConcatPaths([DirName,SubArchName]),LibName);
     if (not result) then
     begin
       for aABI in TABI do
       begin
         if aABI=TABI.default then continue;
-        result:=SimpleSearchLibrary(BasePath,ConcatPaths([DirName,aSubarchName,GetABI(aABI)]),LibName);
+        result:=SimpleSearchLibrary(BasePath,ConcatPaths([DirName,SubArchName,GetABI(aABI)]),LibName);
         if result then break;
       end;
     end;
   end;
 
+  SearchLibraryInfo(result);
+
   if result then
   begin
     FLibsFound:=True;
-    //todo: check if -XR is needed for fpc root dir Prepend <x> to all linker search paths
 
-    // Perform subarch magic for libpath
-    if (FSubArch<>TSUBARCH.saNone) then
+    if PerformLibraryPathMagic then
     begin
-      if (Pos(aSubarchName,FLibsPath)>0) then
-        // we have a libdir with a subarch inside: make it universal !!
-        FLibsPath:=StringReplace(FLibsPath,aSubarchName,FPC_SUBARCH_MAGIC,[]);
-    end;
-
-    // Perform ABI magic for libpath
-    aIndex:=Pos(Self.RegisterName,FLibsPath);
-    if (aIndex<>-1) then
+      AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath));
+    end
+    else
     begin
-      for aABI in TABI do
-      begin
-        if aABI=TABI.default then continue;
-        if (Pos(DirectorySeparator+GetABI(aABI)+DirectorySeparator,FLibsPath,aIndex)>0) then
-        begin
-          // we have a libdir with a ABI inside: make it universal !!
-          FLibsPath:=StringReplace(FLibsPath,DirectorySeparator+GetABI(aABI)+DirectorySeparator,DirectorySeparator+FPC_ABI_MAGIC+DirectorySeparator,[]);
-          break;
-        end;
-      end;
+      // If we do not have magic, add subarch to enclose
+      AddFPCCFGSnippet('#IFDEF CPU'+UpperCase(SubArchName));
+      AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath));
+      AddFPCCFGSnippet('#ENDIF CPU'+UpperCase(SubArchName));
     end;
-
-    AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath)); {buildfaq 1.6.4/3.3.1: the directory to look for the target libraries ... just te be safe ...}
-    SearchLibraryInfo(result);
-  end;
-  if not result then
-  begin
-    //libs path is optional; it can be empty
-    ShowInfo('Libspath ignored; it is optional for this cross compiler.');
-    FLibsPath:='';
-    FLibsFound:=True;
-    result:=true;
   end;
 end;
 
@@ -151,9 +125,11 @@ end;
 
 function TAny_Embeddedarm.GetBinUtils(Basepath:string): boolean;
 var
-  AsFile,aOption: string;
+  AsFile: string;
   BinPrefixTry: string;
+  {$ifdef unix}
   i:integer;
+  {$endif unix}
 begin
   result:=inherited;
   if result then exit;

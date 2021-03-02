@@ -347,9 +347,11 @@ function SaveFileFromResource(filename,resourcename:string):boolean;
 function SaveInisFromResource(filename,resourcename:string):boolean;
 // Searches for SearchFor in the stringlist and returns the index if found; -1 if not
 // Search optionally starts from position SearchFor
-function StringsStartsWith(const SearchIn:array of string; SearchFor:string; StartIndex:integer; CS:boolean): integer;
+function StringsStartsWith(const SearchIn:array of string; SearchFor:string; StartIndex:integer=0; CS:boolean=false): integer;
+function StringsSame(const SearchIn:array of string; SearchFor:string;  StartIndex:integer=0; CS:boolean=false): integer;
 function StringListStartsWith(SearchIn:TStringList; SearchFor:string; StartIndex:integer=0; CS:boolean=false): integer;
 function StringListContains(SearchIn:TStringList; SearchFor:string; StartIndex:integer=0; CS:boolean=false): integer;
+function StringListSame(SearchIn:TStringList; SearchFor:string; StartIndex:integer=0; CS:boolean=false): integer;
 function GetTotalPhysicalMemory: DWord;
 function GetSwapFileSize: DWord;
 function XdgConfigHome: String;
@@ -2618,6 +2620,26 @@ begin
     result:=-1;
 end;
 
+function StringsSame(const SearchIn:array of string; SearchFor:string; StartIndex:integer; CS:boolean): integer;
+var
+  Found:boolean=false;
+  i:integer;
+begin
+  for i:=StartIndex to High(SearchIn) do
+  begin
+    if CS then
+      Found:=AnsiSameStr(SearchFor,TrimLeft(SearchIn[i]))
+    else
+      Found:=AnsiSameText(SearchFor,TrimLeft(SearchIn[i]));
+    if Found then break;
+  end;
+  if Found then
+    result:=i
+  else
+    result:=-1;
+end;
+
+
 function StringListStartsWith(SearchIn:TStringList; SearchFor:string; StartIndex:integer; CS:boolean): integer;
 var
   Found:boolean=false;
@@ -2656,6 +2678,24 @@ begin
     result:=-1;
 end;
 
+function StringListSame(SearchIn:TStringList; SearchFor:string; StartIndex:integer; CS:boolean): integer;
+var
+  Found:boolean=false;
+  i:integer;
+begin
+  for i:=StartIndex to Pred(SearchIn.Count) do
+  begin
+    if CS then
+      Found:=AnsiSameStr(SearchIn[i],SearchFor)
+    else
+      Found:=AnsiSameText(SearchIn[i],SearchFor);
+    if Found then break;
+  end;
+  if Found then
+    result:=i
+  else
+    result:=-1;
+end;
 
 function GetTotalPhysicalMemory: DWord;
 begin
@@ -3160,6 +3200,8 @@ begin
 end;
 
 function GetAndroidNDKDir:string;
+const
+  SEARCHFILE='ndk-build.cmd';
 var
   aSDKDir,aNDKDir:string;
   FilesList:TStringList;
@@ -3168,14 +3210,18 @@ begin
   aSDKDir:=GetAndroidSDKDir;
   if DirectoryExists(aSDKDir) then
   begin
-    aNDKDir:=ConcatPaths([aSDKDir,'ndk']);
+    aNDKDir:=ConcatPaths([aSDKDir,'ndk-bundle']);
+    if (NOT DirectoryExists(aNDKDir)) then
+      aNDKDir:=ConcatPaths([aSDKDir,'ndk']);
     FilesList:=TStringList.Create;
     try
+      //FindAllFiles(FilesList,aSDKDir, SEARCHFILE, true);
       FindAllDirectories(FilesList,aNDKDir,False);
       if FilesList.Count>0 then
       begin
         FilesList.Sorted:=True;
         //Get the highest version = latest = best I guess ... ;-)
+        //result:=ExtractFileDir(FilesList[FilesList.Count-1]);
         result:=FilesList[FilesList.Count-1];
       end;
     finally
@@ -3184,7 +3230,7 @@ begin
   end;
 end;
 
-// 1on1 copy from unit cutils from the fpc compiler;
+// 1on1 shameless copy from unit cutils from the fpc compiler;
 function CompareVersionStrings(s1,s2: string): longint;
 var
   start1, start2,
@@ -3222,9 +3268,10 @@ begin
     { if one of the two is at the end while the other isn't, add a '.0' }
     if (i1>length(s1)) and
        (i2<=length(s2)) then
-      s1:=s1+'.0'
-    else if i2>length(s2) then
-      s2:=s2+'.0';
+      s1:=s1+'.0';
+    if (i2>length(s2)) and
+       (i1<=length(s1)) then
+       s2:=s2+'.0';
     { compare non-numerical characters normally }
     while (i1<=length(s1)) and
           not(s1[i1] in ['0'..'9']) and

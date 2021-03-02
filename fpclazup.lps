@@ -3,7 +3,7 @@
   <ProjectSession>
     <PathDelim Value="\"/>
     <Version Value="12"/>
-    <BuildModes Count="5" Active="darwinppc64">
+    <BuildModes Count="5" Active="darwini386">
       <Item1 Name="linuxarmhf">
         <MacroValues Count="1">
           <Macro1 Name="LCLWidgetType" Value="nogui"/>
@@ -198,8 +198,9 @@
       <Unit0>
         <Filename Value="fpclazup.lpr"/>
         <IsPartOfProject Value="True"/>
-        <TopLine Value="135"/>
-        <CursorPos Y="162"/>
+        <IsVisibleTab Value="True"/>
+        <TopLine Value="134"/>
+        <CursorPos Y="167"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
       </Unit0>
@@ -377,7 +378,7 @@
       <Unit22>
         <Filename Value="settings.ini"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="2"/>
+        <EditorIndex Value="5"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
         <DefaultSyntaxHighlighter Value="Ini"/>
@@ -385,10 +386,11 @@
       <Unit23>
         <Filename Value="m_crossinstaller.pas"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="-1"/>
-        <TopLine Value="79"/>
-        <CursorPos X="7" Y="92"/>
+        <EditorIndex Value="2"/>
+        <TopLine Value="801"/>
+        <CursorPos Y="809"/>
         <UsageCount Value="200"/>
+        <Loaded Value="True"/>
       </Unit23>
       <Unit24>
         <Filename Value="m_win32_to_linux386.pas"/>
@@ -526,8 +528,7 @@
       <Unit41>
         <Filename Value="revision.inc"/>
         <IsPartOfProject Value="True"/>
-        <IsVisibleTab Value="True"/>
-        <EditorIndex Value="3"/>
+        <EditorIndex Value="6"/>
         <CursorPos Y="4"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>

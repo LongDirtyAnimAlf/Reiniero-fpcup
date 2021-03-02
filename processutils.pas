@@ -999,6 +999,8 @@ begin
         if AnsiContainsText(line,'Circular dependency detected when compiling target') then exit;
         if AnsiContainsText(line,'overriding recipe for target') then exit;
         if AnsiContainsText(line,'ignoring old recipe for target') then exit;
+        if AnsiContainsText(line,'overriding commands for target') then exit;
+        if AnsiContainsText(line,'ignoring old commands for target') then exit;
         if AnsiContainsText(line,'Case statement does not handle all possible cases') then exit;
 
         if AnsiContainsText(line,'(5059)') then exit; //function result not initialized
@@ -1028,6 +1030,8 @@ begin
       if (AnsiContainsText(line,'cp.exe ')) AND (AnsiContainsText(line,'.compiled')) then exit;
       {$endif}
 
+      s:='rm ';
+      if AnsiStartsText(s,line) then exit;
       s:='rm -f ';
       if AnsiContainsText(line,'/'+s) OR AnsiStartsText(s,line) then exit;
       if AnsiContainsText(line,'/'+TrimRight(s)) OR AnsiStartsText(TrimRight(s),line) then exit;
@@ -1039,9 +1043,21 @@ begin
       s:='mv ';
       if AnsiContainsText(line,'/'+s) OR AnsiStartsText(s,line) then exit;
       s:='cp ';
-      if ( (AnsiContainsText(line,'/'+s) OR AnsiStartsText(s,line)) AND AnsiContainsText(line,'.compiled') ) then exit;
+      if ( (AnsiContainsText(line,'/'+s) OR AnsiStartsText(s,line)) AND (AnsiContainsText(line,'.compiled') OR AnsiContainsText(line,'.tmp')) ) then exit;
       s:='grep: ';
       if AnsiContainsText(line,'/'+s) OR AnsiStartsText(s,line) then exit;
+
+      {$ifdef Darwin}
+      s:='strip -no_uuid ';
+      if AnsiContainsText(line,'/'+s) OR AnsiStartsText(s,line) then exit;
+      if AnsiContainsText(line,'/'+TrimRight(s)) OR AnsiStartsText(TrimRight(s),line) then exit;
+      s:='/usr/bin/codesign ';
+      if AnsiStartsText(s,line) then exit;
+      s:='/usr/bin/diff ';
+      if AnsiStartsText(s,line) then exit;
+      s:='svnversion: error: ';
+      if AnsiStartsText(s,line) OR AnsiContainsText(line,s) then exit;
+      {$endif}
 
       if AnsiContainsText(line,'is up to date.') then exit;
       if AnsiContainsText(line,'searching ') then exit;

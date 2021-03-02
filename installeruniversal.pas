@@ -40,7 +40,7 @@ uses
   {$ifndef FPCONLY}
   ,updatelazconfig
   {$endif}
-  {$IFDEF MSWINDOWS}, wininstaller{$ENDIF};
+  ;
 
 type
   {$ifndef FPCONLY}
@@ -68,9 +68,6 @@ type
 
   TUniversalInstaller = class(TBaseUniversalInstaller)
   private
-    // FPC base directories
-    FFPCSourceDir:string;
-    FFPCInstallDir:string;
     FPath:string; //Path to be used within this session (e.g. including compiler path)
     InitDone:boolean;
     {$ifndef FPCONLY}
@@ -92,12 +89,6 @@ type
   protected
     // Scans for and adds all packages specified in a (module's) stringlist with commands:
     function AddPackages(sl:TStringList): boolean;
-    {$IFDEF MSWINDOWS}
-    // Filters (a module's) sl stringlist and creates all <Directive> installers.
-    // Directive can now only be Windows/Windows32/Winx86 (synonyms)
-    // For now Windows-only; could be extended to generic cross platform installer class once this works
-    function CreateInstallers(Directive:string;sl:TStringList;ModuleName:string):boolean;
-    {$ENDIF MSWINDOWS}
     // Get a value for a key=value pair. Case-insensitive for keys. Expands macros in values.
     function GetValueFromKey(Key:string;sl:TStringList;recursion:integer=0):string;
     // internal initialisation, called from BuildModule,CleanModule,GetModule
@@ -164,6 +155,19 @@ type
     function GetModule(ModuleName: string): boolean; override;
   end;
 
+  { TDeveltools4FPCInstaller }
+  TDeveltools4FPCInstaller = class(TUniversalInstaller)
+  public
+    function GetModule(ModuleName: string): boolean; override;
+  end;
+
+  { TMBFFreeRTOSByDonInstaller }
+  TMBFFreeRTOSByDonInstaller = class(TUniversalInstaller)
+  public
+    function GetModule(ModuleName: string): boolean; override;
+  end;
+
+
 
   // Gets the list of modules enabled in ConfigFile. Appends to existing TStringList
   function GetModuleEnabledList(var ModuleList:TStringList):boolean;
@@ -196,7 +200,7 @@ Const
 implementation
 
 uses
-  StrUtils, typinfo,inifiles, process,
+  StrUtils, typinfo,inifiles, process, fpjson,
   FileUtil,
   fpcuputil;
 
@@ -278,8 +282,8 @@ begin
   Processor.Process.Parameters.Add('FPCDIR=' + ExcludeTrailingPathDelimiter(FPCSourceDir));
 
   //Make sure Lazarus does not pick up these tools from other installs
-  Processor.Process.Parameters.Add('FPCMAKE=' + FBinPath+'fpcmake'+GetExeExt);
-  Processor.Process.Parameters.Add('PPUMOVE=' + FBinPath+'ppumove'+GetExeExt);
+  Processor.Process.Parameters.Add('FPCMAKE=' + FFPCCompilerBinPath+'fpcmake'+GetExeExt);
+  Processor.Process.Parameters.Add('PPUMOVE=' + FFPCCompilerBinPath+'ppumove'+GetExeExt);
 
   s:=IncludeTrailingPathDelimiter(LazarusPrimaryConfigPath)+DefaultIDEMakeOptionFilename;
   //if FileExists(s) then
@@ -334,7 +338,7 @@ begin
     {$ifdef MSWindows}
     //Prepend FPC binary directory to PATH to prevent pickup of strange tools
     OldPath:=Processor.Environment.GetVar(PATHVARNAME);
-    s:=ExcludeTrailingPathDelimiter(FBinPath);
+    s:=ExcludeTrailingPathDelimiter(FFPCCompilerBinPath);
     if OldPath<>'' then
        Processor.Environment.SetVar(PATHVARNAME, s+PathSeparator+OldPath)
     else
@@ -451,7 +455,7 @@ begin
         else if macro='FPCDIR' then
           macro:=ExcludeTrailingPathDelimiter(FPCInstallDir)
         else if macro='FPCBINDIR' then
-            macro:=ExcludeTrailingPathDelimiter(FBinPath)
+            macro:=ExcludeTrailingPathDelimiter(FFPCCompilerBinPath)
         else if macro='FPCBIN' then
             macro:=ExcludeTrailingPathDelimiter(FCompiler)
         else if macro='TOOLDIR' then
@@ -532,6 +536,7 @@ begin
     {$ELSE}
     len:=1;
     {$ENDIF}
+    //DoDirSeparators(s);
     for i:=len to length(s) do
       if (s[i] in ['/','\']){$IFDEF MSWINDOWS} AND (s[i-1]<>' '){$ENDIF} then
         s[i]:=DirectorySeparator;
@@ -543,6 +548,7 @@ function TUniversalInstaller.InitModule: boolean;
 begin
   result:=true;
   localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (InitModule): ';
+
   Infoln(localinfotext+'Entering ...',etDebug);
   if InitDone then exit;
 
@@ -556,10 +562,8 @@ begin
   if not(result) then
     Infoln(localinfotext+'Missing required executables. Aborting.',etError);
 
-  // Add fpc architecture bin and plain paths
-  FBinPath:=ConcatPaths([FPCInstallDir,'bin',GetFPCTarget(true)])+DirectorySeparator;
   // Need to remember because we don't always use ProcessEx
-  FPath:=ExcludeTrailingPathDelimiter(FBinPath)+PathSeparator+
+  FPath:=ExcludeTrailingPathDelimiter(FFPCCompilerBinPath)+PathSeparator+
   {$IFDEF DARWIN}
   // pwd is located in /bin ... the makefile needs it !!
   // tools are located in /usr/bin ... the makefile needs it !!
@@ -1101,84 +1105,6 @@ begin
 
 end;
 
-{$IFDEF MSWINDOWS}
-function TUniversalInstaller.CreateInstallers(Directive: string; sl: TStringList;ModuleName:string): boolean;
-// Create installers
-// For now only support WINDOWS/WINDOWS32/WIN32/WINX86, and ignore others
-var
-  i:integer;
-  InstallDir,exec:string;
-  Installer: TWinInstaller;
-  Workingdir:string;
-  BaseWorkingdir:string;
-  ReadyCounter:integer;
-begin
-  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (CreateInstallers): ';
-
-  result:=true; //succeed by default
-  BaseWorkingdir:=GetValueFromKey('Workingdir',sl);
-  BaseWorkingdir:=FixPath(BaseWorkingdir);
-
-  ReadyCounter:=0;
-
-  for i:=0 to MAXINSTRUCTIONS do
-    begin
-    if i=0
-       then exec:=GetValueFromKey(Directive,sl)
-       else exec:=GetValueFromKey(Directive+IntToStr(i),sl);
-    // Skip over missing numbers:
-
-    //Limit iterration;
-    if ReadyCounter>MAXEMPTYINSTRUCTIONS then break;
-
-    // Skip over missing data or if no exec is defined
-    if (exec='') then
-    begin
-      Inc(ReadyCounter);
-      continue;
-    end else ReadyCounter:=0;
-
-    Workingdir:=GetValueFromKey('Workingdir'+IntToStr(i),sl);
-    Workingdir:=FixPath(Workingdir);
-    if Workingdir='' then Workingdir:=BaseWorkingdir;
-    case uppercase(exec) of
-      'WINDOWS','WINDOWS32','WIN32','WINX86': {good name};
-      else
-        begin
-        WritelnLog(localinfotext+'Ignoring unknown installer name '+exec+'.',true);
-        continue;
-        end;
-    end;
-
-    if FVerbose then WritelnLog(localinfotext+'Running CreateInstallers for '+exec,true);
-    // Convert any relative path to absolute path:
-    InstallDir:=IncludeTrailingPathDelimiter(SafeExpandFileName(GetValueFromKey('InstallDir',sl)));
-    InstallDir:=FixPath(InstallDir);
-    if InstallDir<>'' then
-      ForceDirectoriesSafe(InstallDir);
-    Installer:=TWinInstaller.Create(InstallDir,FCompiler,FVerbose);
-    try
-      //todo: make installer module-level; split out config from build part; would also require fixed svn dirs etc
-      Installer.FPCDir:=FPCInstallDir;
-      {$ifndef FPCONLY}
-      Installer.LazarusDir:=FLazarusInstallDir;
-      // todo: following not strictly needed:?!?
-      Installer.LazarusPrimaryConfigPath:=FLazarusPrimaryConfigPath;
-      {$endif}
-      result:=Installer.BuildModuleCustom(ModuleName);
-    finally
-      Installer.Free;
-    end;
-
-    if not result then
-      begin
-      WritelnLog(etError,localinfotext+'CreateInstallers for '+exec+' failed. Stopping installer creation.',true);
-      break; //fail on first installer failure
-      end;
-    end;
-end;
-{$ENDIF MSWINDOWS}
-
 function TUniversalInstaller.RunCommands(Directive: string;sl:TStringList): boolean;
 var
   i,j:integer;
@@ -1480,25 +1406,18 @@ begin
   result:=inherited;
   result:=InitModule;
   if not result then exit;
+
   // Log to console only:
   Infoln(infotext+'Building module '+ModuleName+'...',etInfo);
   idx:=UniModuleList.IndexOf(ModuleName);
   if idx>=0 then
     begin
     sl:=TStringList(UniModuleList.Objects[idx]);
-
     // Run all InstallExecute<n> commands:
     // More detailed logging only if verbose or debug:
     if FVerbose then WritelnLog(infotext+'Building module '+ModuleName+' running all InstallExecute commands in: '+LineEnding+
       sl.CommaText,true);
     result:=RunCommands('InstallExecute',sl);
-
-    // Run all CreateInstaller<n> commands; for now Windows only
-    {$IFDEF MSWINDOWS}
-    if FVerbose then WritelnLog(infotext+'Building module '+ModuleName+' running all CreateInstaller commands in: '+LineEnding+
-      sl.CommaText,true);
-    result:=CreateInstallers('CreateInstaller',sl, ModuleName);
-    {$ENDIF MSWINDOWS}
     end
   else
     result:=false;
@@ -1756,6 +1675,7 @@ begin
   result:=inherited;
   result:=InitModule;
   if not result then exit;
+
   SourceOK:=false;
   idx:=UniModuleList.IndexOf(ModuleName);
   if idx>=0 then
@@ -1897,6 +1817,7 @@ begin
         WritelnLog(infotext+'Going to download '+RemoteURL+' into '+aFile,false);
         try
           result:=Download(FUseWget, RemoteURL, aFile);
+          if result then result:=FileExists(aFile);
         except
           on E: Exception do
           begin
@@ -2310,8 +2231,9 @@ var
   sl:TStringList;
 begin
   result:=inherited;
-  result:=InitModule;
   if not result then exit;
+
+  {$ifndef FPCONLY}
 
   //Perform some extra magic for this module
 
@@ -2377,6 +2299,8 @@ begin
   Infoln(infotext+Processor.GetExeInfo,etDebug);
   ProcessorResult:=Processor.ExecuteAndWait;
   result := (ProcessorResult=0);
+
+  {$endif}
 end;
 
 function TPas2jsInstaller.BuildModule(ModuleName: string): boolean;
@@ -2384,11 +2308,14 @@ var
   Workingdir,FilePath:string;
   idx:integer;
   sl:TStringList;
+  {$ifndef FPCONLY}
   LazarusConfig: TUpdateLazConfig;
+  {$endif}
 begin
   result:=inherited;
-  result:=InitModule;
   if not result then exit;
+
+  {$ifndef FPCONLY}
 
   //Perform some extra magic for this module
 
@@ -2417,8 +2344,6 @@ begin
   result := (ProcessorResult=0);
 
   if not result then exit;
-
-  Self.GetFPCTarget(true);
 
   LazarusConfig:=TUpdateLazConfig.Create(LazarusPrimaryConfigPath);
   try
@@ -2451,6 +2376,7 @@ begin
   result:=InstallPackage(FilePath,WorkingDir,False);
   if not result then exit;
 
+  {$endif}
 end;
 
 function TInternetToolsInstaller.GetModule(ModuleName: string): boolean;
@@ -2461,7 +2387,6 @@ var
   sl:TStringList;
 begin
   result:=inherited;
-  result:=InitModule;
   if not result then exit;
 
   //Perform some extra magic for this module
@@ -2500,6 +2425,221 @@ begin
     if FileExists(aSourceFile) then
       FileUtil.CopyFile(aSourceFile,aTargetFile,[]);
   end;
+end;
+
+function TDeveltools4FPCInstaller.GetModule(ModuleName: string): boolean;
+var
+  idx,iassets                         : integer;
+  PackageSettings                     : TStringList;
+  Ss                                  : TStringStream;
+  RemoteURL                           : string;
+  aName,aFile,aURL,aContent,aVersion  : string;
+  ResultCode                          : longint;
+  Json                                : TJSONData;
+  Release,Asset                       : TJSONObject;
+  Assets                              : TJSONArray;
+begin
+  result:=InitModule;
+  if not result then exit;
+
+  idx:=UniModuleList.IndexOf(ModuleName);
+  if (idx>=0) then
+  begin
+    WritelnLog(infotext+'Getting module '+ModuleName,True);
+
+    PackageSettings:=TStringList(UniModuleList.Objects[idx]);
+    FSourceDirectory:=GetValueFromKey('InstallDir',PackageSettings);
+    FSourceDirectory:=FixPath(FSourceDirectory);
+    FSourceDirectory:=ExcludeTrailingPathDelimiter(FSourceDirectory);
+
+    if (FSourceDirectory<>'') then
+    begin
+
+      ForceDirectoriesSafe(FSourceDirectory);
+
+      RemoteURL:=GetValueFromKey('GITURL',PackageSettings);
+      if (RemoteURL<>'') then
+      begin
+        // Get latest release through api
+        aURL:=StringReplace(RemoteURL,'//github.com','//api.github.com/repos',[]);
+        aURL:=aURL+'/releases';
+        Ss := TStringStream.Create('');
+        try
+          result:=Download(False,aURL,Ss);
+          if (NOT result) then
+          begin
+            {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)}
+            Ss.Clear;
+            {$ENDIF}
+            Ss.Position:=0;
+            result:=Download(True,aURL,Ss);
+          end;
+          if result then aContent:=Ss.DataString;
+        finally
+          Ss.Free;
+        end;
+
+        if result then
+        begin
+          result:=false;
+          if (Length(aContent)>0) then
+          begin
+            try
+              Json:=GetJSON(aContent);
+            except
+              Json:=nil;
+            end;
+            if JSON.IsNull then exit;
+
+            try
+              for idx:=0 to Pred(Json.Count) do
+              begin
+                Release := TJSONObject(Json.Items[idx]);
+                aVersion:=Release.Get('tag_name');
+                {$ifdef Windows}
+                aFile:='develtools4fpc-x86_64-win64';
+                {$else}
+                aFile:='develtools4fpc-'+GetTargetCPUOS;
+                {$endif}
+                Assets:=Release.Get('assets',TJSONArray(nil));
+                for iassets:=0 to Pred(Assets.Count) do
+                begin
+                  Asset := TJSONObject(Assets[iassets]);
+                  aName:=Asset.Get('name');
+                  if (Pos(aFile,aName)=1) then
+                  begin
+                    aURL:=Asset.Get('browser_download_url');
+                    result:=true;
+                  end;
+                  if result then break;
+                end;
+                if result then break;
+              end;
+            finally
+              Json.Free;
+            end;
+          end;
+        end;
+
+        if result then
+        begin
+          aName:=FileNameFromURL(aURL);
+          Infoln(infotext+'Going to download '+aVersion+' of develtools4fpc ['+aName+'] from '+aURL,etInfo);
+          if Length(aName)>0 then
+          begin
+            aName:=SysUtils.ExtractFileExt(aName);
+            if Length(aName)>0 then
+            begin
+              if aName[1]='.' then Delete(aName,1,1);
+            end;
+          end;
+          //If no extension, assume zip
+          if Length(aName)=0 then aName:='zip';
+          aFile := GetTempFileNameExt('FPCUPTMP',aName);
+          WritelnLog(infotext+'Going to download '+aURL+' into '+aFile,false);
+          try
+            result:=Download(FUseWget, aURL, aFile);
+            if result then result:=FileExists(aFile);
+          except
+            on E: Exception do
+            begin
+             result:=false;
+            end;
+          end;
+
+          if result then
+          begin
+            if (FileSize(aFile)>5000) then
+            begin
+              ResultCode:=-1;
+              WritelnLog(infotext+'Download ok',True);
+              if DirectoryExists(FSourceDirectory) then DeleteDirectoryEx(FSourceDirectory);
+              with TNormalUnzipper.Create do
+              begin
+                try
+                  ResultCode:=Ord(NOT DoUnZip(aFile,IncludeTrailingPathDelimiter(FSourceDirectory),[]));
+                finally
+                  Free;
+                end;
+              end;
+              if (ResultCode<>0) then
+              begin
+                result := False;
+                Infoln(infotext+'Unpack of '+aFile+' failed with resultcode: '+IntToStr(ResultCode),etwarning);
+              end;
+            end;
+          end;
+          SysUtils.Deletefile(aFile); //Get rid of temp file.
+        end;
+
+        if (NOT result) then
+        begin
+          Infoln(infotext+'Getting develtools4fpc failure. Will continue anyhow.',etInfo);
+        end;
+
+      end;
+    end;
+  end;
+
+  // Do not fail
+  result:=true;
+end;
+
+function TMBFFreeRTOSByDonInstaller.GetModule(ModuleName: string): boolean;
+var
+  idx:integer;
+  PackageSettings:TStringList;
+  aList,aFileList:TStringList;
+  aDir,aLine,aFile:string;
+begin
+  result:=inherited;
+
+  // Ignore errors due to GitHub
+  result:=true;
+
+  if not result then exit;
+
+  idx:=UniModuleList.IndexOf(ModuleName);
+  if idx>=0 then
+  begin
+    WritelnLog(infotext+'Getting module '+ModuleName,True);
+
+    PackageSettings:=TStringList(UniModuleList.Objects[idx]);
+    FSourceDirectory:=GetValueFromKey('InstallDir',PackageSettings);
+    FSourceDirectory:=FixPath(FSourceDirectory);
+    FSourceDirectory:=ExcludeTrailingPathDelimiter(FSourceDirectory);
+
+    if (FSourceDirectory<>'') then
+    begin
+      aList:=TStringList.Create;
+      try
+        aLine:='set CROSS=';
+        aDir:=ConcatPaths([FSourceDirectory,'SamplesBoardSpecific','WioTerminal','Examples']);
+        aFileList := TStringList.Create;
+        try
+          FindAllFiles(aFileList, aDir,'upload.bat', true);
+          for aFile in aFileList do
+          begin
+            aList.LoadFromFile(aFile);
+            idx:=StringListStartsWith(aList,aLine);
+            if (idx<>-1) then
+            begin
+              aList.Strings[idx]:='set CROSS='+ConcatPaths([FBaseDirectory,'cross']);
+              aList.SaveToFile(aFile);
+            end;
+            aList.Clear;
+          end;
+        finally
+          aFileList.Free;
+        end;
+      finally
+        aList.Free;
+      end;
+    end;
+  end;
+
+  // Do not fail
+  result:=true;
 end;
 
 procedure ClearUniModuleList;

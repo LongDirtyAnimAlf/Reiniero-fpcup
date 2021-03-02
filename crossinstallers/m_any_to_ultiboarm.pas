@@ -1,4 +1,4 @@
-unit m_any_to_linuxarm;
+unit m_any_to_ultiboarm;
 { Cross compiles from any platform with correct binutils to linux ARM
 Copyright (C) 2013 Reinier Olislagers
 
@@ -50,38 +50,51 @@ uses
 
 type
 
-{ Tany_linuxarm }
-Tany_linuxarm = class(TCrossInstaller)
+{ Tany_ultiboarm }
+Tany_ultiboarm = class(TCrossInstaller)
 private
   FAlreadyWarned: boolean; //did we warn user about errors and fixes already?
 public
   function GetLibs(Basepath:string):boolean;override;
-  {$ifndef FPCONLY}
-  function GetLibsLCL(LCL_Platform:string; Basepath:string):boolean;override;
-  {$endif}
   function GetBinUtils(Basepath:string):boolean;override;
   constructor Create;
 end;
 
-{ Tany_linuxarm }
+{ Tany_ultiboarm }
 
-function Tany_linuxarm.GetLibs(Basepath:string): boolean;
+function Tany_ultiboarm.GetLibs(Basepath:string): boolean;
+const
+  LibName='libc.a';
+var
+  aSubarchName:string;
 begin
   result:=FLibsFound;
+
   if result then exit;
 
+  if (FSubArch<>TSUBARCH.saNone) then
+  begin
+    aSubarchName:=GetSubarch(FSubArch);
+    ShowInfo('Cross-libs: We have a subarch: '+aSubarchName);
+  end
+  else ShowInfo('Cross-libs: No subarch defined. Expect fatal errors.',etError);
+
   // begin simple: check presence of library file in basedir
-  result:=SearchLibrary(Basepath,LIBCNAME);
+  result:=SearchLibrary(Basepath,LibName);
 
   // local paths based on libraries provided for or adviced by fpc itself
   if not result then
-    result:=SimpleSearchLibrary(BasePath,DirName,LIBCNAME);
+    result:=SimpleSearchLibrary(BasePath,DirName,LibName);
   // also check in the gnueabi directory
   if not result then
-     result:=SimpleSearchLibrary(BasePath,DirName+'-gnueabi',LIBCNAME);
+     result:=SimpleSearchLibrary(BasePath,DirName+'-gnueabi',LibName);
   // also check in the gnueabihf directory
   if not result then
-     result:=SimpleSearchLibrary(BasePath,DirName+'-gnueabihf',LIBCNAME);
+     result:=SimpleSearchLibrary(BasePath,DirName+'-gnueabihf',LibName);
+
+  // search local paths based on libraries provided for or adviced by fpc itself
+  if not result then
+     if (FSubArch<>TSUBARCH.saNone) then result:=SimpleSearchLibrary(BasePath,IncludeTrailingPathDelimiter(DirName)+aSubarchName,LibName);
 
   SearchLibraryInfo(result);
 
@@ -89,27 +102,13 @@ begin
   begin
     FLibsFound:=True;
     AddFPCCFGSnippet('-Xd');
-    AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath)); {buildfaq 1.6.4/3.3.1: the directory to look for the target  libraries}
-    //AddFPCCFGSnippet('-XR'+IncludeTrailingPathDelimiter(FLibsPath)+'lib'); {buildfaq 1.6.4/3.3.1: the directory to look for the target libraries ... just te be safe ...}
-    //AddFPCCFGSnippet('-XR'+IncludeTrailingPathDelimiter(FLibsPath)+'lib32'); {buildfaq 1.6.4/3.3.1: the directory to look for the target libraries ... just te be safe ...}
-    AddFPCCFGSnippet('-Xr/usr/lib');
-  end
-  else
-  begin
-    ShowInfo('You MAY want to copy your /lib, /usr/lib, /usr/lib/arm-linux-gnueabihf (Raspberry Pi Raspbian) from your device to your cross lib directory.');
+    AddFPCCFGSnippet('-Fl'+ExcludeTrailingPathDelimiter(FLibsPath));
+    if DirectoryExists(IncludeTrailingPathDelimiter(FLibsPath)+'vc4') then
+      AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath)+'vc4');
   end;
 end;
 
-{$ifndef FPCONLY}
-function Tany_linuxarm.GetLibsLCL(LCL_Platform: string; Basepath: string): boolean;
-begin
-  // todo: get gtk at least, add to FFPCCFGSnippet
-  ShowInfo('Implement lcl libs path from basepath '+BasePath+' for platform '+LCL_Platform,etDebug);
-  result:=inherited;
-end;
-{$endif}
-
-function Tany_linuxarm.GetBinUtils(Basepath:string): boolean;
+function Tany_ultiboarm.GetBinUtils(Basepath:string): boolean;
 var
   AsFile,aOption: string;
   BinPrefixTry:string;
@@ -121,7 +120,7 @@ begin
   if result then exit;
 
   hardfloat:=false;
-  requirehardfloat:=(StringListStartsWith(FCrossOpts,'-CaEABIHF')>-1);
+  requirehardfloat:=false;
 
   if (NOT requirehardfloat) then
   begin
@@ -289,32 +288,30 @@ begin
   else
   begin
     FBinsFound:=true;
-    //if hardfloat then ShowInfo('Found hardfloat binary utilities. Please make sure you did NOT specified -dFPC_ARMEL in your FPCOPT !',etWarning);
-
     // Configuration snippet for FPC
     AddFPCCFGSnippet('-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath));
     AddFPCCFGSnippet('-XP'+BinUtilsPrefix);
   end;
 end;
 
-constructor Tany_linuxarm.Create;
+constructor Tany_ultiboarm.Create;
 begin
   inherited Create;
   FTargetCPU:=TCPU.arm;
-  FTargetOS:=TOS.linux;
+  FTargetOS:=TOS.ultibo;
   Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
 
 var
-  any_linuxarm:Tany_linuxarm;
+  any_ultiboarm:Tany_ultiboarm;
 
 initialization
-  any_linuxarm:=Tany_linuxarm.Create;
-  RegisterCrossCompiler(any_linuxarm.RegisterName,any_linuxarm);
+  any_ultiboarm:=Tany_ultiboarm.Create;
+  RegisterCrossCompiler(any_ultiboarm.RegisterName,any_ultiboarm);
 
 finalization
-  any_linuxarm.Destroy;
+  any_ultiboarm.Destroy;
 end.
 
