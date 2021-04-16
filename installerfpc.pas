@@ -193,12 +193,12 @@ type
   TFPCCrossInstaller = class(TFPCInstaller)
   private
     FCrossCompilerName: string;
-    function GetUnitsInstallDirectory(WithMagic:boolean):string;
     function CompilerUpdateNeeded:boolean;
     function PackagesNeeded:boolean;
     function InsertFPCCFGSnippet(FPCCFG,Snippet: string): boolean;
     property CrossCompilerName: string read FCrossCompilerName;
   protected
+    function GetUnitsInstallDirectory(WithMagic:boolean):string;
     // Build module descendant customisation
     function BuildModuleCustom(ModuleName:string): boolean; override;
   public
@@ -383,13 +383,25 @@ end;
 
 function TFPCCrossInstaller.GetUnitsInstallDirectory(WithMagic:boolean):string;
 var
+  aDir:string;
   ABIMagic:string;
   SUBARCHMagic:string;
 begin
   if NOT Assigned(CrossInstaller) then exit;
 
   // Standard directory
-  result:=ConcatPaths([FInstallDirectory,'units',CrossInstaller.RegisterName]);
+  aDir:=ConcatPaths([FInstallDirectory,'units']);
+  {$ifdef UNIX}
+  if FileIsSymlink(aDir) then
+  begin
+    try
+      aDir:=GetPhysicalFilename(aDir,pfeException);
+    except
+    end;
+  end;
+  {$endif UNIX}
+  result:=ConcatPaths([aDir,CrossInstaller.RegisterName]);
+  //result:=ConcatPaths([FInstallDirectory,'units',CrossInstaller.RegisterName]);
 
   // Specials
   if (CrossInstaller.TargetOS in SUBARCH_OS) then
@@ -821,6 +833,7 @@ begin
     CrossInstaller.Reset;
 
     {$ifdef win32}
+    // Skip cross-builing towards win64 for old versions of FPC
     if (CrossInstaller.TargetCPU=TCPU.x86_64) and ((CrossInstaller.TargetOS=TOS.win64) or (CrossInstaller.TargetOS=TOS.win32)) then
     begin
       if (SourceVersionNum<CalculateFullVersion(2,4,2)) then
@@ -1298,13 +1311,15 @@ begin
             end;
           end;
 
-          s2:=GetRevision(ModuleName);
-          if (Length(s2)>0) then
+          if ((SourceVersionNum<>0) AND (SourceVersionNum>=CalculateFullVersion(2,6,0))) then
           begin
-            Processor.Process.Parameters.Add('REVSTR='+s2);
-            Processor.Process.Parameters.Add('REVINC=force');
+            s2:=GetRevision(ModuleName);
+            if (Length(s2)>0) then
+            begin
+              Processor.Process.Parameters.Add('REVSTR='+s2);
+              Processor.Process.Parameters.Add('REVINC=force');
+            end;
           end;
-
           {$ifdef solaris}
           {$IF defined(CPUX64) OR defined(CPUX86)}
           //Still not sure if this is needed
@@ -1720,16 +1735,6 @@ begin
     end;
 
     aDir:=GetUnitsInstallDirectory(false);
-
-    {$ifdef UNIX}
-    if FileIsSymlink(aDir) then
-    begin
-      try
-        aDir:=GetPhysicalFilename(aDir,pfeException);
-      except
-      end;
-    end;
-    {$endif}
     if DirectoryExists(aDir) then
     begin
       // Only allow unit directories inside our own install te be deleted
@@ -1941,13 +1946,16 @@ begin
   end;
   {$ENDIF}
 
-  // Revision should be something like : "[r]123456" !!
-  s2:=Trim(ActualRevision);
-  s2:=AnsiDequotedStr(s2,'''');
-  if (Length(s2)>1) AND (s2<>'failure') AND ((s2[1] in ['0'..'9']) OR (s2[2] in ['0'..'9'])) then
+  if ((SourceVersionNum<>0) AND (SourceVersionNum>=CalculateFullVersion(2,6,0))) then
   begin
-    Processor.Process.Parameters.Add('REVSTR='+s2);
-    Processor.Process.Parameters.Add('REVINC=force');
+    // Revision should be something like : "[r]123456" !!
+    s2:=Trim(ActualRevision);
+    s2:=AnsiDequotedStr(s2,'''');
+    if (Length(s2)>1) AND (s2<>'failure') AND ((s2[1] in ['0'..'9']) OR (s2[2] in ['0'..'9'])) then
+    begin
+      Processor.Process.Parameters.Add('REVSTR='+s2);
+      Processor.Process.Parameters.Add('REVINC=force');
+    end;
   end;
 
   {$if (NOT defined(FPC_HAS_TYPE_EXTENDED)) AND (defined (CPUX86_64))}
@@ -2191,6 +2199,8 @@ var
   x,y:integer;
 begin
   result := '0.0.0';
+
+  if (NOT DirectoryExists(aSourcePath)) then exit;
 
   version_nr:='';
   release_nr:='';
@@ -3327,6 +3337,7 @@ begin
       true,false);
     {$ENDIF UNIX}
   end;
+  GetVersion;
   InitDone:=result;
 end;
 
@@ -3410,7 +3421,7 @@ begin
     exit(false);
   end;
 
-  VersionSnippet:=GetVersion;
+  VersionSnippet:=SourceVersionStr;
   if (Self is TFPCCrossInstaller) then
   begin
     Compiler:=GetFPCInBinDir;
@@ -4382,7 +4393,7 @@ var
   FileCounter:integer;
   DeleteList: TStringList;
   CPUOS_Signature:string;
-  aCleanupCompiler,aCleanupCommand:string;
+  aCleanupCompiler,aCleanupCommand,aDir:string;
   aCleanupCommandList:TStringList;
   RunTwice:boolean;
 begin
@@ -4545,20 +4556,44 @@ begin
       {$ENDIF UNIX}
     end;
 
-    {$IFDEF UNIX}
     // Delete units
-    // Alf: does this work and is it still needed: todo check
-    DeleteFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'units');
-    DeleteFile(IncludeTrailingPathDelimiter(FSourceDirectory)+'lib/fpc/'+SourceVersionStr+'/units');
-    {$ENDIF UNIX}
+    // Alf: is it still needed: todo check
+
+    if CrossCompiling then
+    begin
+     aDir:=(Self AS TFPCCrossInstaller).GetUnitsInstallDirectory(false);
+    end
+    else
+    begin
+      aDir:=ConcatPaths([FInstallDirectory,'units']);
+      {$IFDEF UNIX}
+      if FileIsSymlink(aDir) then
+      begin
+        try
+          aDir:=GetPhysicalFilename(aDir,pfeException);
+        except
+        end;
+      end;
+      {$ENDIF UNIX}
+      aDir:=aDir+DirectorySeparator+CPUOS_Signature;
+    end;
+
+    if DirectoryExists(aDir) then
+    begin
+      // Only allow unit directories inside our own install te be deleted
+      if (Pos(FBaseDirectory,aDir)=1) then
+        DeleteDirectoryEx(aDir);
+    end;
 
     {$IFDEF MSWINDOWS}
     // delete the units directory !!
     // this is needed due to the fact that make distclean will not cleanout this units directory
     // make distclean will only remove the results of a make, not a make install
-    DeleteDirectoryEx(IncludeTrailingPathDelimiter(FSourceDirectory)+'units'+DirectorySeparator+CPUOS_Signature);
+    aDir:=ConcatPaths([FSourceDirectory,'units',CPUOS_Signature]);
+    // Only allow unit directories inside our own install te be deleted
+    if (Pos(FBaseDirectory,aDir)=1) then
+      DeleteDirectoryEx(aDir);
     {$ENDIF}
-
 
     // finally ... if something is still still still floating around ... delete it !!
     DeleteList := TStringList.Create;
@@ -4589,8 +4624,10 @@ begin
       // delete stray executables, if any !!
       if (NOT CrossCompiling) then
       begin
-        FindAllFiles(DeleteList,IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+DirectorySeparator+'utils', '*'+GetExeExt, False);
-        FindAllFiles(DeleteList,IncludeTrailingPathDelimiter(FSourceDirectory)+'utils', '*'+GetExeExt, True);
+        aDir:=ConcatPaths([FSourceDirectory,'compiler','utils']);
+        FindAllFiles(DeleteList,aDir, '*'+GetExeExt, False);
+        aDir:=ConcatPaths([FSourceDirectory,'utils']);
+        FindAllFiles(DeleteList,aDir, '*'+GetExeExt, True);
       end;
       if DeleteList.Count > 0 then
       begin
@@ -4688,7 +4725,7 @@ begin
 
   if result then
   begin
-  SourceVersion:=GetVersion;
+    SourceVersion:=GetVersion;
     if (SourceVersion<>'0.0.0') then
     begin
       s:=GetRevisionFromVersion(ModuleName,SourceVersion);
@@ -4715,7 +4752,7 @@ begin
     end;
     UpdateWarnings:=TStringList.Create;
     try
-      s:=SafeExpandFileName(SafeGetApplicationPath+'fpcuprevisions.log');
+      s:=SafeExpandFileName(IncludeTrailingPathDelimiter(FBaseDirectory)+REVISIONSLOG);
       if FileExists(s) then
         UpdateWarnings.LoadFromFile(s)
       else
@@ -4725,10 +4762,12 @@ begin
         UpdateWarnings.Add('Location: '+FBaseDirectory);
         UpdateWarnings.Add('');
       end;
-      UpdateWarnings.Add(ModuleName+' update at: '+DateTimeToStr(now));
+      UpdateWarnings.Add(FPCDATEMAGIC+DateTimeToStr(now));
       if aRepoClient<>nil then UpdateWarnings.Add(ModuleName+' URL: '+aRepoClient.Repository);
       UpdateWarnings.Add(ModuleName+' previous revision: '+PreviousRevision);
-      UpdateWarnings.Add(ModuleName+' new revision: '+ActualRevision);
+      UpdateWarnings.Add(FPCREVMAGIC+ActualRevision);
+      if (aRepoClient.ClassType=FGitClient.ClassType) then
+        UpdateWarnings.Add(FPCHASHMAGIC+aRepoClient.LocalRevision);
       UpdateWarnings.Add('');
       UpdateWarnings.SaveToFile(s);
     finally

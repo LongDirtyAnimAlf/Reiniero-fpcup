@@ -852,6 +852,12 @@ begin
       end;
       _INSTALLLAZARUS:
       begin
+        if ((SourceVersionNum<>0) AND (SourceVersionNum<CalculateFullVersion(1,8,0))) then
+        begin
+          Infoln(infotext+'Deleting '+FPCDefines+' to force rescan of FPC sources.', etInfo);
+          s:=IncludeTrailingPathDelimiter(FPrimaryConfigPath)+FPCDefines;
+          SysUtils.DeleteFile(s);
+        end;
         if (FInstallDirectory<>FSourceDirectory) then
         begin
           Processor.Process.Parameters.Add('install');
@@ -1526,7 +1532,7 @@ begin
     PlainBinDir, true, false);
     {$ENDIF UNIX}
   end;
-
+  GetVersion;
   InitDone := Result;
 end;
 
@@ -1545,7 +1551,7 @@ begin
     exit(false);
   end;
 
-  VersionSnippet:=GetVersion;
+  VersionSnippet:=SourceVersionStr;
   if (VersionSnippet<>'0.0.0') then
   begin
     // only report once
@@ -1634,7 +1640,10 @@ begin
         // On Windows, we provide our own GDB
         GDBPath:=ConcatPaths([FMakeDir,'gdb',GetTargetCPUOS])+DirectorySeparator+'gdb.exe';
         if FileExists(GDBPath) then
-          GDBPath:=ConcatPaths([FMakeDir,'gdb','$(TargetCPU)-$(TargetOS)'])+DirectorySeparator+'gdb.exe'
+        begin
+          if (SourceVersionNum>=CalculateFullVersion(0,9,31)) then
+            GDBPath:=ConcatPaths([FMakeDir,'gdb','$(TargetCPU)-$(TargetOS)'])+DirectorySeparator+'gdb.exe'
+        end
         else
           GDBPath:='';
         {$ELSE}
@@ -2339,7 +2348,7 @@ begin
     end;
     UpdateWarnings:=TStringList.Create;
     try
-      s:=SafeExpandFileName(SafeGetApplicationPath+'fpcuprevisions.log');
+      s:=SafeExpandFileName(IncludeTrailingPathDelimiter(FBaseDirectory)+REVISIONSLOG);
       if FileExists(s) then
         UpdateWarnings.LoadFromFile(s)
       else
@@ -2349,10 +2358,12 @@ begin
         UpdateWarnings.Add('Location: '+FBaseDirectory);
         UpdateWarnings.Add('');
       end;
-      UpdateWarnings.Add(ModuleName+' update at: '+DateTimeToStr(now));
+      UpdateWarnings.Add(LAZDATEMAGIC+DateTimeToStr(now));
       if aRepoClient<>nil then UpdateWarnings.Add(ModuleName+' URL: '+aRepoClient.Repository);
       UpdateWarnings.Add(ModuleName+' previous revision: '+PreviousRevision);
-      UpdateWarnings.Add(ModuleName+' new revision: '+ActualRevision);
+      UpdateWarnings.Add(LAZREVMAGIC+ActualRevision);
+      if (aRepoClient.ClassType=FGitClient.ClassType) then
+        UpdateWarnings.Add(LAZHASHMAGIC+aRepoClient.LocalRevision);
       UpdateWarnings.Add('');
       UpdateWarnings.SaveToFile(s);
     finally
