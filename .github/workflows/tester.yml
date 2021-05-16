@@ -18,35 +18,35 @@ jobs:
         config:
           - os: windows-latest
             name: 'Windows 32'
-            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/1.8.2s/fpclazup-i386-win32.exe'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/1.8.2s1/fpclazup-i386-win32.exe'
             fpcup-opt: '--lazrevision=64045'
             fpc-url: 'https://svn.freepascal.org/svn/fpc/tags/release_3_2_0'
             laz-url: 'trunk'
 
           - os: windows-latest
             name: 'Windows 64'
-            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/1.8.2s/fpclazup-x86_64-win64.exe'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/1.8.2s1/fpclazup-x86_64-win64.exe'
             fpcup-opt: '--lazrevision=64045'
             fpc-url: 'https://svn.freepascal.org/svn/fpc/tags/release_3_2_0'
             laz-url: 'trunk'
 
           - os: ubuntu-latest
             name: 'Linux 64'
-            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/1.8.2s/fpclazup-x86_64-linux'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/1.8.2s1/fpclazup-x86_64-linux'
             fpcup-opt: '--lazrevision=64045'
             fpc-url: 'https://svn.freepascal.org/svn/fpc/tags/release_3_2_0'
             laz-url: 'trunk'
 
           - os: macos-latest
             name: 'MacOS 64'
-            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/1.8.2s/fpclazup-x86_64-darwin'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/1.8.2s1/fpclazup-x86_64-darwin'
             fpcup-opt: '--lclplatform=cocoa --lazrevision=64045'
             fpc-url: 'https://svn.freepascal.org/svn/fpc/tags/release_3_2_0'
             laz-url: 'trunk'
 
           - os: ubuntu-latest
             name: 'AArch64'
-            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/1.8.2s/fpclazup-x86_64-linux'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/1.8.2s1/fpclazup-x86_64-linux'
             fpcup-opt: '--lazrevision=64045'
             fpc-url: 'https://svn.freepascal.org/svn/fpc/tags/release_3_2_0'
             laz-url: 'trunk'
