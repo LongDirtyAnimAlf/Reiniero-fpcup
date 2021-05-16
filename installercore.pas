@@ -3037,7 +3037,10 @@ procedure TInstaller.SetTarget(aCPU:TCPU;aOS:TOS;aSubArch:TSUBARCH);
 begin
   FCrossCPU_Target:=aCPU;
   FCrossOS_Target:=aOS;
-  FCrossOS_SubArch:=aSubArch;
+  if (FCrossOS_Target in SUBARCH_OS) then
+    FCrossOS_SubArch:=aSubArch
+  else
+    FCrossOS_SubArch:=TSUBARCH.saNone;
 end;
 
 procedure TInstaller.SetABI(aABI:TABI);
@@ -3724,57 +3727,41 @@ var
   //RevisionIncText: Text;
   RevFileName,ConstStart: string;
   RevisionStringList:TStringList;
+  NumRevision:Longint;
 begin
   result:=false;
-  // update revision.inc;
 
+  // Only handle Lazarus !
+  if (ModuleName<>_LAZARUS) then exit;
+
+  if TryStrToInt(aRevision,NumRevision) then
+  begin
   RevFileName:='';
 
-  if ModuleName=_LAZARUS then RevFileName:=IncludeTrailingPathDelimiter(FSourceDirectory)+'ide'+PathDelim+REVINCFILENAME;
-  //if ModuleName=_FPC then RevFileName:=IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+PathDelim+REVINCFILENAME;
+    if (ModuleName=_LAZARUS) then RevFileName:=IncludeTrailingPathDelimiter(FSourceDirectory)+'ide'+PathDelim+REVINCFILENAME;
+    if (ModuleName=_FPC) then RevFileName:=IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+PathDelim+REVINCFILENAME;
 
-  if Length(RevFileName)>0 then
+    if (Length(RevFileName)>0) then
   begin
     DeleteFile(RevFileName);
     RevisionStringList:=TStringList.Create;
     try
-      if ModuleName=_LAZARUS then
+        if (ModuleName=_LAZARUS) then
       begin
         RevisionStringList.Add(RevisionIncComment);
         ConstStart := Format('const %s = ''', [ConstName]);
-        RevisionStringList.Add(ConstStart+aRevision+''';');
+          RevisionStringList.Add(ConstStart+InttoStr(NumRevision)+''';');
       end;
-      if ModuleName=_FPC then
+        if (ModuleName=_FPC) then
       begin
-        RevisionStringList.Add(''''+aRevision+'''');
+          RevisionStringList.Add(''''+InttoStr(NumRevision)+'''');
       end;
       RevisionStringList.SaveToFile(RevFileName);
       result:=true;
     finally
       RevisionStringList.Free;
     end;
-
-
-    (*
-    //Infoln(infotext+'Updating '+ModuleName+' '+RevFileName+'. Setting current revision:'+aRevision+'.', etInfo);
-    AssignFile(RevisionIncText, RevFileName);
-    try
-      Rewrite(RevisionIncText);
-      if ModuleName=_LAZARUS then
-      begin
-        writeln(RevisionIncText, RevisionIncComment);
-        ConstStart := Format('const %s = ''', [ConstName]);
-        writeln(RevisionIncText, ConstStart, aRevision, ''';');
       end;
-      if ModuleName=_FPC then
-      begin
-        writeln(RevisionIncText, '''',aRevision,'''');
-      end;
-      result:=true;
-    finally
-      CloseFile(RevisionIncText);
-    end;
-    *)
   end;
 
 end;
