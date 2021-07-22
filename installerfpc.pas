@@ -31,10 +31,7 @@ Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 {$mode objfpc}{$H+}
 
-{.$DEFINE crosssimple}
-{$IFDEF WINDOWS}
-{.$DEFINE buildnative}
-{$ENDIF WINDOWS}
+{$i fpcupdefines.inc}
 
 interface
 
@@ -193,6 +190,7 @@ type
   TFPCCrossInstaller = class(TFPCInstaller)
   private
     FCrossCompilerName: string;
+    function SubarchTarget:boolean;
     function CompilerUpdateNeeded:boolean;
     function PackagesNeeded:boolean;
     function InsertFPCCFGSnippet(FPCCFG,Snippet: string): boolean;
@@ -404,7 +402,7 @@ begin
   //result:=ConcatPaths([FInstallDirectory,'units',CrossInstaller.RegisterName]);
 
   // Specials
-  if (CrossInstaller.TargetOS in SUBARCH_OS) then
+  if (SubarchTarget) then
   begin
 
     if WithMagic then
@@ -428,6 +426,13 @@ begin
         result:=ConcatPaths([FInstallDirectory,'units',CrossInstaller.RegisterName,SUBARCHMagic]);
     end;
   end;
+end;
+
+function TFPCCrossInstaller.SubarchTarget:boolean;
+begin
+  result:=false;
+  if (NOT Assigned(CrossInstaller)) then exit;
+  result:=((CrossInstaller.TargetCPU<>TCPU.cpuNone) AND (CrossInstaller.TargetOS<>TOS.osNone) AND (CrossInstaller.TargetOS in SUBARCH_OS) AND (CrossInstaller.TargetCPU in SUBARCH_CPU));
 end;
 
 function TFPCCrossInstaller.CompilerUpdateNeeded:boolean;
@@ -476,6 +481,7 @@ begin
   // Safeguards
   if (CrossInstaller.TargetCPU=TCPU.arm) AND (CrossInstaller.TargetOS=TOS.embedded) then result:=false;
 
+  if (CrossInstaller.TargetCPU=TCPU.wasm32) then result:=false;
 end;
 
 function TFPCCrossInstaller.InsertFPCCFGSnippet(FPCCFG,Snippet: string): boolean;
@@ -909,6 +915,25 @@ begin
         if CrossInstaller.BinUtilsPathInPath then
            SetPath(IncludeTrailingPathDelimiter(CrossInstaller.BinUtilsPath),false,true);
 
+        //SetPath(ConcatPaths([FSourceDirectory,'rtl',CrossInstaller.TargetOSName]),true,false);
+        //SetPath(ConcatPaths([FSourceDirectory,'rtl',CrossInstaller.TargetOSName,CrossInstaller.TargetCPUName]),true,false);
+
+        // Use own tools first
+        {$ifdef MSWINDOWS}
+        s2:=Which('echo.exe');
+        if (Length(s2)=0) then s2:=Which('sh.exe');
+        if (Length(s2)>0) then
+        begin
+          // We may have a stray shell (msys among others ... remove from path
+          s1:=GetPath;
+          s2:=ExtractFileDir(s2);
+          s1:=StringReplace(s1,s2+';','',[]);
+          s1:=StringReplace(s1,s2+DirectorySeparator+';','',[]);
+          s1:=StringReplace(s1,s2,'',[]);
+          SetPath(s1,false,false);
+        end;
+        {$endif MSWINDOWS}
+
         for MakeCycle:=Low(TSTEPS) to High(TSTEPS) do
         begin
 
@@ -1061,7 +1086,7 @@ begin
                 //s1:=s1+'-Fu'+ConcatPaths([FInstallDirectory,'units','$FPCTARGET','rtl','org','freepascal','rtl'])+LineEnding;
                 s1:=s1+'-Fu'+ConcatPaths([FInstallDirectory,'units',CrossInstaller.RegisterName,'rtl','org','freepascal','rtl'])+LineEnding;
 
-              if (CrossInstaller.TargetOS in SUBARCH_OS) then
+              if (SubarchTarget) then
               begin
                 UnitSearchPath:=GetUnitsInstallDirectory(true);
                 s1:=s1+'-Fu'+UnitSearchPath+DirectorySeparator+'rtl'+LineEnding;
@@ -1133,6 +1158,7 @@ begin
           Processor.Process.Parameters.Add('FPCDIR=' + s1);
 
           {$IFDEF MSWINDOWS}
+          //Processor.Process.Parameters.Add('ECHO='+ExtractFilePath(Make)+'gecho.exe');
           Processor.Process.Parameters.Add('UPXPROG=echo'); //Don't use UPX
           //Processor.Process.Parameters.Add('COPYTREE=echo'); //fix for examples in Win svn, see build FAQ
           {$ELSE}
@@ -1255,7 +1281,7 @@ begin
 
           if (MakeCycle in [st_RtlInstall,st_PackagesInstall]) then
           begin
-            if (CrossInstaller.TargetOS in SUBARCH_OS) then
+            if (SubarchTarget) then
             begin
               UnitSearchPath:=GetUnitsInstallDirectory(false);
               if (MakeCycle=st_RtlInstall) then
@@ -1272,15 +1298,6 @@ begin
             begin
               if (MakeCycle=st_Compiler) then Infoln({infotext+}'Skipping cross-compiler build step: compiler seems to be up to date !!',etWarning);
               continue; // best guess: compilers stem from identical sources, so do not build the cross-compiler again
-            end;
-          end;
-
-          if (CrossInstaller.TargetCPU=TCPU.jvm) then
-          begin
-            if (MakeCycle in [st_Packages,st_PackagesInstall,st_NativeCompiler]) then
-            begin
-              //Infoln(infotext+'Skipping build step '+GetEnumNameSimple(TypeInfo(TSTEPS),Ord(MakeCycle))+' for '+CrossInstaller.TargetCPUName+'.',etInfo);
-              //continue;
             end;
           end;
 
@@ -1312,15 +1329,45 @@ begin
             end;
           end;
 
+          if (CrossInstaller.TargetCPU=TCPU.wasm32) then
+          begin
+            // wasm only works with -O-
+            i:=pos('-O',Options);
+            if (i>0) then
+            begin
+              s2:=Copy(Options,i,3);
+              if s2[3]<>'-' then
+              begin
+                Infoln(infotext+'Specified optimization: '+s2+'. Must be -O- for this target. Replacing.',etInfo);
+                Options[i+2]:='-';
+              end;
+            end
+            else
+            begin
+              Options:=Options+' -O-';
+            end;
+            // wasm: remove debugging settings
+            i:=pos('-g',Options);
+            while (i<>0) do
+            begin
+              s2:=Trim(Copy(Options,i,3));
+              Infoln(infotext+'Specified debug option: '+s2+'. Removing for this target.',etInfo);
+              Delete(Options,i,3);
+              i:=pos('-g',Options);
+            end;
+          end;
+
           if ((SourceVersionNum<>0) AND (SourceVersionNum>=CalculateFullVersion(2,6,0))) then
           begin
             s2:=GetRevision(ModuleName);
-            if (Length(s2)>0) then
+            s2:=AnsiDequotedStr(s2,'''');
+            if ( (Length(s2)>1) AND (s2<>'failure') AND (Pos(' ',s2)=0) ) then
             begin
               Processor.Process.Parameters.Add('REVSTR='+s2);
               Processor.Process.Parameters.Add('REVINC=force');
             end;
           end;
+
           {$ifdef solaris}
           {$IF defined(CPUX64) OR defined(CPUX86)}
           //Still not sure if this is needed
@@ -1949,10 +1996,9 @@ begin
 
   if ((SourceVersionNum<>0) AND (SourceVersionNum>=CalculateFullVersion(2,6,0))) then
   begin
-    // Revision should be something like : "[r]123456" !!
     s2:=Trim(ActualRevision);
     s2:=AnsiDequotedStr(s2,'''');
-    if (Length(s2)>1) AND (s2<>'failure') AND ((s2[1] in ['0'..'9']) OR (s2[2] in ['0'..'9'])) then
+    if ( (Length(s2)>1) AND (s2<>'failure') AND (Pos(' ',s2)=0) ) then
     begin
       Processor.Process.Parameters.Add('REVSTR='+s2);
       Processor.Process.Parameters.Add('REVINC=force');
@@ -2175,7 +2221,10 @@ var
   aVersion: string;
 begin
   aVersion:=VersionFromUrl(aUrl);
-  if aVersion='trunk' then result:=FPCTRUNKVERSION else result:=aVersion;
+  if aVersion='trunk' then
+    result:=FPCTRUNKVERSION
+  else
+    result:=aVersion;
 end;
 
 function TFPCInstaller.GetVersionFromSource(aSourcePath: string): string;
@@ -3566,11 +3615,11 @@ begin
     end
     else
     begin
-    s:=VersionSnippet;
-    x:=GetReleaseCandidateFromSource(FSourceDirectory);
-    if (x<>0) then
-      s:=s+'.rc'+InttoStr(x);
-    CreateBinutilsList(s);
+      s:=VersionSnippet;
+      x:=GetReleaseCandidateFromSource(FSourceDirectory);
+      if (x<>0) then
+        s:=s+'.rc'+InttoStr(x);
+      CreateBinutilsList(s);
     end;
 
     result:=CheckAndGetNeededBinUtils;
@@ -4559,8 +4608,12 @@ begin
       DeleteFile(IncludeTrailingPathDelimiter(FBaseDirectory)+PACKAGESCONFIGDIR+DirectorySeparator+FPCPKGCOMPILERTEMPLATE);
       {$IFDEF UNIX}
       // Delete any fpc.sh shell scripts
+      Infoln(infotext+'Deleting fpc.sh script.', etInfo);
       Sysutils.DeleteFile(FFPCCompilerBinPath+'fpc.sh');
       {$ENDIF UNIX}
+      Infoln(infotext+'Deleting revision.inc.', etInfo);
+      aDir:=ConcatPaths([FSourceDirectory,'compiler']);
+      DeleteFile(aDir+DirectorySeparator+'revision.inc');
     end;
 
     // Delete units
@@ -4709,7 +4762,7 @@ begin
   begin
     Infoln(infotext+'Start checkout/update of ' + ModuleName + ' sources.',etInfo);
 
-    //git svn clone -r HEAD https://svn.freepascal.org/svn/lazarus/tags/lazarus_2_0_12
+    //git svn clone -r HEAD https://svn.freepascal.org/svn/fpc/tags/release_3_2_2
 
     UpdateWarnings:=TStringList.Create;
     try

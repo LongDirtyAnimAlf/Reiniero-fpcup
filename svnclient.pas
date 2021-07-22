@@ -115,6 +115,12 @@ begin
   begin
     {$IFDEF DARWIN}
     if not FileExists(FRepoExecutable)
+       then FRepoExecutable := '/opt/local/bin/svn'
+       else break;
+    if not FileExists(FRepoExecutable)
+       then FRepoExecutable := '/opt/homebrew/bin/svn'
+       else break;
+    if not FileExists(FRepoExecutable)
        then FRepoExecutable := '/Library/Developer/CommandLineTools/usr/bin/svn'
        else break;
     {$ENDIF}
@@ -678,11 +684,22 @@ end;
 function TSVNClient.CheckURL: boolean;
 var
   Output:string;
+  aFile,aURL:string;
+  i:integer;
 begin
-  FReturnCode := TInstaller(Parent).ExecuteCommand(FRepoExecutable,['ls',Repository], False);
+  aURL:=Repository;
+
+  Output:=ExcludeTrailingSlash(Repository);
+  aFile:=FileNameFromURL(Output);
+  i:=Pos(aFile,Output);
+  if (i>0) then aURL:=Copy(Output,1,(i-1));
+
+  Output:='';
+  FReturnCode := TInstaller(Parent).ExecuteCommand(FRepoExecutable,['ls',aURL], Output, False);
+  //FReturnCode := TInstaller(Parent).ExecuteCommand(FRepoExecutable,['ls',Repository], Output, False);
   //FReturnCode := TInstaller(Parent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' ls '+ Repository, Output, False);
   //FReturnCode := TInstaller(Parent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + ' ls --depth empty '+ Repository, Output, False);
-  result:=(FReturnCode=0);
+  result:=((FReturnCode=0) AND (Pos(aFile,Output)>0));
   //result:=(Output=GetFileNameFromURL(Repository));
 end;
 
@@ -903,10 +920,10 @@ begin
         // There is a repository here, but it was checked out
         // from a different URL...
         // Keep result false; show caller what's going on.
-        FLocalRevision := FRET_UNKNOWN_REVISION;
+        FLocalRevision          := FRET_UNKNOWN_REVISION;
         FLocalRevisionWholeRepo := FRET_UNKNOWN_REVISION;
-        FReturnCode := FRET_LOCAL_REMOTE_URL_NOMATCH;
-        Repository := URL;
+        FReturnCode             := FRET_LOCAL_REMOTE_URL_NOMATCH;
+        Repository              := URL;
       end;
     end;
   end;

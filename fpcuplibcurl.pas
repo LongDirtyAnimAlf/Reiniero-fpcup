@@ -41,7 +41,6 @@ unit fpcuplibcurl;
   {$linklib libz.a}
 {$endif}
 {$endif}
-
 interface
 
 {$IFDEF WINDOWS}
@@ -834,7 +833,6 @@ begin
   if result then exit;
 
   try
-
     if libcurl = NilHandle then libcurl:= LoadLibrary(External_library+'.'+SharedSuffix);
     {$ifdef MSWINDOWS}
     {$ifdef LCL}
@@ -855,11 +853,9 @@ begin
 
     if (libcurl <> NilHandle) then
     try
-      pointer(curl_strequal):= GetProcAddress(libcurl, 'curl_strequal');
+      pointer(curl_strequal) := GetProcAddress(libcurl, 'curl_strequal');
       pointer(curl_strnequal):= GetProcAddress(libcurl, 'curl_strnequal');
-
       pointer(curl_formadd):= GetProcAddress(libcurl, 'curl_formadd');
-
       pointer(curl_formget):= GetProcAddress(libcurl, 'curl_formget');
       pointer(curl_formfree):= GetProcAddress(libcurl, 'curl_formfree');
       pointer(curl_getenv):= GetProcAddress(libcurl, 'curl_getenv');
@@ -909,7 +905,6 @@ begin
       pointer(curl_multi_assign):= GetProcAddress(libcurl, 'curl_multi_assign');
 
       result:=true;
-
     except
       UnloadLibrary(libcurl);
       libcurl := NilHandle;
@@ -972,7 +967,7 @@ begin
   end;
   inc(str);
  end;
- end;
+end;
 
 function strtok_r(str:pansichar;delim:PCharSetType;save:ppansichar):pchar; cdecl; [alias: '_strtok_r'];
 begin

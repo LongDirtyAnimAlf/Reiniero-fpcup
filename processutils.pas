@@ -898,6 +898,10 @@ begin
   if AnsiStartsText('Compiling Release Version',line) then exit;
   if AnsiStartsText('Compiling Debug Version',line) then exit;
 
+  //Skip debug message
+  //if AnsiStartsText('TExternalToolsConsole.HandleMesages: Calling CheckSynchronize!',line) then exit;
+  if AnsiStartsText('TExternalToolsConsole',line) then exit;
+
   //Haiku error we are not interested in
   {$ifdef Haiku}
   if AnsiStartsText('runtime_loader:',line) then exit;
@@ -918,6 +922,15 @@ begin
 
   if (NOT result) then
   begin
+
+    {$ifdef Darwin}
+    // Skip harmless error on Darwin
+    //if AnsiStartsText('cannot execute a binary file',line) then exit;
+    //if AnsiStartsText('could not find libgcc',line) then exit;
+    if AnsiStartsText('svnversion: error:',line) then exit;
+    {$endif Darwin}
+
+
     // to be absolutely sure not to miss errors and fatals and fpcupdeluxe messages !!
     // will be a bit redundant , but just to be sure !
     if (AnsiContainsText(line,'error:'))
@@ -946,6 +959,7 @@ begin
       if AnsiContainsText(line,': leaving directory ') then exit;
       // when generating help
       if AnsiContainsText(line,'illegal XML element: ') then exit;
+      if AnsiContainsText(line,'Invalid paragraph content') then exit;
       if AnsiContainsText(line,'parsing used unit ') then exit;
       if AnsiContainsText(line,'extracting ') then exit;
       if AnsiContainsText(line,'directory not found for option') then exit;
@@ -1018,11 +1032,16 @@ begin
 
         if AnsiContainsText(line,'Range check error while') then exit;
 
+        if AnsiContainsText(line,'linker'' input unused') then exit;
+
         // when generating help
         if AnsiContainsText(line,'is unknown') then exit;
         {$ifdef MSWINDOWS}
         if AnsiContainsText(line,'unable to determine the libgcc path') then exit;
         {$endif}
+
+        // Harmless GIT warning
+        if AnsiContainsText(line,'redirecting to https') then exit;
       end;
       // suppress "trivial"* build commands
 

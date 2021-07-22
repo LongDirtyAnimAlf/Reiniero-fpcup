@@ -33,6 +33,8 @@ Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 {$modeswitch advancedrecords}
 
+{$i fpcupdefines.inc}
+
 interface
 
 uses
@@ -41,6 +43,7 @@ uses
   ,updatelazconfig
   {$endif}
   ;
+
 
 type
   {$ifndef FPCONLY}
@@ -186,10 +189,11 @@ type
   // Used to pass on to higher level code for selection, display etc.
   //todo: get Description field into module list
   function GetModuleList:string;
+  // gets keywords for alias in Dictionary.
+  function GetKeyword(aDictionary,aAlias: string): string;
   // gets alias for keywords in Dictionary.
   //The keyword 'list' is reserved and returns the list of keywords as commatext
   function GetAlias(aDictionary,aKeyword: string): string;
-  function GetKeyword(aDictionary,aAlias: string): string;
   function SetAlias(aDictionary,aKeyWord,aValue: string):boolean;
   // check if enabled modules are allowed !
   function CheckIncludeModule(ModuleName: string):boolean;
@@ -264,119 +268,181 @@ begin
   result:=false;
   FLazarusNeedsRebuild:=false;
 
-  Processor.Executable := Make;
   Processor.Process.Parameters.Clear;
-  {$IFDEF MSWINDOWS}
-  if Length(Shell)>0 then Processor.Process.Parameters.Add('SHELL='+Shell);
-  {$ENDIF}
-
   Processor.Process.CurrentDirectory := ExcludeTrailingPathDelimiter(LazarusSourceDir);
-  Processor.Process.Parameters.Add('--directory=' + Processor.Process.CurrentDirectory);
 
-  {$IF DEFINED(CPUARM) AND DEFINED(LINUX)}
-  Processor.Process.Parameters.Add('--jobs=1');
-  {$ELSE}
-  //Still not clear if jobs can be enabled for Lazarus make builds ... :-|
-  //if (NOT FNoJobs) then
-  //  Processor.Process.Parameters.Add('--jobs='+IntToStr(FCPUCount));
-  {$ENDIF}
-
-  Processor.Process.Parameters.Add('FPC=' + FCompiler);
-  Processor.Process.Parameters.Add('PP=' + ExtractFilePath(FCompiler)+GetCompilerName(GetTargetCPU));
-  Processor.Process.Parameters.Add('USESVN2REVISIONINC=0');
-
-  Processor.Process.Parameters.Add('PREFIX='+ExcludeTrailingPathDelimiter(LazarusInstallDir));
-  Processor.Process.Parameters.Add('INSTALL_PREFIX='+ExcludeTrailingPathDelimiter(LazarusInstallDir));
-  Processor.Process.Parameters.Add('LAZARUS_INSTALL_DIR='+IncludeTrailingPathDelimiter(LazarusInstallDir));
-
-  //Make sure our FPC units can be found by Lazarus
-  Processor.Process.Parameters.Add('FPCDIR=' + ExcludeTrailingPathDelimiter(FPCSourceDir));
-
-  //Make sure Lazarus does not pick up these tools from other installs
-  Processor.Process.Parameters.Add('FPCMAKE=' + FFPCCompilerBinPath+'fpcmake'+GetExeExt);
-  Processor.Process.Parameters.Add('PPUMOVE=' + FFPCCompilerBinPath+'ppumove'+GetExeExt);
-
-  s:=IncludeTrailingPathDelimiter(LazarusPrimaryConfigPath)+DefaultIDEMakeOptionFilename;
-  //if FileExists(s) then
-    Processor.Process.Parameters.Add('CFGFILE=' + s);
-
-  {$IFDEF MSWINDOWS}
-  Processor.Process.Parameters.Add('UPXPROG=echo');      //Don't use UPX
+  {$ifdef FORCELAZBUILD}
+  if false then
   {$else}
-  //Processor.Process.Parameters.Add('INSTALL_BINDIR='+FBinPath);
-  {$ENDIF MSWINDOWS}
-
-  if FLCL_Platform <> '' then Processor.Process.Parameters.Add('LCL_PLATFORM=' + FLCL_Platform);
-
-  //Set options
-  s := FLazarusCompilerOptions;
-
-  {$ifdef Unix}
-    {$ifndef Darwin}
-      {$ifdef LCLQT}
-      {$endif}
-      {$ifdef LCLQT5}
-        // Did we copy the QT5 libs ??
-        // If so, add some linker help.
-        if (NOT LibWhich(LIBQT5)) AND (FileExists(IncludeTrailingPathDelimiter(LazarusInstallDir)+LIBQT5)) then
-        begin
-          s:=s+' -k"-rpath=./"';
-          s:=s+' -k"-rpath=$$ORIGIN"';
-          s:=s+' -k"-rpath=\\$$$$$\\ORIGIN"';
-          s:=s+' -Fl'+ExcludeTrailingPathDelimiter(LazarusInstallDir);
-        end;
-      {$endif}
-    {$endif}
+  if true then
   {$endif}
-
-  while Pos('  ',s)>0 do
   begin
-    s:=StringReplace(s,'  ',' ',[rfReplaceAll]);
-  end;
-  s:=Trim(s);
+    Processor.Executable := Make;
+    Processor.Process.Parameters.Add('--directory=' + Processor.Process.CurrentDirectory);
 
-  if Length(s)>0 then Processor.Process.Parameters.Add('OPT='+s);
+    {$IFDEF MSWINDOWS}
+    if Length(Shell)>0 then Processor.Process.Parameters.Add('SHELL='+Shell);
+    {$ENDIF}
 
-  {$ifdef DISABLELAZBUILDJOBS}
-  Processor.Process.Parameters.Add('LAZBUILDJOBS=1');//prevent runtime 217 errors
-  {$else}
-  Processor.Process.Parameters.Add('LAZBUILDJOBS='+IntToStr(FCPUCount));
-  {$endif}
+    {$IF DEFINED(CPUARM) AND DEFINED(LINUX)}
+    Processor.Process.Parameters.Add('--jobs=1');
+    {$ELSE}
+    //Still not clear if jobs can be enabled for Lazarus make builds ... :-|
+    //if (NOT FNoJobs) then
+    //  Processor.Process.Parameters.Add('--jobs='+IntToStr(FCPUCount));
+    {$ENDIF}
 
-  Processor.Process.Parameters.Add('useride');
+    Processor.Process.Parameters.Add('FPC=' + FCompiler);
+    Processor.Process.Parameters.Add('PP=' + ExtractFilePath(FCompiler)+GetCompilerName(GetTargetCPU));
+    Processor.Process.Parameters.Add('USESVN2REVISIONINC=0');
 
-  try
-    {$ifdef MSWindows}
-    //Prepend FPC binary directory to PATH to prevent pickup of strange tools
-    OldPath:=Processor.Environment.GetVar(PATHVARNAME);
-    s:=ExcludeTrailingPathDelimiter(FFPCCompilerBinPath);
-    if OldPath<>'' then
-       Processor.Environment.SetVar(PATHVARNAME, s+PathSeparator+OldPath)
-    else
-      Processor.Environment.SetVar(PATHVARNAME, s);
+    Processor.Process.Parameters.Add('PREFIX='+ExcludeTrailingPathDelimiter(LazarusInstallDir));
+    Processor.Process.Parameters.Add('INSTALL_PREFIX='+ExcludeTrailingPathDelimiter(LazarusInstallDir));
+    Processor.Process.Parameters.Add('LAZARUS_INSTALL_DIR='+IncludeTrailingPathDelimiter(LazarusInstallDir));
+
+    //Make sure our FPC units can be found by Lazarus
+    Processor.Process.Parameters.Add('FPCDIR=' + ExcludeTrailingPathDelimiter(FPCSourceDir));
+
+    //Make sure Lazarus does not pick up these tools from other installs
+    Processor.Process.Parameters.Add('FPCMAKE=' + FFPCCompilerBinPath+'fpcmake'+GetExeExt);
+    Processor.Process.Parameters.Add('PPUMOVE=' + FFPCCompilerBinPath+'ppumove'+GetExeExt);
+
+    s:=IncludeTrailingPathDelimiter(LazarusPrimaryConfigPath)+DefaultIDEMakeOptionFilename;
+    //if FileExists(s) then
+      Processor.Process.Parameters.Add('CFGFILE=' + s);
+
+    {$IFDEF MSWINDOWS}
+    Processor.Process.Parameters.Add('UPXPROG=echo');      //Don't use UPX
+    {$else}
+    //Processor.Process.Parameters.Add('INSTALL_BINDIR='+FBinPath);
+    {$ENDIF MSWINDOWS}
+
+    if FLCL_Platform <> '' then Processor.Process.Parameters.Add('LCL_PLATFORM=' + FLCL_Platform);
+
+    //Set options
+    s := FLazarusCompilerOptions;
+
+    {$ifdef Unix}
+      {$ifndef Darwin}
+        {$ifdef LCLQT}
+        {$endif}
+        {$ifdef LCLQT5}
+          // Did we copy the QT5 libs ??
+          // If so, add some linker help.
+          if (NOT LibWhich(LIBQT5)) AND (FileExists(IncludeTrailingPathDelimiter(LazarusInstallDir)+LIBQT5)) then
+          begin
+            s:=s+' -k"-rpath=./"';
+            s:=s+' -k"-rpath=$$ORIGIN"';
+            s:=s+' -k"-rpath=\\$$$$$\\ORIGIN"';
+            s:=s+' -Fl'+ExcludeTrailingPathDelimiter(LazarusInstallDir);
+          end;
+        {$endif}
+      {$endif}
     {$endif}
 
-    ProcessorResult:=Processor.ExecuteAndWait;
-    result := (ProcessorResult=0);
-    if result then
+    while Pos('  ',s)>0 do
     begin
-      Infoln(infotext+'Lazarus rebuild succeeded',etDebug);
-    end
-    else
-      WritelnLog(etError,infotext+'Failure trying to rebuild Lazarus. '+LineEnding+
-        'Details: '+FErrorLog.Text,true);
-
-    {$ifdef MSWindows}
-    Processor.Environment.SetVar(PATHVARNAME, OldPath);
-    {$endif}
-
-  except
-    on E: Exception do
-    begin
-      result:=false;
-      WritelnLog(etError, infotext+'Exception trying to rebuild Lazarus '+LineEnding+
-        'Details: '+E.Message,true);
+      s:=StringReplace(s,'  ',' ',[rfReplaceAll]);
     end;
+    s:=Trim(s);
+
+    if Length(s)>0 then Processor.Process.Parameters.Add('OPT='+s);
+
+    {$ifdef DISABLELAZBUILDJOBS}
+    Processor.Process.Parameters.Add('LAZBUILDJOBS=1');//prevent runtime 217 errors
+    {$else}
+    Processor.Process.Parameters.Add('LAZBUILDJOBS='+IntToStr(FCPUCount));
+    {$endif}
+
+    Processor.Process.Parameters.Add('useride');
+
+    try
+      {$ifdef MSWindows}
+      //Prepend FPC binary directory to PATH to prevent pickup of strange tools
+      OldPath:=Processor.Environment.GetVar(PATHVARNAME);
+      s:=ExcludeTrailingPathDelimiter(FFPCCompilerBinPath);
+      if OldPath<>'' then
+         Processor.Environment.SetVar(PATHVARNAME, s+PathSeparator+OldPath)
+      else
+        Processor.Environment.SetVar(PATHVARNAME, s);
+      {$endif}
+
+      ProcessorResult:=Processor.ExecuteAndWait;
+      result := (ProcessorResult=0);
+      if result then
+      begin
+        Infoln(infotext+'Lazarus rebuild succeeded',etDebug);
+      end
+      else
+        WritelnLog(etError,infotext+'Failure trying to rebuild Lazarus. '+LineEnding+
+          'Details: '+FErrorLog.Text,true);
+
+      {$ifdef MSWindows}
+      Processor.Environment.SetVar(PATHVARNAME, OldPath);
+      {$endif}
+
+    except
+      on E: Exception do
+      begin
+        result:=false;
+        WritelnLog(etError, infotext+'Exception trying to rebuild Lazarus '+LineEnding+
+          'Details: '+E.Message,true);
+      end;
+    end;
+
+  end
+  else
+  begin
+    Processor.Executable := IncludeTrailingPathDelimiter(LazarusInstallDir)+LAZBUILDNAME+GetExeExt;
+
+    OldPath:=Processor.Environment.GetVar('FPCDIR');
+    Processor.Environment.SetVar('FPCDIR',ExcludeTrailingPathDelimiter(FFPCSourceDir));
+    {$IFDEF DEBUG}
+    Processor.Process.Parameters.Add('--verbose');
+    {$ELSE}
+    // See compileroptions.pp
+    // Quiet:=ConsoleVerbosity<=-3;
+    Processor.Process.Parameters.Add('--quiet');
+    {$ENDIF}
+
+    {$ifdef DISABLELAZBUILDJOBS}
+    Processor.Process.Parameters.Add('--max-process-count=1');
+    {$else}
+    Processor.Process.Parameters.Add('--max-process-count='+IntToStr(FCPUCount));
+    {$endif}
+
+    Processor.Process.Parameters.Add('--pcp=' + DoubleQuoteIfNeeded(LazarusPrimaryConfigPath));
+    Processor.Process.Parameters.Add('--cpu=' + GetTargetCPU);
+    Processor.Process.Parameters.Add('--os=' + GetTargetOS);
+
+    if FLCL_Platform <> '' then
+      Processor.Process.Parameters.Add('--ws=' + FLCL_Platform);
+
+    Processor.Process.Parameters.Add('--build-ide=-dKeepInstalledPackages ' + FCompilerOptions);
+    //Processor.Process.Parameters.Add('--build-ide= ' + FCompilerOptions);
+    //Processor.Process.Parameters.Add('--build-mode="Normal IDE"');
+
+    Infoln(infotext+'Running lazbuild to get IDE with user-specified packages', etInfo);
+    try
+      ProcessorResult:=Processor.ExecuteAndWait;
+      result := (ProcessorResult=0);
+
+      //Restore FPCDIR environment variable ... could be trivial, but better safe than sorry
+      Processor.Environment.SetVar('FPCDIR',OldPath);
+      if (NOT result) then
+      begin
+        WritelnLog(etError, infotext+ExtractFileName(Processor.Executable)+' returned error code ' + IntToStr(ProcessorResult) + LineEnding +
+          'Details: ' + FErrorLog.Text, true);
+      end;
+    except
+      on E: Exception do
+      begin
+        result := false;
+        WritelnLog(etError, infotext+'Exception running '+ExtractFileName(Processor.Executable)+' to get IDE with user-specified packages!' + LineEnding +
+          'Details: ' + E.Message, true);
+      end;
+    end;
+
   end;
 
   //We now have, for certain, a miscellaneousoptions.xml file.
@@ -1104,6 +1170,11 @@ begin
             s2:=ReadString('NewProject',s,s2);
             if DirectoryExists(s2) then WriteString('NewProject',s,s2);
 
+            s:='PathToAndroidNDK';
+            s2:=GetAndroidNDKDir;
+            s2:=ReadString('NewProject',s,s2);
+            if DirectoryExists(s2) then WriteString('NewProject',s,s2);
+
           finally
             Free;
           end;
@@ -1704,7 +1775,8 @@ begin
 
       // Common keywords for all repo methods
       FDesiredRevision:=GetValueFromKey('Revision',PackageSettings);
-      FDesiredBranch:=GetValueFromKey('Branch',PackageSettings);
+      FBranch:=GetValueFromKey('Branch',PackageSettings);
+      TAG:=GetValueFromKey('Tag',PackageSettings);
 
       // Handle Git URLs
       RemoteURL:=GetValueFromKey('GITURL',PackageSettings);
@@ -1796,7 +1868,6 @@ begin
       end;
 
       RemoteURL:=GetValueFromKey('ArchiveURL',PackageSettings);
-
       if (RemoteURL<>'') AND (NOT SourceOK) then
       begin
         if (NOT DirectoryIsEmpty(ExcludeTrailingPathDelimiter(FSourceDirectory))) then
@@ -2170,7 +2241,7 @@ begin
             FileContents.LoadFromFile(aFile);
 
             //Process Gradle settings
-            s:=ConcatPaths([Workingdir,'..','mORMot-gradle','gradle-6.3']);
+            s:=ConcatPaths([Workingdir,'..','mORMot-gradle','gradle-6.5']);
             s:=SafeExpandFileName(s);
             if DirectoryExists(s) then
             begin
@@ -2926,7 +2997,7 @@ begin
 
   try
     ini.ReadSectionValues('ALIAS'+aDictionary,sl);
-    for i:=0 to sl.Count-1 do
+    for i:=0 to Pred(sl.Count) do
     begin
       if sl.ValueFromIndex[i]=aAlias then
       begin
@@ -2941,6 +3012,8 @@ begin
 end;
 
 function GetAlias(aDictionary,aKeyWord: string): string;
+const
+  ALIASMAGIC='ALIAS';
 var
   ini:TMemIniFile;
   sl:TStringList;
@@ -2956,22 +3029,30 @@ begin
   {$ENDIF}
 
   try
-    ini.ReadSection('ALIAS'+aDictionary,sl);
+    ini.ReadSection(ALIASMAGIC+aDictionary,sl);
     if Uppercase(aKeyWord)='LIST' then
       result:=sl.CommaText
     else
     begin
-      result:=ini.ReadString('ALIAS'+aDictionary,aKeyWord,'');
-      if result='' then
+      result:=ini.ReadString(ALIASMAGIC+aDictionary,aKeyWord,'');
+      if (result='') then
       begin
-        if (result='') then
+        if (Pos('fpcURL',aDictionary)=1) OR (Pos('fpcTAG',aDictionary)=1) OR (Pos('fpcBRANCH',aDictionary)=1) then
         begin
-          if aDictionary='fpcURL' then result:=FPCBASESVNURL+'/svn/fpc/tags/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll]);
-          {$ifndef FPCONLY}
-          if aDictionary='lazURL' then result:=FPCBASESVNURL+'/svn/lazarus/tags/lazarus_'+StringReplace(DEFAULTLAZARUSVERSION,'.','_',[rfReplaceAll]);
-          {$endif}
-        end;
-
+          //if (aDictionary<>'fpcURL')    AND (result='') then result:=ini.ReadString(ALIASMAGIC+'fpcURL',   aKeyWord,'');
+          if (aDictionary='fpcTAG')    AND (result='') then result:=ini.ReadString(ALIASMAGIC+'fpcBRANCH',   aKeyWord,'');
+          if (aDictionary='fpcBRANCH') AND (result='') then result:=ini.ReadString(ALIASMAGIC+'fpcTAG',aKeyWord,'');
+        end
+        {$ifndef FPCONLY}
+        else
+        if (Pos('lazURL',aDictionary)=1) OR (Pos('lazTAG',aDictionary)=1) OR (Pos('lazBRANCH',aDictionary)=1) then
+        begin
+          //if (aDictionary<>'lazURL')    AND (result='') then result:=ini.ReadString(ALIASMAGIC+'lazURL',   aKeyWord,'');
+          if (aDictionary='lazTAG')    AND (result='') then result:=ini.ReadString(ALIASMAGIC+'lazBRANCH',   aKeyWord,'');
+          if (aDictionary='lazBRANCH') AND (result='') then result:=ini.ReadString(ALIASMAGIC+'lazTAG',aKeyWord,'');
+        end
+        {$endif}
+        else
         if (result='') then
         begin
           e:=Exception.CreateFmt('--%s=%s : Invalid keyword. Accepted keywords are: %s',[aDictionary,aKeyWord,sl.CommaText]);

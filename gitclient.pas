@@ -77,6 +77,7 @@ type
 implementation
 
 uses
+  Process,
   StrUtils,
   installerCore,
   processutils,
@@ -175,17 +176,12 @@ var
   Command: string = '';
   Output: string = '';
   RetryAttempt: integer;
-  aBranch: string = '';
   //TargetFile: string;
 begin
   if NOT ValidClient then exit;
 
   // Invalidate our revision number cache
   FLocalRevision := FRET_UNKNOWN_REVISION;
-
-  if DesiredBranch=''
-     then aBranch:='master'
-     else aBranch:=DesiredBranch;
 
   // Actual clone/checkout
   if ExportOnly then
@@ -199,30 +195,44 @@ begin
     }
     if DirectoryExists(IncludeTrailingPathDelimiter(LocalRepository)+'.git') then
     begin
-      TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + ' fetch --all', LocalRepository, Verbose);
-      TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + ' reset --hard origin/'+aBranch, LocalRepository, Verbose);
+      Command:=DoubleQuoteIfNeeded(FRepoExecutable) + ' fetch --all';
+      TInstaller(Parent).ExecuteCommandInDir(Command, LocalRepository, Verbose);
+      if (DesiredBranch<>'') then
+        Command:=DoubleQuoteIfNeeded(FRepoExecutable) + ' reset --hard origin/'+DesiredBranch
+      else
+        Command:=DoubleQuoteIfNeeded(FRepoExecutable) + ' reset --hard';
+      TInstaller(Parent).ExecuteCommandInDir(Command, LocalRepository, Verbose);
+      Command:='';
     end
     else
     begin
       // initial : very shallow clone = fast !!
-      Command := ' clone --recurse-submodules --depth 1 -b ' + aBranch
+      Command := ' clone --recurse-submodules --depth 1';
+      if (DesiredBranch<>'') then
+        Command := Command +' -b ' + DesiredBranch;
+
     end;
   end
   else
   begin
     //On Haiku, arm and aarch64, always get a shallow copy of the repo
     {$if defined(CPUAARCH64) OR defined(CPUARM) OR (defined(CPUPOWERPC64) AND defined(FPC_ABI_ELFV2)) OR defined(Haiku) OR defined(AROS) OR defined(Morphos)}
-    Command := ' clone --recurse-submodules --depth 1 -b ' + aBranch;
+    Command := ' clone --recurse-submodules --depth 1';
     {$else}
-    Command := ' clone --recurse-submodules -b ' + aBranch;
+    Command := ' clone --recurse-submodules';
     {$endif}
+    if (DesiredBranch<>'') then
+      Command := Command +' -b ' + DesiredBranch;
   end;
 
-  if Command<>'' then
+  if (Command<>'') then
   begin
-
     if (Length(DesiredRevision)>0) AND (Uppercase(trim(DesiredRevision)) <> 'HEAD') then
       Command := Command+ ' ' + DesiredRevision;
+
+    if (Length(DesiredTag)>0) AND (Uppercase(trim(DesiredTag)) <> 'MAIN') AND (Uppercase(trim(DesiredTag)) <> 'MASTER') then
+      //Command := Command+ ' --depth 1 --branch ' + DesiredTag;
+      Command := Command+ ' --branch ' + DesiredTag;
 
     Command := Command + ' ' +  Repository + ' ' + LocalRepository;
 
@@ -321,6 +331,11 @@ procedure TGitClient.Update;
 var
   Command: string;
   Output: string = '';
+  Tags: string = '';
+  bSwitch: boolean;
+  aCurrentTag,aCurrentBranch:string;
+  aNewTag,aNewBranch:string;
+  i:integer;
 begin
   FReturnCode := 0;
   if ExportOnly then exit;
@@ -328,30 +343,88 @@ begin
 
   // Invalidate our revision number cache
   FLocalRevision := FRET_UNKNOWN_REVISION;
+  bSwitch:=false;
 
-  // Get updates (equivalent to git fetch and git merge)
-  // --all: fetch all remotes
-  Command := ' pull --all --recurse-submodules=yes';
-  FReturnCode := TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + command, LocalRepository, Output, Verbose);
-  FReturnOutput := Output;
-
+  {
+  //FReturnCode := TInstaller(Parent).ExecuteCommandInDir(FRepoExecutable,['tag'], LocalRepository, Tags, '', Verbose);
+  FReturnCode := TInstaller(Parent).ExecuteCommandInDir(FRepoExecutable,['show','--no-color','--oneline','-s'], LocalRepository, Output, '', Verbose);
+  //FReturnCode := TInstaller(Parent).ExecuteCommand(FRepoExecutable,['show','--no-color','--oneline','-s',LocalRepository], Output, Verbose);
+  //RunCommandInDir(LocalRepository,FRepoExecutable,['show','--no-color','--oneline','-s'], Output,FReturnCode,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
   if FReturnCode = 0 then
   begin
-    // Notice that the result of a merge will not be checked out in the submodule,
-    //"git submodule update" has to be called afterwards to bring the work tree up to date with the merge result.
-    Command := ' submodule update ';
-    FReturnCode := TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + command, LocalRepository, Verbose);
+    i:=Pos('tag: ',Output);
+    if (i>0) then
+    begin
+      aCurrentTag:=Copy(Output,i+5,MaxInt);
+      i:=Pos(')',aCurrentTag);
+      if (i>0) then
+      begin
+        SetLength(aCurrentTag,i-1);
+      end;
+    end;
+  end;
+  }
+
+  if (Length(DesiredTag)>0) then
+  begin
+    Command := ' describe --tags --abbrev=0';
+    FReturnCode := TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + command, LocalRepository, Output, Verbose);
+    if FReturnCode = 0 then
+    begin
+      if (DesiredTag<>Trim(Output)) then
+      begin
+        Command := ' checkout '+DesiredTag;
+        FReturnCode := TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + command, LocalRepository, Output, Verbose);
+        FReturnOutput := Output;
+        bSwitch:=true;
+      end;
+    end;
   end;
 
-  if (FReturnCode = 0){ and (Length(DesiredRevision)>0) and (uppercase(trim(DesiredRevision)) <> 'HEAD')}
-  then
+  if (Length(DesiredBranch)>0) then
   begin
-    //SSL Certificate problem
-    //git config --system http.sslCAPath /absolute/path/to/git/certificates
-    // always reset hard towards desired revision
-    Command := ' reset --hard ' + DesiredRevision;
-    FReturnCode := TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + command, LocalRepository, Verbose);
+    Command := ' rev-parse --abbrev-ref HEAD';
+    //Command := ' symbolic-ref --short HEAD';
+    FReturnCode := TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + command, LocalRepository, Output, Verbose);
+    if FReturnCode = 0 then
+    begin
+      if (DesiredBranch<>Trim(Output)) then
+      begin
+        Command := ' checkout '+DesiredBranch;
+        FReturnCode := TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + command, LocalRepository, Output, Verbose);
+        FReturnOutput := Output;
+        bSwitch:=true;
+      end;
+    end;
   end;
+
+  if (NOT bSwitch) then
+  begin
+    // Get updates (equivalent to git fetch and git merge)
+    // --all: fetch all remotes
+    Command := ' pull --all --recurse-submodules=yes';
+    FReturnCode := TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + command, LocalRepository, Output, Verbose);
+    FReturnOutput := Output;
+
+    if FReturnCode = 0 then
+    begin
+      // Notice that the result of a merge will not be checked out in the submodule,
+      //"git submodule update" has to be called afterwards to bring the work tree up to date with the merge result.
+      Command := ' submodule update ';
+      FReturnCode := TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + command, LocalRepository, Verbose);
+    end;
+
+    if (FReturnCode = 0){ and (Length(DesiredRevision)>0) and (uppercase(trim(DesiredRevision)) <> 'HEAD')}
+    then
+    begin
+      //SSL Certificate problem
+      //git config --system http.sslCAPath /absolute/path/to/git/certificates
+      // always reset hard towards desired revision
+      Command := ' reset --hard ' + DesiredRevision;
+      FReturnCode := TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + command, LocalRepository, Verbose);
+    end;
+  end;
+
 end;
 
 procedure TGitClient.ParseFileList(const CommandOutput: string; var FileList: TStringList; const FilterCodes: array of string);
@@ -536,6 +609,7 @@ end;
 function TGitClient.GetLocalRevision: string;
 var
   Output: string = '';
+  i:integer;
 begin
   Result := Output;
   FReturnCode := 0;
@@ -549,9 +623,14 @@ begin
     //todo: find out: without max-count, I can get multiple entries. No idea what these mean!??
     // alternative command: rev-parse --verify "HEAD^0" but that doesn't look as low-level ;)
     try
-      FReturnCode := TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + ' rev-list --max-count=1 HEAD ', LocalRepository, Output, Verbose);
-      if FReturnCode = 0
-        then FLocalRevision := trim(Output)
+      //FReturnCode := TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + ' rev-list --max-count=1 HEAD ', LocalRepository, Output, Verbose);
+      FReturnCode := TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + ' describe --tags --all --long --always ', LocalRepository, Output, Verbose);
+      if FReturnCode = 0 then
+      begin
+        i:=RPos('/',Output);
+        if (i>0) then Delete(Output,1,i);
+        FLocalRevision := trim(Output)
+      end
         else FLocalRevision := FRET_UNKNOWN_REVISION; //for compatibility with the svnclient code
     except
       FLocalRevision := FRET_UNKNOWN_REVISION; //for compatibility with the svnclient code

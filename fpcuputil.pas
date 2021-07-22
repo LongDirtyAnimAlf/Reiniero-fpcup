@@ -1287,6 +1287,7 @@ begin
   if Length(Output)>0 then
   begin
     i:=Pos('-r',Output);
+    if (i=0) then i:=Pos('-',Output);
     if (i>0) then
     begin
       Delete(Output,1,i+1);
@@ -1419,7 +1420,6 @@ begin
   if Pos('newpascal',URL)>0 then result:='trunk' else
   if Pos('freepascal.git',URL)>0 then result:='trunk' else
   if Pos('lazarus.git',URL)>0 then result:='trunk' else
-  //if Pos('fpcsource_3_2_0.git',URL)>0 then result:='3.2.0' else
   begin
 
     VersionSnippet := UpperCase(URL);
@@ -2218,6 +2218,27 @@ begin
   end;
 
   if (NOT result) then SysUtils.Deletefile(TargetFile);
+end;
+
+function GetGitLabTags(aURL:string;taglist:TStringList):boolean;
+var
+  Output:string;
+  OutputLines:TStringList;
+begin
+  result:=false;
+  if RunCommand('git',['ls-remote','--tags','--sort=-refname',aURL,'refs/tags/release*'], Output,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)}{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF}{$ENDIF}) then
+  //if RunCommand('git',['ls-remote','--tags','--abbrev=0','--sort=-refname',aURL], Output,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)}{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF}{$ENDIF}) then
+  begin
+    if (Output<>'') then
+    begin
+      OutputLines:=TStringList.Create;
+      try
+        OutputLines.Text:=Output;
+      finally
+        OutputLines.Destroy;
+      end;
+    end;
+  end;
 end;
 
 function GetGitHubFileList(aURL:string;fileurllist:TStringList; bWGet:boolean=false; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''):boolean;
@@ -3228,7 +3249,11 @@ end;
 
 function GetAndroidNDKDir:string;
 const
+{$ifdef MSWINOWS}
   SEARCHFILE='ndk-build.cmd';
+{$ELSE}
+  SEARCHFILE='ndk-build';
+{$ENDIF}
 var
   aSDKDir,aNDKDir:string;
   FilesList:TStringList;
@@ -3365,7 +3390,7 @@ const
   );
   {$endif}
 var
-  Output: string;
+  OutputString: string;
   i:integer;
   sd:string;
 {$endif}
@@ -3377,13 +3402,13 @@ begin
   begin
     for i:=Low(HAIKUSEARCHDIRS) to High(HAIKUSEARCHDIRS) do
     begin
-      Output:='';
+      OutputString:='';
       sd:=HAIKUSEARCHDIRS[i];
       {$ifndef CPUX86}
       if (RightStr(sd,4)='/x86') then continue;
       {$endif}
-      RunCommand('find',[sd,'-type','f','-name',aLibrary],Output,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
-      result:=(Pos(aLibrary,Output)>0);
+      RunCommand('find',[sd,'-type','f','-name',aLibrary],OutputString,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
+      result:=(Pos(aLibrary,OutputString)>0);
       if result then
       begin
         ThreadLog('Library searcher found '+aLibrary+' inside '+sd+'.',etDebug);
@@ -3399,10 +3424,10 @@ begin
   begin
     for i:=Low(UNIXSEARCHDIRS) to High(UNIXSEARCHDIRS) do
     begin
-      Output:='';
+      OutputString:='';
       sd:=UNIXSEARCHDIRS[i];
-      RunCommand('find',[sd,'-type','f','-name',aLibrary],Output,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
-      result:=(Pos(aLibrary,Output)>0);
+      RunCommand('find',[sd,'-type','f','-name',aLibrary],OutputString,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
+      result:=(Pos(aLibrary,OutputString)>0);
       if result then
       begin
         ThreadLog('Library searcher found '+aLibrary+' inside '+sd+'.',etDebug);
@@ -3413,9 +3438,9 @@ begin
 
   if (NOT result) then
   begin
-    Output:='';
-    RunCommand('sh',['-c','"ldconfig -p | grep '+aLibrary+'"'],Output,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
-    result:=(Pos(aLibrary,Output)>0);
+    OutputString:='';
+    RunCommand('sh',['-c','"ldconfig -p | grep '+aLibrary+'"'],OutputString,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
+    result:=(Pos(aLibrary,OutputString)>0);
     if result then
     begin
       ThreadLog('Library '+aLibrary+' found by ldconfig.',etDebug);
@@ -3429,7 +3454,11 @@ function Which(const Executable: string): string;
 var
   ExeName,FoundExe:string;
   {$IFDEF UNIX}
-  Output: string;
+  OutputString: string;
+  {$IFDEF DARWIN}
+  OutputLines: TStringList;
+  i: integer;
+  {$ENDIF}
   {$ENDIF}
 begin
   result:='';
@@ -3458,12 +3487,36 @@ begin
   {$IFDEF UNIX}
   if (NOT FileExists(result)) then
   begin
-    RunCommand('which',[ExeName],Output,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
-    Output:=Trim(Output);
-    if ((Output<>'') and FileExists(Output)) then result:=Output;
+    RunCommand('which',[ExeName],OutputString,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
+    OutputString:=Trim(OutputString);
+    if ((OutputString<>'') and FileExists(OutputString)) then result:=OutputString;
   end;
   {$ENDIF}
 
+  {$IFDEF DARWIN}
+  if (NOT FileExists(result)) then
+  begin
+    RunCommand('type',['-a',ExeName],OutputString,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
+    OutputString:=Trim(OutputString);
+    if (OutputString=ExeName+' not found') then OutputString:='';
+    if (OutputString<>'') then
+    begin
+      OutputLines:=TStringList.Create;
+      try
+        OutputLines.Text:=OutputString;
+        OutputString:=OutputLines[Pred(OutputLines.Count)];
+        i:=Pos(' is ',OutputString);
+        if (i>0) then
+          Delete(OutputString,1,i+4)
+        else
+          OutputString:='';
+      finally
+        OutputLines.Destroy;
+      end;
+      if ((OutputString<>'') and FileExists(OutputString)) then result:=OutputString;
+    end;
+  end;
+  {$ENDIF}
 
   (*
   {$IFDEF UNIX}
@@ -3475,18 +3528,18 @@ begin
   // on the found file.
   // however
   // ExeSearch(Executable) ... if fpAccess (Executable,X_OK)=0 then ..... see http://www.freepascal.org/docs-html/rtl/baseunix/fpaccess.html
-  ExecuteCommandCompat('which '+Executable,Output,false);
+  ExecuteCommandCompat('which '+Executable,OutputString,false);
   // Remove trailing LF(s) and other control codes:
-  while (length(output)>0) and (ord(output[length(output)])<$20) do
-    delete(output,length(output),1);
+  while (length(OutputString)>0) and (ord(OutputString[length(OutputString)])<$20) do
+    delete(OutputString,length(OutputString),1);
   {$ELSE}
-  Output:=FindDefaultExecutablePath(Executable);
+  OutputString:=FindDefaultExecutablePath(Executable);
   {$ENDIF UNIX}
   // We could have checked for ExecuteCommandHidden exitcode, but why not
   // do file existence check instead:
-  if (Output<>'') and fileexists(Output) then
+  if (OutputString<>'') and fileexists(OutputString) then
   begin
-    result:=Output;
+    result:=OutputString;
   end
   else
   begin
@@ -4060,7 +4113,7 @@ begin
             begin
               JsonObject := TJSONObject(Releases[i]);
               // Example ---
-              // browser_download_url: "https://github.com/newpascal/fpcupdeluxe/releases/download/1.6.2b/fpcupdeluxe-aarch64-linux"
+              // browser_download_url: "https://github.com/LongDirtyAnimAlf/fpcupdeluxe/releases/download/1.6.2b/fpcupdeluxe-aarch64-linux"
               // name: "fpcupdeluxe-aarch64-linux"
               // created_at: "2018-10-14T06:58:44Z"
               s:=JsonObject.Get('name');
@@ -5373,7 +5426,7 @@ begin
 
         if res=CURLE_OK then res:=curl_easy_perform(hCurl);
         if res=CURLE_OK then res:=curl_easy_getinfo(hCurl,CURLINFO_RESPONSE_CODE, @response);
-        result:=((res=CURLE_OK) {AND (response=200)} AND (aDataStream.Size>0));
+        result:=((res=CURLE_OK) AND (response<>404) AND (aDataStream.Size>0));
 
         try
           if Assigned(curl_headers) then

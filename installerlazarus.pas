@@ -30,6 +30,8 @@ Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 {$mode objfpc}{$H+}
 
+{$i fpcupdefines.inc}
+
 interface
 
 uses
@@ -615,6 +617,7 @@ var
   {$endif}
   OperationSucceeded: boolean;
   LazarusConfig: TUpdateLazConfig;
+  IDEConfig:TStringList;
 begin
   Result:=inherited;
 
@@ -639,7 +642,11 @@ begin
   end;
 
   //Note: available in more recent Lazarus : use "make lazbuild useride" to build ide with installed packages
+  {$ifdef FORCELAZBUILD}
+  if (ModuleName<>_USERIDE) then
+  {$else}
   if ((ModuleName<>_USERIDE) OR (SourceVersionNum>=CalculateFullVersion(1,6,2))) then
+  {$endif}
   begin
     // Make all (should include lcl & ide), lazbuild, lcl etc
     // distclean was already run; otherwise specify make clean all
@@ -753,6 +760,27 @@ begin
         Processor.Process.Parameters.Add('useride');
 
         s:=IncludeTrailingPathDelimiter(FPrimaryConfigPath)+DefaultIDEMakeOptionFilename;
+
+        {
+        IDEConfig:=TStringList.Create;
+        try
+          if FileExists(s) then IDEConfig.LoadFromFile(s);
+          i:=StringListStartsWith(IDEConfig,'-T');
+          if (i=-1) then
+            IDEConfig.Append('-T'+GetTargetOS)
+          else
+            IDEConfig.Strings[i]:='-T'+GetTargetOS;
+          i:=StringListStartsWith(IDEConfig,'-P');
+          if (i=-1) then
+            IDEConfig.Append('-P'+GetTargetCPU)
+          else
+            IDEConfig.Strings[i]:='-P'+GetTargetCPU;
+          IDEConfig.SaveToFile(s);
+        finally
+          IDEConfig.Free;
+        end;
+        }
+
         //if FileExists(s) then
           Processor.Process.Parameters.Add('CFGFILE=' + s);
 
@@ -936,8 +964,8 @@ begin
   end
   else
   begin
-    // For building useride for Lazarus versions < 1.6.2
-    // useride; using lazbuild. Note: in recent Lazarus we use make
+    // For building useride for Lazarus versions
+    // useride; using lazbuild.
     // Check for valid lazbuild.
     // Note: we don't check if we have a valid primary config path, but that will come out
     // in the next steps.
@@ -1015,6 +1043,8 @@ begin
         end;
       end;
 
+      {
+
       // ... build startlazarus if it doesn't exist
       // (even an old version left over by make distclean is probably ok)
       if OperationSucceeded then
@@ -1069,6 +1099,7 @@ begin
           end;
         end;
       end;
+      }
     end;
   end;
 
@@ -1794,41 +1825,6 @@ begin
       // Set file history towards default project directory
       LazarusConfig.SetVariableIfNewFile(History, 'InputHistory/FileDialog/InitialDir', IncludeTrailingPathDelimiter(GDBPath));
 
-      {$IFDEF DARWIN}
-      {$IFDEF CPUX86_64}
-      {$IFDEF LCLCOCOA}
-      // Prevent crash on Darwin Cocoa: set and make available initial project
-      aFileName:=IncludeTrailingPathDelimiter(GDBPath)+'project1.lpi';
-
-      // Create a default project
-      SysUtils.DeleteFile(aFileName);
-      SysUtils.DeleteFile(ChangeFileExt(aFileName,'.lpr'));
-      PCPSnippet:=TStringList.Create;
-      {$IF FPC_FULLVERSION > 30100}
-      //PCPSnippet.DefaultEncoding:=TEncoding.ASCII;
-      {$ENDIF}
-      try
-        PCPSnippet.Clear;
-        PCPSnippet.Text:=DEFAULTLPI;
-        PCPSnippet.SaveToFile(aFileName);
-        PCPSnippet.Clear;
-        PCPSnippet.Text:=DEFAULTLPR;
-        PCPSnippet.SaveToFile(ChangeFileExt(aFileName,'.lpr'));
-      finally
-        PCPSnippet.Free;
-      end;
-
-      if FileExists(aFileName) then
-      begin
-        LazarusConfig.SetVariableIfNewFile(EnvironmentConfig, 'EnvironmentOptions/Recent/AlreadyPopulated', 'True');
-        LazarusConfig.SetVariableIfNewFile(EnvironmentConfig, 'EnvironmentOptions/Recent/ProjectFiles/Count', '1');
-        LazarusConfig.SetVariableIfNewFile(EnvironmentConfig, 'EnvironmentOptions/Recent/ProjectFiles/Item1/Value', aFileName);
-        LazarusConfig.SetVariableIfNewFile(EnvironmentConfig, 'EnvironmentOptions/AutoSave/LastSavedProjectFile', aFileName);
-      end;
-      {$ENDIF LCLCOCOA}
-      {$ENDIF CPUX86_64}
-      {$ENDIF DARWIN}
-
       //Setup basic fppkg things
       s2 := IncludeTrailingPathDelimiter(FBaseDirectory)+PACKAGESCONFIGDIR;
       s  := IncludeTrailingPathDelimiter(s2)+FPCPKGCONFIGFILENAME;
@@ -2119,8 +2115,11 @@ begin
   {$endif MSWINDOWS}
 
   // finally ... if something is still still still floating around ... delete it !!
-  if NOT CrossCompiling then
+  if (NOT CrossCompiling) then
   begin
+    s:=ConcatPaths([FSourceDirectory,'ide'])+DirectorySeparator+'revision.inc';
+    SysUtils.DeleteFile(s);
+
     s:=ConcatPaths([FInstallDirectory,'lazbuild']);
     if FileExists(s+GetExeExt) then
     begin
@@ -2303,6 +2302,8 @@ begin
   else
   begin
     Infoln(infotext+'Start checkout/update of ' + ModuleName + ' sources.',etInfo);
+
+    //git svn clone -r HEAD https://svn.freepascal.org/svn/lazarus/tags/lazarus_2_0_12
 
     UpdateWarnings:=TStringList.Create;
     try
