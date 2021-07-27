@@ -112,6 +112,7 @@ uses
   {$else}
   m_any_to_darwin386,
   m_any_to_darwinx64,
+  m_any_to_darwinarm,
   m_any_to_darwinaarch64,
   m_any_to_iosarm,
   m_any_to_iosaarch64,
@@ -147,6 +148,8 @@ uses
   m_anyinternallinker_to_winarm64,
   m_anyinternallinker_to_winx64,
   {$endif MSWINDOWS}
+  m_any_to_wasi_wasm32,
+  m_any_to_embedded_wasm32,
   checkoptions;
 
 //{$R *.res}

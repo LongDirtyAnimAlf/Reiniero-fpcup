@@ -165,6 +165,8 @@ uses
   m_anyinternallinker_to_winarm64,
   m_anyinternallinker_to_winx64,
   {$endif MSWINDOWS}
+  m_any_to_wasi_wasm32,
+  m_any_to_embedded_wasm32,
   checkoptions;
 
 //{$R *.res}
