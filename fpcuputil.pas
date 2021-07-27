@@ -1445,14 +1445,14 @@ begin
     VersionSnippet := Copy(VersionSnippet, i + 1, MaxInt);
 
     // if url contains a version, this version always starts with first _#
-    i:=0;
+    i:=1;
     repeat
-      Inc(i);
       if (CharInSet(VersionSnippet[i],['0'..'9'])) then
       begin
         if (i>1) AND (VersionSnippet[i-1]='_') then break;
       end;
-      if (i=Length(VersionSnippet)) then break;
+      Inc(i);
+      if (i>Length(VersionSnippet)) then break;
     until false;
 
     Delete(VersionSnippet,1,(i-1));
@@ -1853,6 +1853,9 @@ begin
   {$endif}
 
   if Length(HTTPProxyHost)>0 then aDownLoader.setProxy(HTTPProxyHost,HTTPProxyPort,HTTPProxyUser,HTTPProxyPassword);
+
+  if (NOT aDownLoader.checkURL(URL)) then exit;
+
   result:=aDownLoader.getStream(URL,aDataStream);
 end;
 

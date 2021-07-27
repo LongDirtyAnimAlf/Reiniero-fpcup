@@ -430,7 +430,8 @@ end;"/>
     </PublishOptions>
     <RunParams>
       <local>
-        <CommandLineParams Value="--fpcURL=&quot;stable&quot; --lazURL=&quot;stable&quot; --verbose --installdir=&quot;C:\fpclazbydeluxe\something&quot; --fpcsplit"/>
+        <CommandLineParams Value="--installdir=&quot;C:\fpcupsystems\yolo&quot; --fpcVersion=&quot;3.2.0&quot; --lazVersion=&quot;2.0.10&quot;"/>
+        <LaunchingApplication PathPlusParams="C:\WINDOWS\system32\cmd.exe /C ${TargetCmdLine}"/>
       </local>
       <FormatVersion Value="2"/>
       <Modes Count="2">
@@ -441,7 +442,8 @@ end;"/>
         </Mode0>
         <Mode1 Name="docker">
           <local>
-            <CommandLineParams Value="--fpcURL=&quot;stable&quot; --lazURL=&quot;stable&quot; --verbose --installdir=&quot;C:\fpclazbydeluxe\something&quot; --fpcsplit"/>
+            <CommandLineParams Value="--installdir=&quot;C:\fpcupsystems\yolo&quot; --fpcVersion=&quot;3.2.0&quot; --lazVersion=&quot;2.0.10&quot;"/>
+            <LaunchingApplication PathPlusParams="C:\WINDOWS\system32\cmd.exe /C ${TargetCmdLine}"/>
           </local>
         </Mode1>
       </Modes>
@@ -688,7 +690,7 @@ end;"/>
     </Other>
   </CompilerOptions>
   <Debugging>
-    <Exceptions Count="5">
+    <Exceptions Count="6">
       <Item1>
         <Name Value="EAbort"/>
       </Item1>
@@ -704,6 +706,9 @@ end;"/>
       <Item5>
         <Name Value="ECommandLineError"/>
       </Item5>
+      <Item6>
+        <Name Value="EInOutError"/>
+      </Item6>
     </Exceptions>
   </Debugging>
 </CONFIG>

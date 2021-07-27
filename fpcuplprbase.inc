@@ -43,12 +43,20 @@ begin
   writeln('Options are not required; they include:');
   writeln(' help                  Show this text');
   writeln('');
-  writeln(' fpcURL=<URL>          SVN URL from which to download; default: 3.0.0:');
-  writeln('                       http://svn.freepascal.org/svn/fpc/branches/3_0_0');
+  writeln(' fpcVersion=<version>  FPC version to use; default: stable');
+  writeln('                       Accepts shortcuts: ');
+  writeln('                       '+installerUniversal.GetAlias('fpcBRANCH','list'));
+  writeln('                       '+installerUniversal.GetAlias('fpcTAG','list'));
+  writeln(' fpcURL=<URL>          SVN URL from which to download; default: 3.2.2:');
+  writeln('                       http://svn.freepascal.org/svn/fpc/branches/3_2_2');
   writeln('                       Accepts shortcuts: ');
   writeln('                       '+installerUniversal.GetAlias('fpcURL','list'));
   {$ifndef FPCONLY}
-  writeln(' lazURL=<URL>          SVN URL from which to download; default: 1.6');
+  writeln(' lazVersion=<version>  Lazarus version to use; default: stable');
+  writeln('                       Accepts shortcuts: ');
+  writeln('                       '+installerUniversal.GetAlias('lazBRANCH','list'));
+  writeln('                       '+installerUniversal.GetAlias('lazTAG','list'));
+  writeln(' lazURL=<URL>          SVN URL from which to download; default: 2.0.12');
   writeln('                       trunk (newest version):');
   writeln('                       http://svn.freepascal.org/svn/lazarus/trunk');
   writeln('                       Accepts shortcuts: ');
@@ -212,6 +220,7 @@ begin
   writeln(' fpcsplit              Use different directory for source and binaries.');
   writeln(' noconfirm             No confirmation asked. For batch operation.');
   writeln(' verbose               Show output from svn and make.');
+  writeln(' usegitlab             Use Gitlab as source.');
   writeln(' version               Show version info and quit.');
   writeln('');
   writeln('Share and enjoy!');
