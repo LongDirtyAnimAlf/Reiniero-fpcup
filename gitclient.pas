@@ -373,7 +373,7 @@ begin
     begin
       if (DesiredTag<>Trim(Output)) then
       begin
-        Command := ' checkout '+DesiredTag;
+        Command := ' checkout --force '+DesiredTag;
         FReturnCode := TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + command, LocalRepository, Output, Verbose);
         FReturnOutput := Output;
         bSwitch:=true;
@@ -390,7 +390,7 @@ begin
     begin
       if (DesiredBranch<>Trim(Output)) then
       begin
-        Command := ' checkout '+DesiredBranch;
+        Command := ' checkout --force '+DesiredBranch;
         FReturnCode := TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + command, LocalRepository, Output, Verbose);
         FReturnOutput := Output;
         bSwitch:=true;
@@ -400,20 +400,27 @@ begin
 
   if (NOT bSwitch) then
   begin
-    // Get updates (equivalent to git fetch and git merge)
-    // --all: fetch all remotes
-    Command := ' pull --all --recurse-submodules=yes';
+    Command := ' init';
     FReturnCode := TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + command, LocalRepository, Output, Verbose);
-    FReturnOutput := Output;
+    Command := ' remote add origin '+Repository;
+    FReturnCode := TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + command, LocalRepository, Output, Verbose);
+    Command := ' pull';
+    FReturnCode := TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + command, LocalRepository, Output, Verbose);
+    Command := ' fetch --tags';
+    FReturnCode := TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + command, LocalRepository, Output, Verbose);
 
-    if FReturnCode = 0 then
+    //Command := ' pull --all --recurse-submodules=yes';
+    //FReturnCode := TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + command, LocalRepository, Output, Verbose);
+    //FReturnOutput := Output;
+
+    //if (FReturnCode = 0) then
     begin
-      // Notice that the result of a merge will not be checked out in the submodule,
-      //"git submodule update" has to be called afterwards to bring the work tree up to date with the merge result.
-      Command := ' submodule update ';
-      FReturnCode := TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + command, LocalRepository, Verbose);
+      Command := ' checkout --force '+DesiredTag;
+      FReturnCode := TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + command, LocalRepository, Output, Verbose);
+      FReturnOutput := Output;
     end;
 
+    {
     if (FReturnCode = 0){ and (Length(DesiredRevision)>0) and (uppercase(trim(DesiredRevision)) <> 'HEAD')}
     then
     begin
@@ -423,6 +430,8 @@ begin
       Command := ' reset --hard ' + DesiredRevision;
       FReturnCode := TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + command, LocalRepository, Verbose);
     end;
+    }
+
   end;
 
 end;

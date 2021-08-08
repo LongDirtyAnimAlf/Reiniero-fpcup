@@ -2997,8 +2997,8 @@ begin
   ini.CaseSensitive:=false;
   {$ENDIF}
 
-  if ((aDictionary='fpcTAG') OR (aDictionary='fpcBRANCH')) AND (aAlias=FPCTRUNKBRANCH) then result:='trunk';
-  if ((aDictionary='lazTAG') OR (aDictionary='lazBRANCH')) AND (aAlias=LAZARUSTRUNKBRANCH) then result:='trunk';
+  if ((aDictionary='fpcTAG') OR (aDictionary='fpcBRANCH')) AND AnsiStartsText(FPCTRUNKBRANCH,aAlias) then result:='trunk';
+  if ((aDictionary='lazTAG') OR (aDictionary='lazBRANCH')) AND AnsiStartsText(LAZARUSTRUNKBRANCH,aAlias) then result:='trunk';
 
   if (Length(result)=0) then
   begin
@@ -3045,9 +3045,6 @@ begin
     begin
       result:=ini.ReadString(ALIASMAGIC+aDictionary,aKeyWord,'');
 
-      if ((aDictionary='fpcTAG') OR (aDictionary='fpcBRANCH')) AND (result='trunk') then result:=FPCTRUNKBRANCH;
-      if ((aDictionary='lazTAG') OR (aDictionary='lazBRANCH')) AND (result='trunk') then result:=LAZARUSTRUNKBRANCH;
-
       if (result='') then
       begin
         if (Pos('fpcURL',aDictionary)=1) OR (Pos('fpcTAG',aDictionary)=1) OR (Pos('fpcBRANCH',aDictionary)=1) then
@@ -3072,6 +3069,10 @@ begin
           raise e;
         end;
       end;
+
+      if ((aDictionary='fpcTAG') OR (aDictionary='fpcBRANCH')) AND (result='trunk') then result:=FPCTRUNKBRANCH;
+      if ((aDictionary='lazTAG') OR (aDictionary='lazBRANCH')) AND (result='trunk') then result:=LAZARUSTRUNKBRANCH;
+
     end;
   finally
     ini.Free;

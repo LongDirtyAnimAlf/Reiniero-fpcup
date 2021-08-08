@@ -30,43 +30,9 @@ Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 unit fpcuputil;
 { Utility functions that might be needed by fpcup core and plugin units }
 
-//{$mode DELPHI}{$H+}
 {$mode objfpc}{$H+}
 
-{$define ENABLEWGET}
-{$define ENABLECURL}
-{$define ENABLENATIVE}
-
-{.$define ENABLEEMAIL}
-
-{$ifdef Haiku}
-// synaser does not compile under Haiku
-{$undef ENABLENATIVE}
-{$endif}
-{$ifdef OpenBSD}
-// synaser does not work under OpenBSD
-{$undef ENABLENATIVE}
-{$endif}
-{$IF DEFINED(MORPHOS) OR DEFINED(AROS)}
-// libcurl does not work under AROS and Morphos
-{$undef ENABLECURL}
-// synaser does not work under AROS and Morphos
-{$undef ENABLENATIVE}
-{$ENDIF}
-
-{$ifdef Darwin}
-// Do not use wget and family under Darwin
-{$undef ENABLEWGET}
-{$endif}
-{$ifdef Windows}
-// Do not use wget and family under Windows
-{.$undef ENABLEWGET}
-{$endif}
-
-{$ifdef libcurlstatic}
-{$undef ENABLENATIVE}
-{$define USEONLYCURL}
-{$endif}
+{$i fpcupdefines.inc}
 
 {$if not defined(ENABLEWGET) and not defined(ENABLENATIVE)}
 {$error No downloader defined !!! }
@@ -130,17 +96,15 @@ type
   { TLogger }
   TLogger = class(TObject)
   private
-    FLog: TEventLog; //Logging/debug output to file
+    FLog: TEventLog;
     function GetLogFile: string;
     procedure SetLogFile(AValue: string);
   public
-    // Write to log and optionally console with seriousness etInfo
-    procedure WriteLog(Message: string);overload;
-    // Write to log and optionally console with specified seriousness
-    procedure WriteLog(EventType: TEventType;Message: string);overload;
-    property LogFile: string read GetLogFile write SetLogFile ;
     constructor Create;
     destructor Destroy; override;
+    procedure WriteLog(Message: string);overload;
+    procedure WriteLog(EventType: TEventType;Message: string);overload;
+    property LogFile: string read GetLogFile write SetLogFile;
   end;
 
   TBasicDownLoader = Class(TObject)
@@ -156,7 +120,6 @@ type
     FHTTPProxyHost: string;
     FHTTPProxyUser: string;
     FHTTPProxyPassword: string;
-    StoredTickCount:QWord;
     FFilenameOnly:string;
     procedure parseFTPHTMLListing(F:TStream;filelist:TStringList);
     procedure DoOnWriteStream(Sender: TObject; APos: Int64);
@@ -465,6 +428,10 @@ uses
   ,DCPdes
   ,DCPsha256
   ,NumCPULib  in './numcpulib/NumCPULib.pas'
+  {$IFDEF USEMORMOT}
+  ,mormot.net.client
+  ,mormot.core.buffers
+  {$ENDIF USEMORMOT}
   ;
 
 const
@@ -485,15 +452,21 @@ const
 {$endif}
 
 type
+  {$ifdef ENABLENATIVE}
+  TMyFTPSend = class(TFTPSend);
+  {$endif ENABLENATIVE}
+
   TOnWriteStream = procedure(Sender: TObject; APos: Int64) of object;
 
   TDownloadStream = class(TFileStream)
   private
+    FStoredTickCount:QWord;
     FOnWriteStream: TOnWriteStream;
     procedure SetOnWriteStream(aValue:TOnWriteStream);
   public
     destructor Destroy; override;
     function Write(const Buffer; Count: LongInt): LongInt; override;
+    class function StreamCreate(const aFileName: string; aMode: cardinal):TStream;
   published
     property OnWriteStream: TOnWriteStream read FOnWriteStream write SetOnWriteStream;
   end;
@@ -526,7 +499,6 @@ begin
   result:=URL;
   if AnsiEndsText(URLMAGIC,URL) then SetLength(result,Length(URL)-Length(URLMAGIC));
 end;
-
 
 (*
 
@@ -2089,6 +2061,56 @@ begin
 end;
 {$endif MSWindows}
 
+{$IFDEF USEMORMOT}
+function DownloadBymORMot(URL, TargetFile: string): boolean;
+var
+  params   : THttpClientSocketWGet;
+  URI      : URIPARSER.TURI;
+  aURL,P,H : String;
+  s        : THttpClientSocket;
+  u        : System.UTF8String;
+begin
+  result:=false;
+
+  aURL:=CleanURL(URL);
+  URI:=ParseURI(aURL);
+  P:=URI.Protocol;
+  H:=URI.Host;
+
+  if AnsiStartsText('downloads.sourceforge.net',H) then exit;
+
+  if AnsiStartsText('http',P) then
+  begin
+    params.Clear;
+    params.Resume := false;
+
+    params.OnStreamCreate:=@TDownloadStream.StreamCreate;
+    try
+      s := THttpClientSocket.OpenUri(URL, u, '', 10000, nil);
+      try
+        s.RedirectMax := 10;
+        s.UserAgent:=FPCUPUSERAGENT;
+        s.ContentType:='application/zip';
+        if (s.WGet(u, TargetFile, params) = TargetFile) then
+        begin
+          result:=true;
+        end;
+      finally
+        s.Free;
+      end;
+
+      //if (params.WGet(aURL,TargetFile,'', nil, 10000, 10) = TargetFile) then
+      //begin
+      //  result:=true;
+      //end;
+    except
+      // Swallow exceptions
+    end;
+  end;
+
+end;
+{$ENDIF USEMORMOT}
+
 function Download(UseWget:boolean; URL: string; aDataStream:TStream; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''): boolean;
 var
   aDownLoader:TBasicDownLoader;
@@ -2150,6 +2172,13 @@ var
   aDownLoader:TBasicDownLoader;
 begin
   result:=false;
+
+  {$IFDEF USEMORMOT}
+  if (NOT result) AND (NOT UseWget) then
+  begin
+    result:=DownloadBymORMot(URL,TargetFile);
+  end;
+  {$ENDIF USEMORMOT}
 
   if (NOT result) then
   begin
@@ -4736,13 +4765,17 @@ begin
   end
   else
   //Show progress only every 5 seconds
-  if GetUpTickCount>StoredTickCount+5000 then
+  {if (Sender is TDownloadStream) then}
+  with (Sender as TDownloadStream) do
   begin
-    if StoredTickCount=0 then
-      ThreadLog('Download progress '+FileNameOnly+': Starting download.')
-    else
-      ThreadLog('Download progress '+FileNameOnly+': '+KB(APos));
-    StoredTickCount:=GetUpTickCount;
+    if (GetUpTickCount>(FStoredTickCount+5000)) then
+    begin
+      if FStoredTickCount=0 then
+        ThreadLog('Download progress '+FileNameOnly+': Starting download.')
+      else
+        ThreadLog('Download progress '+FileNameOnly+': '+KB(APos));
+      FStoredTickCount:=GetUpTickCount;
+    end;
   end;
   {$ifdef LCL}
   Application.ProcessMessages;
@@ -5034,6 +5067,7 @@ var
   URI : URIPARSER.TURI;
   aPort:integer;
   aFTPClient:TFTPSend;
+  aFTPResult:integer;
 begin
   result:=false;
 
@@ -5076,13 +5110,14 @@ begin
     aDataStream.Size:=0;
     if aFTPClient.Login then
     begin
-      Result := aFTPClient.RetrieveFile(URI.Path+URI.Document, false);
-      aFTPClient.Logout;
-      if Result then
+      if TMyFTPSend(aFTPClient).DataSocket then
       begin
-        aFTPClient.DataStream.Position:=0;
-        aDataStream.CopyFrom(aFTPClient.DataStream,aFTPClient.DataStream.Size);
+        aFTPClient.FTPCommand('TYPE I');
+        aFTPResult:=aFTPClient.FTPCommand('RETR ' + URI.Path+URI.Document);
+        if ((aFTPResult div 100)=1) then
+          result := aFTPClient.DataRead(aDataStream);
       end;
+      aFTPClient.Logout;
     end;
   finally
     aFTPClient.Destroy;
@@ -5206,8 +5241,7 @@ begin
 
   if (aDataStream is TDownloadStream) then
   begin
-    (aDataStream as TDownloadStream).FOnWriteStream:=@DoOnWriteStream;
-    StoredTickCount:=0;
+    (aDataStream as TDownloadStream).OnWriteStream:=@DoOnWriteStream;
   end;
 
   if AnsiStartsText('ftp',P) then result:=FTPDownload(URL,aDataStream);
@@ -5642,27 +5676,40 @@ end;
 function TUseWGetDownloader.checkURL(const URL:string):boolean;
 var
   Output:string;
+  URI:URIPARSER.TURI;
+  aURL,P:string;
 begin
   result:=false;
 
   if (NOT FWGETOk) then
-  begin
     exit;
+
+  aURL:=CleanURL(URL);
+  URI:=ParseURI(aURL);
+  P:=URI.Protocol;
+
+  // Only check http[s]
+  if AnsiStartsText('http',P) then
+  begin
+    Output:='';
+    result:=RunCommand(WGETBinary,['--no-check-certificate','--user-agent="'+FUserAgent+'"','--tries='+InttoStr(MaxRetries),'--spider',aURL],Output,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
+
+    if result then
+    begin
+      result:=(Pos('Remote file exists',Output)>0);
+    end;
+    if NOT result then
+    begin
+      // on github/gitlab?, we get a 403 forbidden for an existing file !!
+      result:=((Pos('github',Output)>0) {OR (Pos('gitlab',Output)>0)}) AND (Pos('403 Forbidden',Output)>0);
+      if (NOT result) then result:=(Pos('https://',Output)>0) AND (Pos('401 Unauthorized',Output)>0)
+    end;
+  end
+  else
+  begin
+    result:=true;
   end;
 
-  Output:='';
-  result:=RunCommand(WGETBinary,['--no-check-certificate','--user-agent="'+FUserAgent+'"','--tries='+InttoStr(MaxRetries),'--spider',URL],Output,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
-
-  if result then
-  begin
-    result:=(Pos('Remote file exists',Output)>0);
-  end;
-  if NOT result then
-  begin
-    // on github, we get a 403 forbidden for an existing file !!
-    result:=(Pos('github',Output)>0) AND (Pos('403 Forbidden',Output)>0);
-    if (NOT result) then result:=(Pos('https://',Output)>0) AND (Pos('401 Unauthorized',Output)>0)
-  end;
 end;
 
 function TUseWGetDownloader.Download(const URL: String; aDataStream: TStream):boolean;
@@ -5676,8 +5723,7 @@ begin
 
   if (aDataStream is TDownloadStream) then
   begin
-    (aDataStream as TDownloadStream).FOnWriteStream:=@DoOnWriteStream;
-    StoredTickCount:=0;
+    (aDataStream as TDownloadStream).OnWriteStream:=@DoOnWriteStream;
   end;
 
   if AnsiStartsText('ftp',P) then result:=FTPDownload(URL,aDataStream);
@@ -5730,6 +5776,7 @@ end;
 procedure TDownloadStream.SetOnWriteStream(aValue:TOnWriteStream);
 begin
   FOnWriteStream:=aValue;
+  FStoredTickCount:=0;
   if Assigned(FOnWriteStream) then
     FOnWriteStream(Self, 0);
 end;
@@ -5739,6 +5786,11 @@ begin
   Result:= inherited Write(Buffer, Count);
   if Assigned(FOnWriteStream) then
     FOnWriteStream(Self, Self.Position);
+end;
+
+class function TDownloadStream.StreamCreate(const aFileName: string; aMode: cardinal):TStream;
+begin
+  result:=Create(aFileName,aMode);
 end;
 
 procedure FinaGitHubStore;

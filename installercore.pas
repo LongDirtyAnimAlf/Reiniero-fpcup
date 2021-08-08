@@ -67,16 +67,16 @@ const
   GITLAB                = 'https://gitlab.com/freepascal.org/';
 
   FPCGITLAB             = GITLAB + 'fpc';
-  FPCGITLABREPO         = FPCGITLAB + '/testconversion2';
+  FPCGITLABREPO         = FPCGITLAB + '/source';
   FPCGITLABBINARIES     = FPCGITLAB + '/build';
-  FPCTRUNKBRANCH        = 'master';
-  //FPCBINARIES           = FPCGITLABBINARIES + '/-/raw/'+FPCTRUNKBRANCH;
+  FPCTRUNKBRANCH        = 'main';
+  FPCBINARIES           = FPCGITLABBINARIES + '/-/raw/'+FPCTRUNKBRANCH;
 
   LAZARUSGITLAB         = GITLAB + 'lazarus';
   LAZARUSGITLABREPO     = LAZARUSGITLAB + '/lazarus';
   LAZARUSGITLABBINARIES = LAZARUSGITLAB + '/binaries';
   LAZARUSTRUNKBRANCH    = 'main';
-  //LAZARUSBINARIES       = LAZARUSGITLABBINARIES + '/-/raw/'+LAZARUSTRUNKBRANCH;
+  LAZARUSBINARIES       = LAZARUSGITLABBINARIES + '/-/raw/'+LAZARUSTRUNKBRANCH;
 
   SVNBASEHTTP           = 'https://svn.';
   SVNBASESVN            = 'svn://svn.';
@@ -92,7 +92,6 @@ const
 
   LAZARUSFTPSNAPSHOTURL = LAZARUSFTPURL+'snapshot/';
 
-  FPCBINARIES           = FPCBASESVNURL + '/svn/fpcbuild';
 
   PACKAGESLOCATION      = 'packages.fppkg';
   PACKAGESCONFIGDIR     = 'fpcpkgconfig';
@@ -101,20 +100,14 @@ const
   REVINCFILENAME        = 'revision.inc';
 
   {$IFDEF WINDOWS}
-  //FPC prebuilt binaries of the GNU Binutils
-  PREBUILTBINUTILSURL      = FPCBINARIES + '/binaries/i386-win32';
-  PREBUILTBINUTILSURLWINCE = FPCBINARIES + '/tags/release_3_0_4/install/crossbinwce';
+  PREBUILTBINUTILSURLWINCE = FPCBINARIES+'/install/crossbinwce';
   {$ENDIF}
 
-  LAZARUSBINARIES = FPCBASESVNURL + '/svn/lazarus/binaries';
-
-  CHM_URL_LATEST_SVN = LAZARUSBINARIES + '/docs/chm';
-
   {$ifdef win64}
-  OPENSSL_URL_LATEST_SVN = LAZARUSBINARIES + '/x86_64-win64/openssl';
+  OPENSSL_URL_LATEST = LAZARUSBINARIES + '/x86_64-win64/openssl';
   {$endif}
   {$ifdef win32}
-  OPENSSL_URL_LATEST_SVN = LAZARUSBINARIES + '/i386-win32/openssl';
+  OPENSSL_URL_LATEST = LAZARUSBINARIES + '/i386-win32/openssl';
   {$endif}
 
   {$IFDEF DEBUG}
@@ -129,10 +122,12 @@ const
   //NASMWIN64URL='https://www.nasm.us/pub/nasm/releasebuilds/2.13/win64/nasm-2.13-win64.zip';
   NASMWIN32URL='https://www.nasm.us/pub/nasm/releasebuilds/2.14/win32/nasm-2.14-win32.zip';
   NASMWIN64URL='https://www.nasm.us/pub/nasm/releasebuilds/2.14/win64/nasm-2.14-win64.zip';
-  NASMFPCURL=FPCBINARIES + '/trunk/install/crossbinmsdos/nasm.exe';
+  NASMFPCURL=FPCBINARIES+'/install/crossbinmsdos/nasm.exe';
 
   GITREPO='https://github.com/LongDirtyAnimAlf';
   FPCUPGITREPO=GITREPO+'/fpcupdeluxe';
+
+  FPCGITMIRRORREPO='https://github.com/fpc';
 
   BOOTSTRAPPERVERSION='bootstrappers_v1.0';
   FPCUPGITREPOBOOTSTRAPPER=FPCUPGITREPO+'/releases/download/'+BOOTSTRAPPERVERSION;
@@ -605,6 +600,7 @@ type
 implementation
 
 uses
+  StrUtils,
   {$ifdef LCL}
   //For messaging to MainForm: no writeln
   Forms,
@@ -1082,7 +1078,7 @@ begin
     {$endif}
 
     // Get patch binary from default binutils URL
-    aURL:=FPCBINARIES+'/tags/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll])+'/install/binw32/';
+    aURL:=FPCGITLABBINARIES+'/-/raw/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll])+'/install/binw32/';
 
     OperationSucceeded:=false;
     aLocalClientBinary:=FPatchCmd;
@@ -1090,16 +1086,8 @@ begin
       aLocalClientBinary:=IncludeTrailingPathDelimiter(FMakeDir) + FPatchCmd;
     if Not FileExists(aLocalClientBinary) then
     begin
-      if SVNClient.ValidClient then
-        OperationSucceeded:=SimpleExportFromSVN('CheckAndGetTools',aURL+'patch.exe',ExcludeTrailingPathDelimiter(FMakeDir));
-      if (NOT OperationSucceeded) then
-        OperationSucceeded:=GetFile(aURL+'patch.exe',IncludeTrailingPathDelimiter(FMakeDir) + 'patch.exe');
-
-      OperationSucceeded:=false;
-      if SVNClient.ValidClient then
-        OperationSucceeded:=SimpleExportFromSVN('CheckAndGetTools',aURL+'patch.exe.manifest',ExcludeTrailingPathDelimiter(FMakeDir));
-      if (NOT OperationSucceeded) then
-        OperationSucceeded:=GetFile(aURL+'patch.exe.manifest',IncludeTrailingPathDelimiter(FMakeDir) + 'patch.exe.manifest');
+      GetFile(aURL+'patch.exe',IncludeTrailingPathDelimiter(FMakeDir) + 'patch.exe');
+      GetFile(aURL+'patch.exe.manifest',IncludeTrailingPathDelimiter(FMakeDir) + 'patch.exe.manifest');
     end;
 
     // do not fail
@@ -1542,12 +1530,10 @@ end;
 procedure TInstaller.CreateBinutilsList(aVersion:string);
 {$ifdef MSWINDOWS}
 const
-  SourceURL_gdb_default = LAZARUSBINARIES+'/i386-win32/gdb/bin/';
-  SourceURL64_gdb_default = LAZARUSBINARIES+'/x86_64-win64/gdb/bin/';
-  SourceURL_QT = LAZARUSBINARIES+'/i386-win32/qt/';
-  SourceURL_QT5 = LAZARUSBINARIES+'/i386-win32/qt5/';
-  //SourceURL_gdb = FPCUPGITREPO+'/releases/download/gdb/';
-  //SourceURL64_gdb = FPCUPGITREPO+'/releases/download/gdb/';
+  SourceURL_gdb_default = FPCGITMIRRORREPO+'/LazBinaries/raw/main/i386-win32/gdb/bin/';
+  SourceURL64_gdb_default = FPCGITMIRRORREPO+'/LazBinaries/raw/main/x86_64-win64/gdb/bin/';
+  SourceURL_QT = FPCGITMIRRORREPO+'/LazBinaries/raw/main/i386-win32/qt/';
+  SourceURL_QT5 = FPCGITMIRRORREPO+'/LazBinaries/raw/main/i386-win32/qt5/';
 {$endif}
   procedure AddNewUtil(FileName, RootURL, OS: string; Category: TUtilCategory);
   var
@@ -1566,31 +1552,15 @@ var
   {$ifdef win64}
   aSourceURL64:string;
   {$endif}
-  aTag:string;
 {$endif}
 begin
   SetLength(FUtilFiles,0); //clean out any cruft
 
   {$ifdef MSWINDOWS}
 
-  // default
-  if aVersion='' then aVersion:=DEFAULTFPCVERSION;
-
-  // if Win Vista or higher: use modern (2.4.0 and higher) binutils
-  if CheckWin32Version(6,0) then
-  begin
-    if (CalculateNumericalVersion(aVersion)<CalculateFullVersion(2,4,0)) then
-       aVersion:='2.4.0';
-  end;
-
-  //trunk is special
-  if aVersion=FPCTRUNKVERSION
-     then aTag:='trunk'
-     else aTag:='tags/release_'+StringReplace(aVersion,'.','_',[rfReplaceAll]);
-
-  aSourceURL:=FPCBINARIES+'/'+aTag+'/install/binw32/';
+  aSourceURL:=FPCGITMIRRORREPO+'/FPCBuild/raw/master/install/binw32/';
   {$ifdef win64}
-  aSourceURL64:=FPCBINARIES+'/'+aTag+'/install/binw64/';
+  aSourceURL64:=FPCGITMIRRORREPO+'/FPCBuild/raw/master/install/binw64/';
   {$endif}
 
   // Common to both 32 and 64 bit windows (i.e. 32 bit files)
@@ -1610,7 +1580,7 @@ begin
   // add win32/64 gdb from lazarus
   AddNewUtil('gdb' + GetExeExt,SourceURL_gdb_default,'',ucDebugger32);
   AddNewUtil('gdb' + GetExeExt,SourceURL64_gdb_default,'',ucDebugger64);
-  AddNewUtil('libiconv-2.dll',SourceURL64_gdb_default,'',ucDebugger64);
+  //AddNewUtil('libiconv-2.dll',SourceURL64_gdb_default,'',ucDebugger64);
 
   // add win32/64 gdb from fpcup
   //AddNewUtil('i386-win32-gdb.zip',SourceURL_gdb,'',ucDebugger32);
@@ -1659,13 +1629,12 @@ begin
   AddNewUtil('gdate' + GetExeExt,aSourceURL64,'',ucBinutil);
   // just add default 64 bit debugger for all usercases as a binutil !
   AddNewUtil('gdb' + GetExeExt,SourceURL64_gdb_default,'',ucBinutil);
-  AddNewUtil('libiconv-2.dll',SourceURL64_gdb_default,'',ucBinutil);
+  //AddNewUtil('libiconv-2.dll',SourceURL64_gdb_default,'',ucBinutil);
   AddNewUtil('gecho' + GetExeExt,aSourceURL64,'',ucBinutil);
   AddNewUtil('ginstall' + GetExeExt,aSourceURL64,'',ucBinutil);
-  AddNewUtil('ginstall.exe.manifest',aSourceURL64,'',ucBinutil);
+  AddNewUtil('ginstall' + GetExeExt + '.manifest',aSourceURL64,'',ucBinutil);
   AddNewUtil('gmkdir' + GetExeExt,aSourceURL64,'',ucBinutil);
   //AddNewUtil('GoRC' + GetExeExt,aSourceURL64,'',ucBinutil);
-
   AddNewUtil('ld' + GetExeExt,aSourceURL64,'',ucBinutil);
   AddNewUtil('make' + GetExeExt,aSourceURL64,'',ucBinutil);
   AddNewUtil('mv' + GetExeExt,aSourceURL64,'',ucBinutil);
@@ -2262,27 +2231,9 @@ begin
 
       RemotePath:=FUtilFiles[Counter].RootURL + FUtilFiles[Counter].FileName;
 
-      DownloadSuccess:=false;
+      //if (FUtilFiles[Counter].FileName='libiconv-2.dll') then continue;
 
-      // FPC owned binutils are always served by SVN, so use SVN client and related.
-      if (SVNClient.ValidClient) AND (Pos(FPCBASESVNURL,RemotePath)>0) then
-      begin
-        //first check remote URL
-        DownloadSuccess:=SimpleExportFromSVN('DownloadBinUtils',RemotePath,'');
-        if DownloadSuccess then
-        begin
-          DownloadSuccess:=SimpleExportFromSVN('DownloadBinUtils',RemotePath,InstallPath);
-          DownloadSuccess:=DownloadSuccess AND FileExists(InstallPath+FUtilFiles[Counter].FileName);
-        end;
-      end;
-
-      if (FUtilFiles[Counter].FileName='libiconv-2.dll') then continue;
-
-      if (NOT DownloadSuccess) then
-      begin
-        Infoln(localinfotext+'Downloading: ' + FUtilFiles[Counter].FileName + ' with SVN failed. Now trying normal download.',etInfo);
-        DownloadSuccess:=GetFile(FUtilFiles[Counter].RootURL + FUtilFiles[Counter].FileName,InstallPath+FUtilFiles[Counter].FileName);
-      end;
+      DownloadSuccess:=GetFile(FUtilFiles[Counter].RootURL + FUtilFiles[Counter].FileName,InstallPath+FUtilFiles[Counter].FileName);
 
       if (NOT DownloadSuccess) then
       begin
@@ -2460,36 +2411,15 @@ begin
 
   Infoln(localinfotext+'No OpenSLL library files available for SSL. Going to download them.',etWarning);
 
-  if (NOT OperationSucceeded) {AND (NOT CheckWin32Version(6,2))} then
-  begin
-    if SVNClient.ValidClient then
-    begin
-      OpenSSLFileName:='libeay32.dll';
-      // First check remote URL
-      OperationSucceeded:=SimpleExportFromSVN('DownloadOpenSSL',OPENSSL_URL_LATEST_SVN+'/'+OpenSSLFileName,'');
-      // Perform download
-      if OperationSucceeded then
-        OperationSucceeded:=SimpleExportFromSVN('DownloadOpenSSL',OPENSSL_URL_LATEST_SVN+'/'+OpenSSLFileName,SafeGetApplicationPath);
-
-      OpenSSLFileName:='ssleay32.dll';
-      // First check remote URL
-      if OperationSucceeded then
-        OperationSucceeded:=SimpleExportFromSVN('DownloadOpenSSL',OPENSSL_URL_LATEST_SVN+'/'+OpenSSLFileName,'');
-      // Perform download
-      if OperationSucceeded then
-        OperationSucceeded:=SimpleExportFromSVN('DownloadOpenSSL',OPENSSL_URL_LATEST_SVN+'/'+OpenSSLFileName,SafeGetApplicationPath);
-    end;
-  end;
-
   // Direct download OpenSSL from from Lazarus binaries
-  if (NOT OperationSucceeded) AND (NOT SVNClient.ValidClient) then
+  if (NOT OperationSucceeded) then
   begin
     OpenSSLFileName:='libeay32.dll';
-    OperationSucceeded:=GetFile(OPENSSL_URL_LATEST_SVN+'/'+OpenSSLFileName,SafeGetApplicationPath+OpenSSLFileName,true,true);
+    OperationSucceeded:=GetFile(OPENSSL_URL_LATEST+'/'+OpenSSLFileName,SafeGetApplicationPath+OpenSSLFileName,true,true);
     if OperationSucceeded then
     begin
       OpenSSLFileName:='ssleay32.dll';
-      OperationSucceeded:=GetFile(OPENSSL_URL_LATEST_SVN+'/'+OpenSSLFileName,SafeGetApplicationPath+OpenSSLFileName,true,true);
+      OperationSucceeded:=GetFile(OPENSSL_URL_LATEST+'/'+OpenSSLFileName,SafeGetApplicationPath+OpenSSLFileName,true,true);
     end;
   end;
 
@@ -2498,7 +2428,7 @@ begin
   begin
     localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (DownloadOpenSSL): ';
 
-    Infoln(localinfotext+'Got OpenSLL from '+OPENSSL_URL_LATEST_SVN+'.',etWarning);
+    Infoln(localinfotext+'Got OpenSLL from '+OPENSSL_URL_LATEST+'.',etWarning);
 
     OpenSSLFileName := GetTempFileNameExt('FPCUPTMP','zip');
 
@@ -3088,16 +3018,28 @@ function TInstaller.GetSuitableRepoClient:TRepoClient;
 begin
   result:=nil;
 
+  // Do we need a GIT client or nothing when we need a zip archive from a GIT repo
+  if result=nil then
+  begin
+    if ( AnsiContainsText(FURL,'github.com') OR AnsiContainsText(FURL,'gitlab.com') ) then
+    begin
+      if AnsiContainsText(FURL,'/archive/') then
+        exit //// We do NOT need any repo client !!
+      else
+        result:=GitClient; //We need GIT
+    end;
+  end;
+
+  // Do we need GIT more
+  if result=nil then if DirectoryExists(IncludeTrailingPathDelimiter(FSourceDirectory)+'.git') then result:=GitClient;
+  if result=nil then if ( (AnsiEndsText('.git',FURL)) OR (AnsiEndsText('.git/',FURL)) ) then result:=GitClient;
+
   // Do we need SVN
   if result=nil then if DirectoryExists(IncludeTrailingPathDelimiter(FSourceDirectory)+'.svn') then result:=SVNClient;
   if result=nil then if (Pos(SVNBASEHTTP,LowerCase(FURL))>0) then result:=SVNClient;
   if result=nil then if (Pos('http://svn.',LowerCase(FURL))=1) then result:=SVNClient;
   if result=nil then if (Pos(SVNBASESVN,LowerCase(FURL))>0) then result:=SVNClient;
 
-  // Do we need GIT
-  if result=nil then if DirectoryExists(IncludeTrailingPathDelimiter(FSourceDirectory)+'.git') then result:=GitClient;
-  if result=nil then if ( {(Pos('github',LowerCase(FURL))>0) OR} (Pos('.GIT',UpperCase(FURL))>0) ) then result:=GitClient;
-  if result=nil then if (Pos('gitlab.com/freepascal.org',LowerCase(FURL))>0) then result:=GitClient;
 
   // Do we need HG
   if result=nil then if ( (Pos('hg.code.sf.net',LowerCase(FURL))>0) ) then result:=HGClient;
