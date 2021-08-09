@@ -18,38 +18,28 @@ jobs:
         config:
           - os: windows-latest
             name: 'Windows 32'
-            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/1.8.2z.003/fpclazup-i386-win32.exe'
-            fpcup-opt: '--lazrevision=65500'
-            fpc-url: 'https://svn.freepascal.org/svn/fpc/tags/release_3_2_2'
-            laz-url: 'trunk'
-
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.0.0d/fpclazup-i386-win32.exe'
+            fpcup-opt: '--fpcVersion="stable.gitlab" --lazVersion="trunk.gitlab"'
+            
           - os: windows-latest
             name: 'Windows 64'
-            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/1.8.2z.003/fpclazup-x86_64-win64.exe'
-            fpcup-opt: '--lazrevision=65500'
-            fpc-url: 'https://svn.freepascal.org/svn/fpc/tags/release_3_2_2'
-            laz-url: 'trunk'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.0.0d/fpclazup-x86_64-win64.exe'
+            fpcup-opt: '--fpcVersion="stable.gitlab" --lazVersion="trunk.gitlab"'
 
           - os: ubuntu-latest
             name: 'Linux 64'
-            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/1.8.2z.003/fpclazup-x86_64-linux'
-            fpcup-opt: '--lazrevision=65500'
-            fpc-url: 'https://svn.freepascal.org/svn/fpc/tags/release_3_2_2'
-            laz-url: 'trunk'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.0.0d/fpclazup-x86_64-linux'
+            fpcup-opt: '--fpcVersion="stable.gitlab" --lazVersion="trunk.gitlab"'
 
           - os: macos-latest
             name: 'MacOS 64'
-            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/1.8.2z.003/fpclazup-x86_64-darwin'
-            fpcup-opt: '--lclplatform=cocoa --lazrevision=65500'
-            fpc-url: 'https://svn.freepascal.org/svn/fpc/tags/release_3_2_2'
-            laz-url: 'trunk'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.0.0d/fpclazup-x86_64-darwin'
+            fpcup-opt: '--fpcVersion="stable.gitlab" --lazVersion="trunk.gitlab"'
 
           - os: ubuntu-latest
             name: 'AArch64'
-            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/1.8.2z.003/fpclazup-x86_64-linux'
-            fpcup-opt: '--lazrevision=65500'
-            fpc-url: 'https://svn.freepascal.org/svn/fpc/tags/release_3_2_2'
-            laz-url: 'trunk'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.0.0d/fpclazup-x86_64-linux'
+            fpcup-opt: '--fpcVersion="stable.gitlab" --lazVersion="trunk.gitlab"'
 
     steps:
     - uses: actions/checkout@v2
@@ -64,7 +54,7 @@ jobs:
         curl --retry 5 -L -o fpcup ${{ matrix.config.fpcup-url }}
         chmod +x fpcup
         mkdir lazarus
-        ./fpcup --installdir=lazarus --fpcURL=${{ matrix.config.fpc-url }} --lazURL=${{ matrix.config.laz-url }} ${{ matrix.config.fpcup-opt }} --only=docker --noconfirm --verbose
+        ./fpcup --installdir=lazarus ${{ matrix.config.fpcup-opt }} --only=docker --noconfirm --verbose
     - name: Install AArch64 Cross Compiler
       if: matrix.config.name == 'AArch64'
       run: |
