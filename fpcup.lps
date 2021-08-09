@@ -202,7 +202,6 @@
       <Unit0>
         <Filename Value="fpcup.lpr"/>
         <IsPartOfProject Value="True"/>
-        <IsVisibleTab Value="True"/>
         <TopLine Value="134"/>
         <CursorPos X="3" Y="151"/>
         <UsageCount Value="200"/>
@@ -223,11 +222,10 @@
       <Unit3>
         <Filename Value="processutils.pas"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="3"/>
-        <TopLine Value="530"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="528"/>
         <CursorPos X="25" Y="457"/>
         <UsageCount Value="200"/>
-        <Loaded Value="True"/>
       </Unit3>
       <Unit4>
         <Filename Value="installercore.pas"/>
@@ -269,16 +267,16 @@
         <Filename Value="installeruniversal.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerUniversal"/>
-        <EditorIndex Value="1"/>
+        <EditorIndex Value="-1"/>
         <TopLine Value="2352"/>
         <CursorPos X="3" Y="2378"/>
         <UsageCount Value="200"/>
-        <Loaded Value="True"/>
       </Unit8>
       <Unit9>
         <Filename Value="fpcup.ini"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="4"/>
+        <IsVisibleTab Value="True"/>
+        <EditorIndex Value="1"/>
         <TopLine Value="21"/>
         <CursorPos Y="40"/>
         <UsageCount Value="200"/>
@@ -289,11 +287,10 @@
         <Filename Value="installermanager.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerManager"/>
-        <EditorIndex Value="2"/>
+        <EditorIndex Value="-1"/>
         <TopLine Value="1364"/>
         <CursorPos X="137" Y="1381"/>
         <UsageCount Value="200"/>
-        <Loaded Value="True"/>
       </Unit10>
       <Unit11>
         <Filename Value="fpcuputil.pas"/>
@@ -386,7 +383,7 @@
       <Unit23>
         <Filename Value="settings.ini"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="5"/>
+        <EditorIndex Value="2"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
         <DefaultSyntaxHighlighter Value="Ini"/>

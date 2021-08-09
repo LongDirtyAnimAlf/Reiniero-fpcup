@@ -2998,7 +2998,10 @@ begin
   {$ENDIF}
 
   if ((aDictionary='fpcTAG') OR (aDictionary='fpcBRANCH')) AND AnsiStartsText(FPCTRUNKBRANCH,aAlias) then result:='trunk';
+  if (aDictionary='fpcURL') AND AnsiStartsText(FPCGITLABREPO,aAlias) then result:='gitlab';
+
   if ((aDictionary='lazTAG') OR (aDictionary='lazBRANCH')) AND AnsiStartsText(LAZARUSTRUNKBRANCH,aAlias) then result:='trunk';
+  if (aDictionary='lazURL') AND AnsiStartsText(LAZARUSGITLABREPO,aAlias) then result:='gitlab';
 
   if (Length(result)=0) then
   begin

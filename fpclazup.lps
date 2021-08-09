@@ -198,8 +198,7 @@
       <Unit0>
         <Filename Value="fpclazup.lpr"/>
         <IsPartOfProject Value="True"/>
-        <TopLine Value="142"/>
-        <CursorPos X="9" Y="170"/>
+        <IsVisibleTab Value="True"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
       </Unit0>
@@ -229,57 +228,51 @@
         <Filename Value="installercore.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerCore"/>
-        <EditorIndex Value="5"/>
+        <EditorIndex Value="-1"/>
         <TopLine Value="55"/>
         <CursorPos X="20" Y="76"/>
         <UsageCount Value="200"/>
-        <Loaded Value="True"/>
       </Unit4>
       <Unit5>
         <Filename Value="installerfpc.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerFpc"/>
-        <EditorIndex Value="6"/>
+        <EditorIndex Value="-1"/>
         <TopLine Value="3332"/>
         <CursorPos X="20" Y="3341"/>
         <UsageCount Value="200"/>
-        <Loaded Value="True"/>
       </Unit5>
       <Unit6>
         <Filename Value="installerlazarus.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerLazarus"/>
-        <EditorIndex Value="7"/>
+        <EditorIndex Value="-1"/>
         <TopLine Value="1527"/>
         <CursorPos X="20" Y="1544"/>
         <UsageCount Value="200"/>
-        <Loaded Value="True"/>
       </Unit6>
       <Unit7>
         <Filename Value="installerhelp.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerHelp"/>
-        <EditorIndex Value="8"/>
+        <EditorIndex Value="-1"/>
         <TopLine Value="205"/>
         <CursorPos X="20" Y="233"/>
         <UsageCount Value="200"/>
-        <Loaded Value="True"/>
       </Unit7>
       <Unit8>
         <Filename Value="installeruniversal.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerUniversal"/>
-        <IsVisibleTab Value="True"/>
-        <EditorIndex Value="3"/>
-        <TopLine Value="3039"/>
-        <CursorPos Y="3056"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="2954"/>
+        <CursorPos X="65" Y="3003"/>
         <UsageCount Value="200"/>
-        <Loaded Value="True"/>
       </Unit8>
       <Unit9>
         <Filename Value="fpcup.ini"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="11"/>
+        <EditorIndex Value="1"/>
         <TopLine Value="10"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
@@ -289,11 +282,10 @@
         <Filename Value="installermanager.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerManager"/>
-        <EditorIndex Value="1"/>
+        <EditorIndex Value="-1"/>
         <TopLine Value="280"/>
         <CursorPos X="47" Y="304"/>
         <UsageCount Value="200"/>
-        <Loaded Value="True"/>
       </Unit10>
       <Unit11>
         <Filename Value="m_crosswin64.pas"/>
@@ -323,11 +315,9 @@
       <Unit14>
         <Filename Value="commandline.pas"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="4"/>
-        <TopLine Value="63"/>
+        <EditorIndex Value="-1"/>
         <CursorPos X="68" Y="80"/>
         <UsageCount Value="200"/>
-        <Loaded Value="True"/>
       </Unit14>
       <Unit15>
         <Filename Value="hgclient.pas"/>
@@ -348,11 +338,10 @@
       <Unit17>
         <Filename Value="gitclient.pas"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="10"/>
+        <EditorIndex Value="-1"/>
         <TopLine Value="56"/>
         <CursorPos X="17" Y="73"/>
         <UsageCount Value="200"/>
-        <Loaded Value="True"/>
       </Unit17>
       <Unit18>
         <Filename Value="m_freebsd_to_linux386.pas"/>
@@ -389,7 +378,7 @@
       <Unit22>
         <Filename Value="settings.ini"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="12"/>
+        <EditorIndex Value="2"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
         <DefaultSyntaxHighlighter Value="Ini"/>
@@ -538,7 +527,7 @@
       <Unit41>
         <Filename Value="revision.inc"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="13"/>
+        <EditorIndex Value="3"/>
         <CursorPos Y="4"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
@@ -564,11 +553,10 @@
       <Unit45>
         <Filename Value="fpcuputil.pas"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="9"/>
-        <TopLine Value="85"/>
-        <CursorPos X="30" Y="93"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="84"/>
+        <CursorPos Y="101"/>
         <UsageCount Value="176"/>
-        <Loaded Value="True"/>
       </Unit45>
       <Unit46>
         <Filename Value="dcpcrypt\Ciphers\dcpdes.pas"/>
