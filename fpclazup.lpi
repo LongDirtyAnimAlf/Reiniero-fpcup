@@ -430,7 +430,7 @@ end;"/>
     </PublishOptions>
     <RunParams>
       <local>
-        <CommandLineParams Value="--installdir=&quot;C:\fpcupsystems\yolo&quot; --fpcVersion=&quot;3.2.0&quot; --lazVersion=&quot;2.0.10&quot;"/>
+        <CommandLineParams Value="--installdir=&quot;C:\fpcupsystems\yolo&quot; --fpcURL=&quot;https://gitlab.com/freepascal.org/fpc/source.git&quot; --fpcbranch=&quot;release_3_2_2_rc1&quot;"/>
         <LaunchingApplication PathPlusParams="C:\WINDOWS\system32\cmd.exe /C ${TargetCmdLine}"/>
       </local>
       <FormatVersion Value="2"/>
@@ -442,7 +442,7 @@ end;"/>
         </Mode0>
         <Mode1 Name="docker">
           <local>
-            <CommandLineParams Value="--installdir=&quot;C:\fpcupsystems\yolo&quot; --fpcVersion=&quot;3.2.0&quot; --lazVersion=&quot;2.0.10&quot;"/>
+            <CommandLineParams Value="--installdir=&quot;C:\fpcupsystems\yolo&quot; --fpcURL=&quot;https://gitlab.com/freepascal.org/fpc/source.git&quot; --fpcbranch=&quot;release_3_2_2_rc1&quot;"/>
             <LaunchingApplication PathPlusParams="C:\WINDOWS\system32\cmd.exe /C ${TargetCmdLine}"/>
           </local>
         </Mode1>

@@ -43,24 +43,27 @@ begin
   writeln('Options are not required; they include:');
   writeln(' help                  Show this text');
   writeln('');
+  writeln(' fpcURL=<URL>          Repo URL from which to download');
+  writeln('                       Accepts shortcuts: ');
+  writeln('                       '+installerUniversal.GetAlias('fpcURL','list'));
+  {$ifndef FPCONLY}
+  writeln(' lazURL=<URL>          Repo URL from which to download');
+  writeln('                       Accepts shortcuts: ');
+  writeln('                       '+installerUniversal.GetAlias('lazURL','list'));
+  {$endif}
   writeln(' fpcVersion=<version>  FPC version to use; default: stable');
   writeln('                       Accepts shortcuts: ');
   writeln('                       '+installerUniversal.GetAlias('fpcBRANCH','list'));
   writeln('                       '+installerUniversal.GetAlias('fpcTAG','list'));
-  writeln(' fpcURL=<URL>          SVN URL from which to download; default: 3.2.2:');
-  writeln('                       http://svn.freepascal.org/svn/fpc/branches/3_2_2');
-  writeln('                       Accepts shortcuts: ');
-  writeln('                       '+installerUniversal.GetAlias('fpcURL','list'));
   {$ifndef FPCONLY}
   writeln(' lazVersion=<version>  Lazarus version to use; default: stable');
   writeln('                       Accepts shortcuts: ');
   writeln('                       '+installerUniversal.GetAlias('lazBRANCH','list'));
   writeln('                       '+installerUniversal.GetAlias('lazTAG','list'));
-  writeln(' lazURL=<URL>          SVN URL from which to download; default: 2.0.12');
-  writeln('                       trunk (newest version):');
-  writeln('                       http://svn.freepascal.org/svn/lazarus/trunk');
-  writeln('                       Accepts shortcuts: ');
-  writeln('                       '+installerUniversal.GetAlias('lazURL','list'));
+  {$endif}
+  writeln(' fpcBranch<name>       Get desired FPC branch/tag <name>');
+  {$ifndef FPCONLY}
+  writeln(' lazBranch=<name>      Get desired Lazarus branch/tag <name>');
   {$endif}
   writeln(' cputarget=<name>      CPU target for cross_compiling.');
   writeln('                       <name> has to be one of the following:');
@@ -140,10 +143,6 @@ begin
   writeln('                       path is used). However, if installdir is specified,');
   writeln('                       the pcp path will be below it.');
   {$endif}
-  writeln(' fpcrevision=<number>  Revert to FPC SVN revision <number>');
-  {$ifndef FPCONLY}
-  writeln(' lazrevision=<number>  Revert to Lazarus SVN revision <number>');
-  {$endif}
   writeln(' httpproxy=<username:password@host:port> username, password: optional');
   writeln(' httpproxy=<http://username:password@host:port> username, password: optional');
   writeln('                       Use HTTP proxy for http downloads,');
@@ -158,7 +157,7 @@ begin
   writeln(' inisection=<sec>      Section name to be used if an ini file is specified.');
   writeln('                       If not given, use [General]');
   writeln(' keeplocalchanges      Keep locally modified files (normally these would be');
-  writeln('                       backed up as .diff files before doing svn revert.');
+  writeln('                       backed up as .diff files before doing repo revert.');
   writeln(' reapplylocalchanges   Back up locally modified files into .diff file and');
   writeln('                       reapply the diff with patch or command specified in ');
   writeln('                       parameter patchcmd.');
@@ -195,10 +194,8 @@ begin
   {$endif}
   writeln(' clean                 Remove files created with build. ');
   writeln('                       Can be combined with skip and only options.');
-  writeln(' svnexe=<path>         Full path to svn executable (handy if you have');
-  writeln('                       multiple versions.');
   writeln(' patchcmd              Command to use to reapply local changes backed up with');
-  writeln('                       svn diff command. The diff file is passed as the only');
+  writeln('                       repo diff command. The diff file is passed as the only');
   writeln('                       parameter. Add any extra paremeters needed.');
   writeln('                       Default: "patch" ');
   writeln(' uninstall             Uninstall sources and all generated files');
@@ -213,13 +210,13 @@ begin
   writeln('                       fpcup.log in the current directory.');
   writeln(' getfullrepo           Get full repositories (enabled by default, so a dummy).');
   writeln('                       Depreciated, still here for backward compatibility');
-  writeln(' getfilesonly          Just get files. No repos. Uses "svn export"');
+  writeln(' getfilesonly          Just get files. No repos. Uses "repo export"');
   writeln(' disablejobs           Do not use (parallel) jobs when building FPC.');
   writeln(' usewget               Use wget on Linux as downloader.');
   writeln(' includehelp           Include help. Will be time and space consuming.');
   writeln(' fpcsplit              Use different directory for source and binaries.');
   writeln(' noconfirm             No confirmation asked. For batch operation.');
-  writeln(' verbose               Show output from svn and make.');
+  writeln(' verbose               Show output from all commands.');
   writeln(' usegitlab             Use Gitlab as source.');
   writeln(' version               Show version info and quit.');
   writeln('');
@@ -232,10 +229,10 @@ begin
   writeln('Please check log for details. Possible troubleshooting steps:');
   writeln('First action :');
   writeln('Run fpcup again with --verbose and check for make, lazbuild errors etc.');
-  writeln('Run fpcup again also in case of incomple download due to SVN errors.');
+  writeln('Run fpcup again also in case of incomple download due to repo errors.');
   writeln;
   {$IFNDEF MSWINDOWS}
-  writeln('- make sure there''s a valid SVN executable in your path.');
+  writeln('- make sure there''s a valid git executable in your path.');
   writeln('- make sure the GNU binutils (make etc), windres, subversion client are installed');
   writeln('  e.g. on Debian/Ubuntu: aptitude install build-essential mingw32-binutils subversion ');
   writeln('  ln -s /usr/bin/i586-mingw32msvc-windres /usr/bin/windres');

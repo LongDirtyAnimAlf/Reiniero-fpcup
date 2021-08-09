@@ -3040,10 +3040,16 @@ begin
   try
     ini.ReadSection(ALIASMAGIC+aDictionary,sl);
     if Uppercase(aKeyWord)='LIST' then
-      result:=sl.CommaText
+    begin
+      result:=sl.CommaText;
+      if (aDictionary='fpcURL') OR ((aDictionary='lazURL')) then result:=result+',gitlab';
+    end
     else
     begin
       result:=ini.ReadString(ALIASMAGIC+aDictionary,aKeyWord,'');
+
+      if (aDictionary='fpcURL') AND (aKeyWord='gitlab') then result:=FPCGITLABREPO;
+      if (aDictionary='lazURL') AND (aKeyWord='gitlab') then result:=LAZARUSGITLABREPO;
 
       if (result='') then
       begin

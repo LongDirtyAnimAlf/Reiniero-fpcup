@@ -272,8 +272,6 @@ type
     property Context: boolean read FContext write FContext; //Name of the shortcut that points to the fpcup-installed Lazarus
     {$endif}
     property ShortCutNameFpcup:string read FShortCutNameFpcup write FShortCutNameFpcup; //Name of the shortcut that points to fpcup
-    // Full path+filename of SVN executable. Use empty to search for default locations.
-    property SVNExecutable: string read FSVNExecutable write FSVNExecutable;
     // Options that are to be saved in shortcuts/batch file/shell scripts.
     // Excludes temporary options like --verbose
     property PersistentOptions: string read FPersistentOptions write FPersistentOptions;
@@ -1625,7 +1623,6 @@ begin
     FInstaller.FPCSourceDir:=LocalFPCSourceDir;
     FInstaller.FPCInstallDir:=FParent.FPCInstallDirectory;
     FInstaller.TempDirectory:=FParent.TempDirectory;
-    if (Length(FParent.SVNExecutable)>0) then FInstaller.SVNClient.RepoExecutable:=FParent.SVNExecutable;
     {$IFDEF MSWINDOWS}
     FInstaller.SVNClient.ForceLocal:=FParent.ForceLocalRepoClient;
     FInstaller.GitClient.ForceLocal:=FParent.ForceLocalRepoClient;
