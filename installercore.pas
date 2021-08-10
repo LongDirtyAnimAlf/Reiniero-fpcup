@@ -183,6 +183,18 @@ const
   FPCHASHMAGIC   = 'FPC new GIT hash: ';
   LAZHASHMAGIC   = 'Lazarus new GIT hash: ';
 
+  FPCURLLOOKUPMAGIC            = 'fpcURL';
+  FPCTAGLOOKUPMAGIC            = 'fpcTAG';
+  FPCBRANCHLOOKUPMAGIC         = 'fpcBRANCH';
+
+  LAZARUSURLLOOKUPMAGIC        = 'lazURL';
+  LAZARUSTAGLOOKUPMAGIC        = 'lazTAG';
+  LAZARUSBRANCHLOOKUPMAGIC     = 'lazBRANCH';
+
+  GITLABEXTENSION              = '.gitlab';
+
+  DIFFMAGIC                    = 'revhash_';
+
   //Sequence contants for statemachine
 
   _SEP                     = ';';
@@ -1680,11 +1692,15 @@ end;
 
 function TInstaller.DownloadFromBase(aClient:TRepoClient; aModuleName: string; var aBeforeRevision,
   aAfterRevision: string; UpdateWarnings: TStringList): boolean;
+const
+  MAXFPCREVISION     = '49634';
+  MAXLAZARUSREVISION = '65500';
 var
   ReturnCode: integer;
   DiffFile,DiffFileCorrectedPath: String;
   LocalPatchCmd : string;
   s,Output:string;
+
 begin
   Result := false;
 
@@ -1710,6 +1726,8 @@ begin
   if ((aModuleName=_FPC) OR (aModuleName=_LAZARUS)) AND (aClient is TGitClient)  then
   begin
     Output:=(aClient as TGitClient).GetSVNRevision;
+    if (aModuleName=_FPC) AND (Output=MAXFPCREVISION) then Output:='';
+    if (aModuleName=_LAZARUS) AND (Output=MAXLAZARUSREVISION) then Output:='';
     if (Length(Output)>0) then
       aBeforeRevision := Output
     else
@@ -1722,7 +1740,7 @@ begin
 
   if Assigned(UpdateWarnings) then
   begin
-    if aBeforeRevision<>FRET_UNKNOWN_REVISION then
+    if (aBeforeRevision<>FRET_UNKNOWN_REVISION) then
     begin
       aClient.LocalModifications(UpdateWarnings); //Get list of modified files
       if UpdateWarnings.Count > 0 then
@@ -1730,7 +1748,7 @@ begin
         UpdateWarnings.Insert(0, {BeginSnippet+' '+}aModuleName + ': WARNING: found modified files.');
         if FKeepLocalChanges=false then
         begin
-          DiffFile:=IncludeTrailingPathDelimiter(FSourceDirectory) + 'REV' + aBeforeRevision + '.diff';
+          DiffFile:=IncludeTrailingPathDelimiter(FSourceDirectory) + DIFFMAGIC + aBeforeRevision + '.diff';
           CreateStoreRepositoryDiff(DiffFile, UpdateWarnings,aClient);
           UpdateWarnings.Add({BeginSnippet+' '+}aModuleName + ': reverting to original before updating.');
           aClient.Revert; //Remove local changes
@@ -1745,20 +1763,17 @@ begin
   aClient.DesiredTag := FTAG; //We want to update to this specific branch
 
   Output:=localinfotext+'Running '+UpperCase(aClient.RepoExecutableName)+' checkout or update';
-  if Length(aClient.DesiredRevision)>0 then
+  if (Length(aClient.DesiredRevision)>0) then
   begin
     Output:=Output+' of revision '+aClient.DesiredRevision;
-    if ((aModuleName=_FPC) OR (aModuleName=_LAZARUS)) AND (aClient is TGitClient)  then
+    if ( ((aModuleName=_FPC) OR (aModuleName=_LAZARUS)) AND (aClient is TGitClient) ) then
     begin
       // A normal (short) githash is 7 or longer
       if (Length(FDesiredRevision)<7) then
       begin
         s:=(aClient as TGitClient).GetGitHash;
-        if (Length(s)>0) then
-        begin
-          Output:=Output+' with GIT hash '+s;
-          aClient.DesiredRevision := s;
-        end;
+        if (Length(s)>0) then Output:=Output+' with GIT hash '+s;
+        aClient.DesiredRevision := s;
       end;
 
     end;
@@ -1799,14 +1814,27 @@ begin
         if ((aModuleName=_FPC) OR (aModuleName=_LAZARUS)) AND (aClient is TGitClient)  then
         begin
           Output:=(aClient as TGitClient).GetSVNRevision;
+          if (aModuleName=_FPC) AND (Output=MAXFPCREVISION) then Output:='';
+          if (aModuleName=_LAZARUS) AND (Output=MAXLAZARUSREVISION) then Output:='';
           if (Length(Output)>0) then
           begin
-            aAfterRevision:=Output;
+            if (Length(FDesiredRevision)>0) AND (Length(FDesiredRevision)<7) AND (Output<>FDesiredRevision) then
+            begin
+              aClient.DesiredRevision:=FDesiredRevision;
+              s:=(aClient as TGitClient).GetGitHash;
+              if (Length(s)>0) then
+              begin
+                aClient.DesiredTag := s;
+                aClient.CheckOutOrUpdate;
+              end;
+            end;
+            Output:=(aClient as TGitClient).GetSVNRevision;
+            if (Length(Output)>0) then aAfterRevision:=Output;
           end;
         end;
       end;
 
-      if (aClient.LocalRevision<>FRET_UNKNOWN_REVISION) and (aBeforeRevision <> aClient.LocalRevision) then
+      if (aClient.LocalRevision<>FRET_UNKNOWN_REVISION) and (aBeforeRevision <> aAfterRevision) then
         FRepositoryUpdated := true
       else
         FRepositoryUpdated := false;
@@ -1940,7 +1968,7 @@ begin
       UpdateWarnings.Insert(0, {BeginSnippet+' '+}aModuleName + ': WARNING: found modified files.');
       if FKeepLocalChanges=false then
       begin
-        DiffFile:=IncludeTrailingPathDelimiter(FSourceDirectory) + 'REV' + aBeforeRevision + '.diff';
+        DiffFile:=IncludeTrailingPathDelimiter(FSourceDirectory) + DIFFMAGIC + aBeforeRevision + '.diff';
         CreateStoreRepositoryDiff(DiffFile, UpdateWarnings,FSVNClient);
         UpdateWarnings.Add({BeginSnippet+' '+}aModuleName + ': WARNING: reverting before updating.');
         SVNClient.Revert; //Remove local changes
@@ -3056,6 +3084,7 @@ function TInstaller.CheckModule(ModuleName: string): boolean;
 var
   aRepoClient:TRepoClient;
   aEvent:TEventType;
+  RepoExists: boolean;
 begin
   result:=true;
 
@@ -3097,7 +3126,14 @@ begin
   aRepoClient.LocalRepository  := FSourceDirectory;
   aRepoClient.Repository       := FURL;
 
-  aRepoClient.LocalRepositoryExists;
+  RepoExists:=aRepoClient.LocalRepositoryExists;
+
+  if (NOT RepoExists) then
+  begin
+    result:=true;
+    exit;
+  end;
+
   result:=(aRepoClient.ReturnCode<>FRET_LOCAL_REMOTE_URL_NOMATCH);
 
   if result then

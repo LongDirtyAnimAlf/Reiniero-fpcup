@@ -4728,6 +4728,9 @@ var
   aRepoClient    : TRepoClient;
   s              : string;
   SourceVersion  : string;
+  SourceInfo     : TRevision;
+  FilePath       : string;
+  aIndex         : integer;
 begin
   result:=inherited;
   result:=InitModule;
@@ -4794,13 +4797,19 @@ begin
       s:=GetRevisionFromVersion(ModuleName,SourceVersion);
       if (Length(s)>0) then
       begin
-        FActualRevision:=s;
-        FPreviousRevision:=s;
+        //FActualRevision:=s;
+        //FPreviousRevision:=s;
       end;
     end
     else
     begin
       Infoln(infotext+'Could not get version of ' + ModuleName + ' sources. Expect severe errors.',etError);
+    end;
+
+    if Assigned(aRepoClient) then
+    begin
+      if (aRepoClient.ClassType=FSVNClient.ClassType) then SourceInfo.SVNRevision:=aRepoClient.LocalRevision;
+      if (aRepoClient.ClassType=FGitClient.ClassType) then SourceInfo.GITHash:=aRepoClient.LocalRevision;
     end;
 
     if FRepositoryUpdated then
@@ -4827,10 +4836,15 @@ begin
       end;
       UpdateWarnings.Add(FPCDATEMAGIC+DateTimeToStr(now));
       if Assigned(aRepoClient) then UpdateWarnings.Add(ModuleName+' URL: '+aRepoClient.Repository);
-      UpdateWarnings.Add(ModuleName+' previous revision: '+PreviousRevision);
-      UpdateWarnings.Add(FPCREVMAGIC+ActualRevision);
-      if (Assigned(aRepoClient) AND (aRepoClient.ClassType=FGitClient.ClassType)) then
-        UpdateWarnings.Add(FPCHASHMAGIC+aRepoClient.LocalRevision);
+      UpdateWarnings.Add(ModuleName+' previous rev/hash: '+PreviousRevision);
+      if Length(SourceInfo.SVNRevision)>0 then
+        UpdateWarnings.Add(FPCREVMAGIC+SourceInfo.SVNRevision)
+      else
+      if Length(SourceInfo.GITHash)>0 then
+        UpdateWarnings.Add(FPCHASHMAGIC+SourceInfo.GITHash)
+      else
+      if Length(ActualRevision)>0 then
+        UpdateWarnings.Add(FPCREVMAGIC+ActualRevision);
       UpdateWarnings.Add('');
       UpdateWarnings.SaveToFile(s);
     finally
@@ -4840,6 +4854,29 @@ begin
     CreateRevision(ModuleName,ActualRevision);
 
     if (SourceVersion<>'0.0.0') then PatchModule(ModuleName);
+
+    if (NOT Ultibo) AND ( (SourceVersion<>'0.0.0') AND (CompareVersionStrings(SourceVersion,'3.3.1')>=0) ) then
+    begin
+      FilePath:=ConcatPaths([FSourceDirectory,'compiler'])+PathDelim+'version.pas';
+      if (FileExists(FilePath)) then
+      begin
+        UpdateWarnings:=TStringList.Create;
+        try
+          UpdateWarnings.LoadFromFile(FilePath);
+          aIndex:=StringListContains(UpdateWarnings,'+''-r''+{$i revision.inc}');
+          if (aIndex<>-1) then
+          begin
+            s:=UpdateWarnings.Strings[aIndex];
+            s:=StringReplace(s,'-r','-',[]);
+            UpdateWarnings.Strings[aIndex]:=s;
+            UpdateWarnings.SaveToFile(FilePath);
+          end;
+        finally
+          UpdateWarnings.Free;
+        end;
+      end;
+    end;
+
   end
   else
   begin

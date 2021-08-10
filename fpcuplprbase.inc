@@ -45,11 +45,11 @@ begin
   writeln('');
   writeln(' fpcURL=<URL>          Repo URL from which to download');
   writeln('                       Accepts shortcuts: ');
-  writeln('                       '+installerUniversal.GetAlias('fpcURL','list'));
+  writeln('                       '+installerUniversal.GetAlias('fpcURL','list')+',gitlab');
   {$ifndef FPCONLY}
   writeln(' lazURL=<URL>          Repo URL from which to download');
   writeln('                       Accepts shortcuts: ');
-  writeln('                       '+installerUniversal.GetAlias('lazURL','list'));
+  writeln('                       '+installerUniversal.GetAlias('lazURL','list')+',gitlab');
   {$endif}
   writeln(' fpcVersion=<version>  FPC version to use; default: stable');
   writeln('                       Accepts shortcuts: ');
