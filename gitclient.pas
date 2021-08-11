@@ -416,7 +416,11 @@ begin
 
     //if (FReturnCode = 0) then
     begin
-      Command := ' checkout --force '+DesiredTag;
+      Command:='';
+      if (Length(DesiredTag)>0) then Command := DesiredTag;
+      if (Length(DesiredBranch)>0) then Command := DesiredBranch;
+      if (Length(Command)=0) then Command := '$(git log --branches -1 --pretty=format:"%H")';
+      Command:=' checkout --force '+Command;
       FReturnCode := TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + command, LocalRepository, Output, Verbose);
       FReturnOutput := Output;
     end;
@@ -489,8 +493,8 @@ begin
   if NOT ValidClient then exit;
 
   // Actual clone/checkout
-  Command := ' remote set-url origin ' +  Repository + ' ' + LocalRepository;
-  FReturnCode := TInstaller(Parent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + Command, Output, Verbose);
+  Command := ' remote set-url origin ' +  Repository;
+  FReturnCode := TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + Command, LocalRepository, Output, Verbose);
 
   // If command fails, e.g. due to misconfigured firewalls blocking ICMP etc, retry a few times
   RetryAttempt := 1;
@@ -501,9 +505,15 @@ begin
     while (FReturnCode <> 0) and (RetryAttempt < ERRORMAXRETRIES) do
     begin
       Sleep(500); //Give everybody a chance to relax ;)
-      FReturnCode := TInstaller(Parent).ExecuteCommand(DoubleQuoteIfNeeded(FRepoExecutable) + Command, Output, Verbose); //attempt again
+      FReturnCode := TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + Command, LocalRepository, Output, Verbose);
       RetryAttempt := RetryAttempt + 1;
     end;
+  end;
+
+  if (FReturnCode = 0) then
+  begin
+    Command := ' fetch --tags';
+    FReturnCode := TInstaller(Parent).ExecuteCommandInDir(DoubleQuoteIfNeeded(FRepoExecutable) + command, LocalRepository, Output, Verbose);
   end;
 end;
 
