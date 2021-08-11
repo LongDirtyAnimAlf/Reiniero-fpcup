@@ -18,27 +18,27 @@ jobs:
         config:
           - os: windows-latest
             name: 'Windows 32'
-            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.0.0d/fpclazup-i386-win32.exe'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.0.1/fpclazup-i386-win32.exe'
             fpcup-opt: '--fpcVersion="stable.gitlab" --lazVersion="trunk.gitlab"'
             
           - os: windows-latest
             name: 'Windows 64'
-            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.0.0d/fpclazup-x86_64-win64.exe'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.0.1/fpclazup-x86_64-win64.exe'
             fpcup-opt: '--fpcVersion="stable.gitlab" --lazVersion="trunk.gitlab"'
 
           - os: ubuntu-latest
             name: 'Linux 64'
-            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.0.0d/fpclazup-x86_64-linux'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.0.1/fpclazup-x86_64-linux'
             fpcup-opt: '--fpcVersion="stable.gitlab" --lazVersion="trunk.gitlab"'
 
           - os: macos-latest
             name: 'MacOS 64'
-            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.0.0d/fpclazup-x86_64-darwin'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.0.1/fpclazup-x86_64-darwin'
             fpcup-opt: '--fpcVersion="stable.gitlab" --lazVersion="trunk.gitlab"'
 
           - os: ubuntu-latest
             name: 'AArch64'
-            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.0.0d/fpclazup-x86_64-linux'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.0.1/fpclazup-x86_64-linux'
             fpcup-opt: '--fpcVersion="stable.gitlab" --lazVersion="trunk.gitlab"'
 
     steps:
