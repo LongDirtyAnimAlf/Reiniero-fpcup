@@ -61,9 +61,13 @@ begin
   writeln('                       '+installerUniversal.GetAlias('lazBRANCH','list'));
   writeln('                       '+installerUniversal.GetAlias('lazTAG','list'));
   {$endif}
-  writeln(' fpcBranch<name>       Get desired FPC branch/tag <name>');
+  writeln(' fpcBranch=<name>      Get desired FPC branch/tag <name>');
   {$ifndef FPCONLY}
   writeln(' lazBranch=<name>      Get desired Lazarus branch/tag <name>');
+  {$endif}
+  writeln(' fpcRevision=<name>    Get desired FPC revision/hash <name>');
+  {$ifndef FPCONLY}
+  writeln(' lazRevision=<name>    Get desired Lazarus revision/hash <name>');
   {$endif}
   writeln(' cputarget=<name>      CPU target for cross_compiling.');
   writeln('                       <name> has to be one of the following:');

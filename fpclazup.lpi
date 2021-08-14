@@ -66,7 +66,6 @@ end;"/>
           </CodeGeneration>
           <Linking>
             <Debugging>
-              <StripSymbols Value="True"/>
               <UseExternalDbgSyms Value="True"/>
             </Debugging>
           </Linking>
@@ -430,7 +429,7 @@ end;"/>
     </PublishOptions>
     <RunParams>
       <local>
-        <CommandLineParams Value="--fpcVersion=trunk --lazVersion=trunk"/>
+        <CommandLineParams Value="--installdir=&quot;C:\fpcupsystems\yolo3&quot; --fpcsplit --fpcURL=&quot;gitlab&quot; --fpcRevision=&quot;777d536d&quot; --lazVersion=&quot;trunk.gitlab&quot;"/>
         <LaunchingApplication PathPlusParams="C:\WINDOWS\system32\cmd.exe /C ${TargetCmdLine}"/>
       </local>
       <FormatVersion Value="2"/>
@@ -442,7 +441,7 @@ end;"/>
         </Mode0>
         <Mode1 Name="docker">
           <local>
-            <CommandLineParams Value="--fpcVersion=trunk --lazVersion=trunk"/>
+            <CommandLineParams Value="--installdir=&quot;C:\fpcupsystems\yolo3&quot; --fpcsplit --fpcURL=&quot;gitlab&quot; --fpcRevision=&quot;777d536d&quot; --lazVersion=&quot;trunk.gitlab&quot;"/>
             <LaunchingApplication PathPlusParams="C:\WINDOWS\system32\cmd.exe /C ${TargetCmdLine}"/>
           </local>
         </Mode1>

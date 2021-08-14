@@ -1775,10 +1775,8 @@ begin
     FSourceDirectory:=FixPath(FSourceDirectory);
     FSourceDirectory:=ExcludeTrailingPathDelimiter(FSourceDirectory);
 
-    if FSourceDirectory<>'' then
+    if (FSourceDirectory<>'') then
     begin
-      ForceDirectoriesSafe(FSourceDirectory);
-
       // Common keywords for all repo methods
       FDesiredRevision:=GetValueFromKey('Revision',PackageSettings);
       FBranch:=GetValueFromKey('Branch',PackageSettings);

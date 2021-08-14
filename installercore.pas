@@ -1480,6 +1480,11 @@ begin
             AllThere:=false;
             break;
           end;
+          if (FileSize(InstallPath+FUtilFiles[i].FileName)=0) then
+          begin
+            AllThere:=false;
+            break;
+          end;
         end;
       end;
     end;
@@ -3066,7 +3071,7 @@ begin
   infotext:=Copy(Self.ClassName,2,MaxInt)+' (CleanModule: '+ModuleName+'): ';
   Infoln(infotext+'Entering ...',etDebug);
 
-  if not DirectoryExists(FSourceDirectory) then
+  if (not DirectoryExists(FSourceDirectory)) then
   begin
     Infoln(infotext+'No '+ModuleName+' source directory ('+FSourceDirectory+') found [yet] ... nothing to be done',etInfo);
     exit(true);
@@ -3090,6 +3095,8 @@ begin
   result:=false;
   infotext:=Copy(Self.ClassName,2,MaxInt)+' (GetModule: '+ModuleName+'): ';
   Infoln(infotext+'Entering ...',etDebug);
+
+  ForceDirectories(FSourceDirectory);
 end;
 
 function TInstaller.CheckModule(ModuleName: string): boolean;
