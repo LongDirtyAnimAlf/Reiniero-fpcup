@@ -478,26 +478,22 @@ begin
         Infoln(infotext+'Compiling LCL for ' + GetFPCTarget(false) + '/' + FLCL_Platform + ' using ' + ExtractFileName(Processor.Executable), etInfo);
 
       try
-        {$ifdef MSWindows}
-        //Prepend FPC binary directory to PATH to prevent pickup of strange tools
-        OldPath:=Processor.Environment.GetVar(PATHVARNAME);
-        s:=ExcludeTrailingPathDelimiter(FFPCCompilerBinPath);
-        if OldPath<>'' then
-           Processor.Environment.SetVar(PATHVARNAME, s+PathSeparator+OldPath)
-        else
-          Processor.Environment.SetVar(PATHVARNAME, s);
-        {$endif}
-
-        ProcessorResult:=Processor.ExecuteAndWait;
-        Result := (ProcessorResult = 0);
-        if (not Result) then
-          WritelnLog(etError,infotext+'Error compiling LCL for ' + GetFPCTarget(false) + ' ' + FLCL_Platform + LineEnding +
-            'Details: ' + FErrorLog.Text, true);
-
-        {$ifdef MSWindows}
-        Processor.Environment.SetVar(PATHVARNAME, OldPath);
-        {$endif}
-
+        try
+          {$ifdef MSWINDOWS}
+          OldPath:=GetPath;
+          SetPath(FMakeDir,true,false);
+          SetPath(FFPCCompilerBinPath,false,true);
+          {$endif MSWINDOWS}
+          ProcessorResult:=Processor.ExecuteAndWait;
+          Result := (ProcessorResult = 0);
+          if (not Result) then
+            WritelnLog(etError,infotext+'Error compiling LCL for ' + GetFPCTarget(false) + ' ' + FLCL_Platform + LineEnding +
+              'Details: ' + FErrorLog.Text, true);
+        finally
+          {$ifdef MSWINDOWS}
+          SetPath(OldPath,false,false);
+          {$endif MSWINDOWS}
+        end;
       except
         on E: Exception do
         begin
@@ -1364,9 +1360,9 @@ begin
     if Length(s)>0 then
     begin
       x:=Pos('RC',s);
-      if x>0 then
+      if (x>0) then
       begin
-        s:=Copy(s,x,MaxInt);
+        s:=Copy(s,(x+2),MaxInt);
         result:=StrToIntDef(s,-1);
       end;
     end;
@@ -2346,12 +2342,12 @@ begin
 
     if FRepositoryUpdated then
     begin
-      Infoln(infotext+ModuleName + ' was at revision: '+PreviousRevision,etInfo);
-      Infoln(infotext+ModuleName + ' is now at revision: '+ActualRevision,etInfo);
+      Infoln(infotext+ModuleName + ' was at revision/hash: '+PreviousRevision,etInfo);
+      Infoln(infotext+ModuleName + ' is now at revision/hash: '+ActualRevision,etInfo);
     end
     else
     begin
-      Infoln(infotext+ModuleName + ' is at revision: '+ActualRevision,etInfo);
+      Infoln(infotext+ModuleName + ' is at revision/hash: '+ActualRevision,etInfo);
       Infoln(infotext+'No updates for ' + ModuleName + ' found.',etInfo);
     end;
     UpdateWarnings:=TStringList.Create;
