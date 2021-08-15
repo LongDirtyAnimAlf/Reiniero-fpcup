@@ -2012,7 +2012,7 @@ begin
                 aFile:=FilesList[i];
                 aFile:=StringReplace(aFile,aName,aName+DirectorySeparator+'..',[]);
                 aFile:=SafeExpandFileName(aFile);
-                if NOT DirectoryExists(ExtractFileDir(aFile)) then ForceDirectoriesSafe(ExtractFileDir(aFile));
+                ForceDirectoriesSafe(ExtractFileDir(aFile));
                 SysUtils.RenameFile(FilesList[i],aFile);
               end;
               if (NOT CheckDirectory(aName)) then DeleteDirectory(aName,False);
@@ -2358,7 +2358,7 @@ begin
   {$endif}
 
   // Tricky: copy awgg.lpi to prevent failure of versionitis
-  ForceDirectories(Workingdir+DirectorySeparator+'src');
+  ForceDirectoriesSafe(Workingdir+DirectorySeparator+'src');
   FileUtil.CopyFile(Workingdir+DirectorySeparator+'awgg.lpi',Workingdir+DirectorySeparator+'src'+DirectorySeparator+'awgg.lpi');
   FileUtil.CopyFile(Workingdir+DirectorySeparator+'src'+DirectorySeparator+'versionitis.pas',Workingdir+DirectorySeparator+'versionitis.pas');
 

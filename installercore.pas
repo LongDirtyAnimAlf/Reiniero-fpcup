@@ -1698,7 +1698,7 @@ function TInstaller.DownloadFromBase(aClient:TRepoClient; aModuleName: string; v
   aAfterRevision: string; UpdateWarnings: TStringList): boolean;
 const
   MAXFPCREVISION      = '49634';
-  MAXFPCFIXESREVISION = '45835';
+  MAXFPCFIXESREVISION = '46749';
   MAXLAZARUSREVISION  = '65500';
 var
   ReturnCode: integer;
@@ -2172,7 +2172,7 @@ begin
         aFile:=FilesList[i];
         aFile:=StringReplace(aFile,aName,aName+DirectorySeparator+'..',[]);
         aFile:=SafeExpandFileName(aFile);
-        if NOT DirectoryExists(ExtractFileDir(aFile)) then ForceDirectoriesSafe(ExtractFileDir(aFile));
+        ForceDirectoriesSafe(ExtractFileDir(aFile));
         SysUtils.RenameFile(FilesList[i],aFile);
         {$ifdef UNIX}
         //Correct line endings
@@ -3096,7 +3096,7 @@ begin
   infotext:=Copy(Self.ClassName,2,MaxInt)+' (GetModule: '+ModuleName+'): ';
   Infoln(infotext+'Entering ...',etDebug);
 
-  ForceDirectories(FSourceDirectory);
+  ForceDirectoriesSafe(FSourceDirectory);
 end;
 
 function TInstaller.CheckModule(ModuleName: string): boolean;

@@ -221,7 +221,6 @@ begin
   writeln(' fpcsplit              Use different directory for source and binaries.');
   writeln(' noconfirm             No confirmation asked. For batch operation.');
   writeln(' verbose               Show output from all commands.');
-  writeln(' usegitlab             Use Gitlab as source.');
   writeln(' version               Show version info and quit.');
   writeln('');
   writeln('Share and enjoy!');
