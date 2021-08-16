@@ -49,8 +49,6 @@ jobs:
         sudo apt-get -m -y install libgtk2.0-dev libpango1.0-dev
     - name: Install Lazarus
       run: |
-        mkdir test
-        cd test
         curl --retry 5 -L -o fpcup ${{ matrix.config.fpcup-url }}
         chmod +x fpcup
         mkdir lazarus
