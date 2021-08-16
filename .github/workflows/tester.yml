@@ -50,6 +50,7 @@ jobs:
         sudo apt-get update
         sudo apt-get -m -y install libgtk2.0-dev libpango1.0-dev
     - name: Install Lazarus
+      uses: ./
       run: |
         mkdir test
         cd test
