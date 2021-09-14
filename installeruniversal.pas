@@ -166,6 +166,11 @@ type
     function GetModule(ModuleName: string): boolean; override;
   end;
 
+  TXTensaTools4FPCInstaller = class(TUniversalInstaller)
+  public
+    function GetModule(ModuleName: string): boolean; override;
+  end;
+
   { TMBFFreeRTOSWioInstaller }
   TMBFFreeRTOSWioInstaller = class(TUniversalInstaller)
   public
@@ -647,6 +652,9 @@ begin
 
   // Need to remember because we don't always use ProcessEx
   FPath:=ExcludeTrailingPathDelimiter(FFPCCompilerBinPath)+PathSeparator+
+  {$IFDEF MSWINDOWS}
+  FMakeDir+PathSeparator+
+  {$ENDIF MSWINDOWS}
   {$IFDEF DARWIN}
   // pwd is located in /bin ... the makefile needs it !!
   // tools are located in /usr/bin ... the makefile needs it !!
@@ -2671,6 +2679,176 @@ begin
   result:=true;
 end;
 
+function TXTensaTools4FPCInstaller.GetModule(ModuleName: string): boolean;
+var
+  idx,iassets                         : integer;
+  PackageSettings                     : TStringList;
+  aName,aRemoteURL,aContent,aVersion  : string;
+  aBinFile,aBinURL                    : string;
+  aLibFile,aLibURL                    : string;
+  ResultCode                          : longint;
+  Json                                : TJSONData;
+  Release,Asset                       : TJSONObject;
+  Assets                              : TJSONArray;
+begin
+  result:=InitModule;
+  if not result then exit;
+
+  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' ('+Copy(ClassName,2,MaxInt)+': '+ModuleName+'): ';
+
+  aBinURL:='';
+  aLibURL:='';
+
+  aBinFile:='xtensa-binutils-'+GetTargetCPUOS+'.zip';
+  aLibFile:='xtensa-libs-'+GetTargetCPUOS+'.zip';
+
+  idx:=UniModuleList.IndexOf(ModuleName);
+  if (idx>=0) then
+  begin
+    WritelnLog(localinfotext+'Getting module '+ModuleName,True);
+
+    PackageSettings:=TStringList(UniModuleList.Objects[idx]);
+
+    begin
+      aRemoteURL:=GetValueFromKey('GITURL',PackageSettings);
+      if (aRemoteURL<>'') then
+      begin
+
+        // Get latest release through api
+        aRemoteURL:=StringReplace(aRemoteURL,'//github.com','//api.github.com/repos',[]);
+        aRemoteURL:=aRemoteURL+'/releases';
+
+        aContent:=GetURLDataFromCache(aRemoteURL);
+        result:=(Length(aContent)>0);
+
+        aRemoteURL:=GetValueFromKey('GITURL',PackageSettings);
+
+        if result then
+        begin
+          result:=false;
+
+          try
+            Json:=GetJSON(aContent);
+          except
+            Json:=nil;
+          end;
+          if JSON.IsNull then exit;
+
+          try
+            for idx:=0 to Pred(Json.Count) do
+            begin
+              Release := TJSONObject(Json.Items[idx]);
+              aVersion:=Release.Get('tag_name');
+
+              Assets:=Release.Get('assets',TJSONArray(nil));
+              for iassets:=0 to Pred(Assets.Count) do
+              begin
+                Asset := TJSONObject(Assets[iassets]);
+                aName:=Asset.Get('name');
+                if (Pos(aBinFile,aName)=1) then
+                  aBinURL:=Asset.Get('browser_download_url');
+                if (Pos(aLibFile,aName)=1) then
+                  aLibURL:=Asset.Get('browser_download_url');
+                result:=( (Length(aBinURL)>0) AND (Length(aLibURL)>0) );
+                if result then break;
+              end;
+              if result then break;
+            end;
+          finally
+            Json.Free;
+          end;
+        end;
+
+        if result then
+        begin
+          FSourceDirectory:=ConcatPaths([FBaseDirectory,CROSSBINPATH,GetCPU(TCPU.xtensa)+'-'+GetOS(TOS.freertos)]);
+          if ( (NOT DirectoryExists(FSourceDirectory)) OR (DirectoryIsEmpty(FSourceDirectory)) ) then
+          begin
+            Infoln(localinfotext+'Going to download '+aVersion+' of xtensatools4fpc ['+aBinFile+'] from '+aRemoteURL,etInfo);
+            try
+              aName:=ConcatPaths([FTempDirectory,aBinFile]);
+              result:=Download(FUseWget, aBinURL, aName);
+              if result then result:=( FileExists(aName) AND (FileSize(aName)>5000) );
+            except
+              on E: Exception do
+              begin
+               result:=false;
+              end;
+            end;
+            if result then
+            begin
+              ResultCode:=-1;
+              WritelnLog(localinfotext+'Download ok',True);
+              ForceDirectoriesSafe(FSourceDirectory);
+              with TNormalUnzipper.Create do
+              begin
+                try
+                  ResultCode:=Ord(NOT DoUnZip(aName,IncludeTrailingPathDelimiter(FSourceDirectory),[]));
+                finally
+                  Free;
+                end;
+              end;
+              if (ResultCode<>0) then
+              begin
+                result := False;
+                Infoln(localinfotext+'Unpack of '+aBinFile+' failed with resultcode: '+IntToStr(ResultCode),etwarning);
+              end;
+            end;
+            SysUtils.Deletefile(aName); //Get rid of temp file.
+          end;
+
+          FSourceDirectory:=ConcatPaths([FBaseDirectory,CROSSLIBPATH,GetCPU(TCPU.xtensa)+'-'+GetOS(TOS.freertos)]);
+          if ( (NOT DirectoryExists(FSourceDirectory)) OR (DirectoryIsEmpty(FSourceDirectory)) ) then
+          begin
+            Infoln(localinfotext+'Going to download '+aVersion+' of xtensatools4fpc ['+aLibFile+'] from '+aRemoteURL,etInfo);
+            try
+              aName:=ConcatPaths([FTempDirectory,aLibFile]);
+              result:=Download(FUseWget, aLibURL, aName);
+              if result then result:=( FileExists(aName) AND (FileSize(aName)>5000) );
+            except
+              on E: Exception do
+              begin
+               result:=false;
+              end;
+            end;
+            if result then
+            begin
+              ResultCode:=-1;
+              WritelnLog(localinfotext+'Download ok',True);
+              FSourceDirectory:=FBaseDirectory+DirectorySeparator+CROSSLIBPATH+DirectorySeparator+'xtensa-freertos';
+              ForceDirectoriesSafe(FSourceDirectory);
+              with TNormalUnzipper.Create do
+              begin
+                try
+                  ResultCode:=Ord(NOT DoUnZip(aName,IncludeTrailingPathDelimiter(FSourceDirectory),[]));
+                finally
+                  Free;
+                end;
+              end;
+              if (ResultCode<>0) then
+              begin
+                result := False;
+                Infoln(localinfotext+'Unpack of '+aLibFile+' failed with resultcode: '+IntToStr(ResultCode),etwarning);
+              end;
+            end;
+            SysUtils.Deletefile(aName); //Get rid of temp file.
+          end;
+        end;
+
+        if (NOT result) then
+        begin
+          Infoln(localinfotext+'Getting xtensatools4fpc failure. Will continue anyhow.',etInfo);
+        end;
+
+      end;
+    end;
+  end;
+
+  // Do not fail
+  result:=true;
+end;
+
+
 function TMBFFreeRTOSWioInstaller.GetModule(ModuleName: string): boolean;
 var
   idx:integer;
@@ -2685,10 +2863,12 @@ begin
 
   if not result then exit;
 
+  localinfotext:=Copy(ClassName,2,MaxInt)+' ('+Copy(ClassName,2,MaxInt)+': '+ModuleName+'): ';
+
   idx:=UniModuleList.IndexOf(ModuleName);
   if idx>=0 then
   begin
-    WritelnLog(infotext+'Getting module '+ModuleName,True);
+    WritelnLog(localinfotext+'Getting module '+ModuleName,True);
 
     PackageSettings:=TStringList(UniModuleList.Objects[idx]);
     FSourceDirectory:=GetValueFromKey('InstallDir',PackageSettings);
@@ -2711,7 +2891,7 @@ begin
             idx:=StringListStartsWith(aList,aLine);
             if (idx<>-1) then
             begin
-              Infoln(infotext+'Setting correct path in '+ExtractFileName(aFile)+'.',etInfo);
+              Infoln(localinfotext+'Setting correct path in '+ExtractFileName(aFile)+'.',etInfo);
               aList.Strings[idx]:='set CROSS='+ConcatPaths([FBaseDirectory,'cross']);
               aList.SaveToFile(aFile);
             end;
@@ -2745,10 +2925,12 @@ begin
   result:=inherited;
   if not result then exit;
 
+  localinfotext:=Copy(ClassName,2,MaxInt)+' ('+Copy(ClassName,2,MaxInt)+': '+ModuleName+'): ';
+
   idx:=UniModuleList.IndexOf(ModuleName);
   if (idx>=0) then
   begin
-    WritelnLog(infotext+'Getting module '+ModuleName,True);
+    WritelnLog(localinfotext+'Getting module '+ModuleName,True);
 
     PackageSettings:=TStringList(UniModuleList.Objects[idx]);
     FSourceDirectory:=GetValueFromKey('InstallDir',PackageSettings);
@@ -2822,7 +3004,7 @@ begin
         if result then
         begin
           aName:=FileNameFromURL(aURL);
-          Infoln(infotext+'Going to download '+aVersion+' of mormot sqlite3 static libs ['+aName+'] from '+aURL,etInfo);
+          Infoln(localinfotext+'Going to download '+aVersion+' of mormot sqlite3 static libs ['+aName+'] from '+aURL,etInfo);
           if Length(aName)>0 then
           begin
             aName:=SysUtils.ExtractFileExt(aName);
@@ -2834,7 +3016,7 @@ begin
           //If no extension, assume zip
           if Length(aName)=0 then aName:='zip';
           aFile := GetTempFileNameExt('FPCUPTMP',aName);
-          WritelnLog(infotext+'Going to download '+aURL+' into '+aFile,false);
+          WritelnLog(localinfotext+'Going to download '+aURL+' into '+aFile,false);
           try
             result:=Download(FUseWget, aURL, aFile);
             if result then result:=FileExists(aFile);
@@ -2850,7 +3032,7 @@ begin
             if (FileSize(aFile)>5000) then
             begin
               ResultCode:=-1;
-              WritelnLog(infotext+'Download ok',True);
+              WritelnLog(localinfotext+'Download ok',True);
 
               aDirectory:=FSourceDirectory+DirectorySeparator+'static';
               if DirectoryExists(aDirectory) then DeleteDirectoryEx(aDirectory);
@@ -2875,7 +3057,7 @@ begin
               if (ResultCode<>0) then
               begin
                 result := False;
-                Infoln(infotext+'Unpack of '+aFile+' failed with resultcode: '+IntToStr(ResultCode),etwarning);
+                Infoln(localinfotext+'Unpack of '+aFile+' failed with resultcode: '+IntToStr(ResultCode),etwarning);
               end;
 
             end;
@@ -2885,7 +3067,7 @@ begin
 
         if (NOT result) then
         begin
-          Infoln(infotext+'Getting develtools4fpc failure. Will continue anyhow.',etInfo);
+          Infoln(localinfotext+'Getting develtools4fpc failure. Will continue anyhow.',etInfo);
         end;
 
       end;

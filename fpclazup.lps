@@ -320,7 +320,7 @@
       <Unit14>
         <Filename Value="commandline.pas"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="11"/>
+        <EditorIndex Value="10"/>
         <CursorPos Y="292"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
@@ -344,7 +344,7 @@
       <Unit17>
         <Filename Value="gitclient.pas"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="10"/>
+        <EditorIndex Value="9"/>
         <TopLine Value="648"/>
         <CursorPos X="29" Y="660"/>
         <UsageCount Value="200"/>
@@ -560,9 +560,10 @@
       <Unit45>
         <Filename Value="fpcuputil.pas"/>
         <IsPartOfProject Value="True"/>
+        <IsVisibleTab Value="True"/>
         <EditorIndex Value="6"/>
-        <TopLine Value="1176"/>
-        <CursorPos X="3" Y="1194"/>
+        <TopLine Value="84"/>
+        <CursorPos Y="101"/>
         <UsageCount Value="179"/>
         <Loaded Value="True"/>
       </Unit45>
@@ -580,7 +581,7 @@
       <FormatVersion Value="2"/>
       <Modes ActiveMode="docker"/>
     </RunParams>
-    <HistoryLists Count="3">
+    <HistoryLists Count="2">
       <List0 Name="LaunchingApplication" Type="File" Count="1">
         <Item1 Value="C:\WINDOWS\system32\cmd.exe /C ${TargetCmdLine}"/>
       </List0>

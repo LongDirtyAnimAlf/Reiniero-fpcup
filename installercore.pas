@@ -23,6 +23,8 @@ unit installerCore;
 
 {$mode objfpc}{$H+}
 
+{$i fpcupdefines.inc}
+
 interface
 
 uses
@@ -131,11 +133,12 @@ const
 
   BOOTSTRAPPERVERSION='bootstrappers_v1.0';
   FPCUPGITREPOBOOTSTRAPPER=FPCUPGITREPO+'/releases/download/'+BOOTSTRAPPERVERSION;
-  FPCUPGITREPOAPI='https://api.github.com/repos/LongDirtyAnimAlf/fpcupdeluxe/releases';
-  FPCUPGITREPOBOOTSTRAPPERAPI=FPCUPGITREPOAPI+'/tags/'+BOOTSTRAPPERVERSION;
+  FPCUPGITREPOAPI='https://api.github.com/repos/LongDirtyAnimAlf/fpcupdeluxe';
+  FPCUPGITREPOAPIRELEASES=FPCUPGITREPOAPI+'/releases';
+  FPCUPGITREPOBOOTSTRAPPERAPI=FPCUPGITREPOAPIRELEASES+'/tags/'+BOOTSTRAPPERVERSION;
 
   SOURCEPATCHES='patches_v1.0';
-  FPCUPGITREPOSOURCEPATCHESAPI=FPCUPGITREPOAPI+'/tags/'+SOURCEPATCHES;
+  FPCUPGITREPOSOURCEPATCHESAPI=FPCUPGITREPOAPIRELEASES+'/tags/'+SOURCEPATCHES;
 
   FPCUPPRIVATEGITREPO='https://www.consulab.nl/git/Alfred/FPCbootstrappers/raw/master';
 
@@ -202,6 +205,9 @@ const
   _FPC                     = 'FPC';
   _LAZARUS                 = 'Lazarus';
   _LAZARUSSIMPLE           = _LAZARUS+'Simple';
+
+  _REVISIONFPC             = 'Revision'+_FPC;
+  _REVISIONLAZARUS         = 'Revision'+_LAZARUS;
 
   _MAKEFILECHECK           = 'MakefileCheck';
   _MAKEFILECHECKFPC        = _MAKEFILECHECK+_FPC;
@@ -617,8 +623,7 @@ uses
   //LMessages,
   LCLIntf,
   {$endif}
-  process,
-  RegExpr
+  process
   {$IFDEF UNIX}
   ,LazFileUtils
   {$ENDIF UNIX}
@@ -1697,14 +1702,15 @@ end;
 function TInstaller.DownloadFromBase(aClient:TRepoClient; aModuleName: string; var aBeforeRevision,
   aAfterRevision: string; UpdateWarnings: TStringList): boolean;
 const
-  MAXFPCREVISION      = '49634';
-  MAXFPCFIXESREVISION = '46749';
-  MAXLAZARUSREVISION  = '65500';
+  MAXFPCREVISION      = 49000;
+  MAXLAZARUSREVISION  = 65000;
 var
   ReturnCode: integer;
   DiffFile,DiffFileCorrectedPath: String;
   LocalPatchCmd : string;
+  NoPatchStrip:boolean;
   s,Output:string;
+  SVNRevision:integer;
 
 begin
   Result := false;
@@ -1731,8 +1737,10 @@ begin
   if ((aModuleName=_FPC) OR (aModuleName=_LAZARUS)) AND (aClient is TGitClient)  then
   begin
     Output:=(aClient as TGitClient).GetSVNRevision;
-    if (aModuleName=_FPC) AND ( (Output=MAXFPCREVISION) OR (Output=MAXFPCFIXESREVISION) ) then Output:='';
-    if (aModuleName=_LAZARUS) AND (Output=MAXLAZARUSREVISION) then Output:='';
+    SVNRevision:=StrToIntDef(Output,0);
+    if (SVNRevision=0) then Output:='';
+    if (aModuleName=_FPC) AND (SVNRevision>MAXFPCREVISION) then Output:='';
+    if (aModuleName=_LAZARUS) AND (SVNRevision>MAXLAZARUSREVISION) then Output:='';
     if (Length(Output)>0) then
       aBeforeRevision := Output
     else
@@ -1830,8 +1838,10 @@ begin
         if ((aModuleName=_FPC) OR (aModuleName=_LAZARUS)) AND (aClient is TGitClient)  then
         begin
           Output:=(aClient as TGitClient).GetSVNRevision;
-          if (aModuleName=_FPC) AND ( (Output=MAXFPCREVISION) OR (Output=MAXFPCFIXESREVISION) ) then Output:='';
-          if (aModuleName=_LAZARUS) AND (Output=MAXLAZARUSREVISION) then Output:='';
+          SVNRevision:=StrToIntDef(Output,0);
+          if (SVNRevision=0) then Output:='';
+          if (aModuleName=_FPC) AND (SVNRevision>MAXFPCREVISION) then Output:='';
+          if (aModuleName=_LAZARUS) AND (SVNRevision>MAXLAZARUSREVISION) then Output:='';
           if (Length(Output)>0) then
           begin
             if (Length(FDesiredRevision)>0) AND (Length(FDesiredRevision)<7) AND (Output<>FDesiredRevision) then
@@ -1861,34 +1871,51 @@ begin
 
          if Assigned(UpdateWarnings) then UpdateWarnings.Add(aModuleName + ': reapplying local changes.');
 
-         // check for default values
-         if ((FPatchCmd='patch'+GetExeExt) OR (FPatchCmd='gpatch'+GetExeExt))
-            then LocalPatchCmd:=FPatchCmd + ' -p0 -i '
-            else LocalPatchCmd:=Trim(FPatchCmd) + ' ';
 
-         ReturnCode:=ExecuteCommandInDir(LocalPatchCmd + DiffFile, FSourceDirectory, Output, FVerbose);
-
-         if ReturnCode<>0 then
+         for NoPatchStrip in boolean do
          begin
-           // Patching can go wrong when line endings are not compatible
-           // This happens e.g. with bgracontrols that have CRLF in the source files
-           // Try to circumvent this problem by replacing line enddings
-           if Pos('different line endings',Output)>0 then
-           begin
-             //CheckoutOrUpdateReturnCode:=ExecuteCommandInDir('sed '+''''+'s/$'+''''+'"/`echo \\\r`/" '+DiffFile+' > '+DiffFile, FSourceDirectory, FVerbose);
-             //CheckoutOrUpdateReturnCode:=ExecuteCommandInDir('sed -i '+''''+'s/$/\r/'+''''+' '+DiffFile, FSourceDirectory, FVerbose);
 
-             DiffFileCorrectedPath:=IncludeTrailingPathDelimiter(GetTempDirName)+ExtractFileName(DiffFile);
-             if FileCorrectLineEndings(DiffFile,DiffFileCorrectedPath) then
+           if ((FPatchCmd='patch'+GetExeExt) OR (FPatchCmd='gpatch'+GetExeExt)) then
+           begin
+             if NoPatchStrip then
+               LocalPatchCmd:=FPatchCmd + ' -t -p0 -i '
+             else
+               LocalPatchCmd:=FPatchCmd + ' -t -p1 -i ';
+           end
+           else
+           begin
+             if NoPatchStrip then continue;
+             LocalPatchCmd:=Trim(FPatchCmd) + ' ';
+           end;
+
+           ReturnCode:=ExecuteCommandInDir(LocalPatchCmd + DiffFile, FSourceDirectory, Output, FVerbose);
+
+           if (ReturnCode=0) then
+             continue
+           else
+           begin
+             // Patching can go wrong when line endings are not compatible
+             // This happens e.g. with bgracontrols that have CRLF in the source files
+             // Try to circumvent this problem by replacing line enddings
+             if Pos('different line endings',Output)>0 then
              begin
-               if FileExists(DiffFileCorrectedPath) then
+               //CheckoutOrUpdateReturnCode:=ExecuteCommandInDir('sed '+''''+'s/$'+''''+'"/`echo \\\r`/" '+DiffFile+' > '+DiffFile, FSourceDirectory, FVerbose);
+               //CheckoutOrUpdateReturnCode:=ExecuteCommandInDir('sed -i '+''''+'s/$/\r/'+''''+' '+DiffFile, FSourceDirectory, FVerbose);
+
+               DiffFileCorrectedPath:=IncludeTrailingPathDelimiter(GetTempDirName)+ExtractFileName(DiffFile);
+               if FileCorrectLineEndings(DiffFile,DiffFileCorrectedPath) then
                begin
-                 ReturnCode:=ExecuteCommandInDir(LocalPatchCmd + DiffFileCorrectedPath, FSourceDirectory, Output, FVerbose);
-                 DeleteFile(DiffFileCorrectedPath);
+                 if FileExists(DiffFileCorrectedPath) then
+                 begin
+                   ReturnCode:=ExecuteCommandInDir(LocalPatchCmd + DiffFileCorrectedPath, FSourceDirectory, Output, FVerbose);
+                   DeleteFile(DiffFileCorrectedPath);
+                 end;
                end;
              end;
            end;
+
          end;
+
 
          // Report error, but continue !
          if ReturnCode<>0 then
@@ -2060,7 +2087,7 @@ begin
         UpdateWarnings.Add(aModuleName + ': reapplying local changes.');
 
         if ((FPatchCmd='patch'+GetExeExt) OR (FPatchCmd='gpatch'+GetExeExt))
-           then LocalPatchCmd:=FPatchCmd + ' -p0 -i '
+           then LocalPatchCmd:=FPatchCmd + ' -t -p0 -i '
            else LocalPatchCmd:=Trim(FPatchCmd) + ' ';
         CheckoutOrUpdateReturnCode:=ExecuteCommandInDir(LocalPatchCmd + DiffFile, FSourceDirectory, Output, FVerbose);
 
@@ -2090,7 +2117,7 @@ begin
             if CheckoutOrUpdateReturnCode=0 then
             begin
               if ((FPatchCmd='patch'+GetExeExt) OR (FPatchCmd='gpatch'+GetExeExt))
-                 then LocalPatchCmd:=FPatchCmd + ' -p0 --binary -i '
+                 then LocalPatchCmd:=FPatchCmd + ' -t -p0 --binary -i '
                  else LocalPatchCmd:=Trim(FPatchCmd) + ' ';
               CheckoutOrUpdateReturnCode:=ExecuteCommandInDir(LocalPatchCmd + DiffFile, FSourceDirectory, Output, FVerbose);
             end;
@@ -3195,6 +3222,7 @@ var
   Output: string = '';
   ReturnCode,i,j: integer;
   LocalSourcePatches:string;
+  StripLevel:integer;
   PatchFPC,PatchUniversal,PatchAccepted:boolean;
   {$ifndef FPCONLY}
   PatchLaz:boolean;
@@ -3588,14 +3616,12 @@ begin
              {$endif}
                 else PatchFilePath:=SafeExpandFileName(SafeGetApplicationPath+'patchfpcup'+DirectorySeparator+PatchList[i]);
         end;
+
         if FileExists(PatchFilePath) then
         begin
-
+          StripLevel:=1;
           j:=Pos(STRIPMAGIC,PatchFilePath);
-          if j>0 then
-          begin
-            j:=StrToIntDef(PatchFilePath[j+Length(STRIPMAGIC)],0);
-          end else j:=0;
+          if (j>0) then StripLevel:=StrToIntDef(PatchFilePath[j+Length(STRIPMAGIC)],StripLevel);
 
           {$IFDEF MSWINDOWS}
           Processor.Executable := IncludeTrailingPathDelimiter(FMakeDir) + FPatchCmd;
@@ -3608,8 +3634,8 @@ begin
           // check for default values
           if ((FPatchCmd='patch'+GetExeExt) OR (FPatchCmd='gpatch'+GetExeExt)) then
           begin
-            Processor.Process.Parameters.Add('-p');
-            Processor.Process.Parameters.Add(InttoStr(j));
+            Processor.Process.Parameters.Add('-t');
+            Processor.Process.Parameters.Add('-p'+InttoStr(StripLevel));
             Processor.Process.Parameters.Add('-N');
             {$IF not defined(BSD) or defined(DARWIN)}
             Processor.Process.Parameters.Add('--no-backup-if-mismatch');
@@ -3628,9 +3654,21 @@ begin
             //Execute patch command
             ReturnCode:=Processor.ExecuteAndWait;
 
+            if ( (ReturnCode<>0) AND (StripLevel=1) ) then
+            begin
+              //try again with different [0] strip option
+              j:=Processor.Process.Parameters.IndexOf('-p1');
+              if (j<>-1) then
+              begin
+                Processor.Process.Parameters.Strings[j]:='-p0';
+                ReturnCode:=Processor.ExecuteAndWait;
+              end;
+            end;
+
             // remove the temporary file
             if (PatchFileCorrectedPath<>PatchFilePath) then DeleteFile(PatchFileCorrectedPath);
-            if ReturnCode=0  then
+
+            if (ReturnCode=0)  then
             begin
               result:=true;
               WritelnLog(etInfo, infotext+ModuleName+ ' has been patched successfully with '+PatchList[i] + '.', true);
@@ -3668,7 +3706,7 @@ const
   ConstName = 'RevisionStr';
 var
   //RevisionIncText: Text;
-  RevFileName,ConstStart: string;
+  RevFilePath,ConstStart: string;
   RevisionStringList:TStringList;
   NumRevision:Longint;
 begin
@@ -3681,34 +3719,37 @@ begin
 
   //if TryStrToInt(aRevision,NumRevision) then
   begin
-    RevFileName:='';
+    RevFilePath:='';
 
-    if (ModuleName=_LAZARUS) then RevFileName:=IncludeTrailingPathDelimiter(FSourceDirectory)+'ide';
-    if (ModuleName=_FPC) then RevFileName:=IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler';
+    if (ModuleName=_LAZARUS) then RevFilePath:=IncludeTrailingPathDelimiter(FSourceDirectory)+'ide';
+    if (ModuleName=_FPC) then RevFilePath:=IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler';
 
-    if (Length(RevFileName)>0) then
+    if (Length(RevFilePath)>0) then
     begin
-      if (NOT DirectoryExists(RevFileName)) then exit;
-      RevFileName:=RevFileName+PathDelim+REVINCFILENAME;
-      DeleteFile(RevFileName);
-      RevisionStringList:=TStringList.Create;
-      try
-        if (ModuleName=_LAZARUS) then
-        begin
-          RevisionStringList.Add(RevisionIncComment);
-          ConstStart := Format('const %s = ''', [ConstName]);
-          //RevisionStringList.Add(ConstStart+InttoStr(NumRevision)+''';');
-          RevisionStringList.Add(ConstStart+aRevision+''';');
+      if (NOT DirectoryExists(RevFilePath)) then exit;
+      RevFilePath:=RevFilePath+PathDelim+REVINCFILENAME;
+      DeleteFile(RevFilePath);
+      if (Length(aRevision)>0) then
+      begin
+        RevisionStringList:=TStringList.Create;
+        try
+          if (ModuleName=_LAZARUS) then
+          begin
+            RevisionStringList.Add(RevisionIncComment);
+            ConstStart := Format('const %s = ''', [ConstName]);
+            //RevisionStringList.Add(ConstStart+InttoStr(NumRevision)+''';');
+            RevisionStringList.Add(ConstStart+aRevision+''';');
+          end;
+          if (ModuleName=_FPC) then
+          begin
+            //RevisionStringList.Add(''''+InttoStr(NumRevision)+'''');
+            RevisionStringList.Add(''''+aRevision+'''');
+          end;
+          RevisionStringList.SaveToFile(RevFilePath);
+          result:=true;
+        finally
+          RevisionStringList.Free;
         end;
-        if (ModuleName=_FPC) then
-        begin
-          //RevisionStringList.Add(''''+InttoStr(NumRevision)+'''');
-          RevisionStringList.Add(''''+aRevision+'''');
-        end;
-        RevisionStringList.SaveToFile(RevFileName);
-        result:=true;
-      finally
-        RevisionStringList.Free;
       end;
     end;
   end;
@@ -3719,78 +3760,53 @@ var
   RevFileName,RevString: string;
   RevisionStringList:TStringList;
   idx:integer;
-  NumbersExtr: TRegExpr;
 begin
   result:='';
 
   RevString:='';
   RevFileName:='';
 
-  if (ModuleName=_LAZARUS) OR (ModuleName=_LAZBUILD) then RevFileName:=ConcatPaths([FSourceDirectory,'ide',REVINCFILENAME]);
-  if ModuleName=_FPC then RevFileName:=ConcatPaths([FSourceDirectory,'compiler',REVINCFILENAME]);
-  //if ModuleName=_LAZARUS then RevFileName:=IncludeTrailingPathDelimiter(FSourceDirectory)+'ide'+PathDelim+REVINCFILENAME;
-  //if ModuleName=_FPC then RevFileName:=IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+PathDelim+REVINCFILENAME;
+  // First, use try to get revision from compiler.
+  if ModuleName=_FPC then RevString:=CompilerRevision(GetFPCInBinDir);
 
-  if FileExists(RevFileName) then
+  // Second, try to get revision from rev file.
+  if (Length(RevString)=0) then
   begin
-    RevisionStringList:=TStringList.Create;
-    try
-      RevisionStringList.LoadFromFile(RevFileName);
-      if (RevisionStringList.Count>0) then
-      begin
+    if (ModuleName=_LAZARUS) OR (ModuleName=_LAZBUILD) then RevFileName:=ConcatPaths([FSourceDirectory,'ide',REVINCFILENAME]);
+    if ModuleName=_FPC then RevFileName:=ConcatPaths([FSourceDirectory,'compiler',REVINCFILENAME]);
+    //if ModuleName=_LAZARUS then RevFileName:=IncludeTrailingPathDelimiter(FSourceDirectory)+'ide'+PathDelim+REVINCFILENAME;
+    //if ModuleName=_FPC then RevFileName:=IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+PathDelim+REVINCFILENAME;
 
-        if ModuleName=_FPC then
-        begin
-          RevString:=Trim(RevisionStringList.Strings[0]);
-        end;
-
-        if (ModuleName=_LAZARUS) OR (ModuleName=_LAZBUILD) then
-        begin
-          idx:=StringListStartsWith(RevisionStringList,'const RevisionStr');
-          if (idx<>-1) then
-          begin
-            RevString:=Trim(RevisionStringList.Strings[idx]);
-          end;
-        end;
-
-        result:=RevString;
-
-        {
-        if (Length(RevString)>0) then
-        begin
-          NumbersExtr := TRegExpr.Create;
-          try
-            NumbersExtr.Expression := 'r\d+';
-            if NumbersExtr.Exec(RevString) then
-            begin
-              result := NumbersExtr.Match[0];
-            end
-            else
-            begin
-              NumbersExtr.Expression := '\d+';
-              if NumbersExtr.Exec(RevString) then
-                result := NumbersExtr.Match[0];
-            end;
-            result:=Trim(result);
-            result:=AnsiDequotedStr(result,'''');
-          finally
-            NumbersExtr.Free;
-          end;
-        end;
-        }
-
-      end;
-    finally
-      RevisionStringList.Free;
-    end;
-  end
-  else
-  begin
-    if ModuleName=_FPC then
+    if FileExists(RevFileName) then
     begin
-      result:=CompilerRevision(GetFPCInBinDir);
+      RevisionStringList:=TStringList.Create;
+      try
+        RevisionStringList.LoadFromFile(RevFileName);
+        if (RevisionStringList.Count>0) then
+        begin
+
+          if ModuleName=_FPC then
+          begin
+            RevString:=Trim(RevisionStringList.Strings[0]);
+          end;
+
+          if (ModuleName=_LAZARUS) OR (ModuleName=_LAZBUILD) then
+          begin
+            idx:=StringListStartsWith(RevisionStringList,'const RevisionStr');
+            if (idx<>-1) then
+            begin
+              RevString:=Trim(RevisionStringList.Strings[idx]);
+            end;
+          end;
+
+        end;
+      finally
+        RevisionStringList.Free;
+      end;
     end;
   end;
+
+  result:=RevString;
 end;
 
 function TInstaller.GetRevisionFromVersion(aModuleName,aVersion:string): string;

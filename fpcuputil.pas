@@ -275,6 +275,7 @@ function ReleaseCandidateFromUrl(aURL:string): integer;
 // HTTP download can work with http proxy
 function Download(UseWget:boolean; URL, TargetFile: string; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''): boolean;overload;
 function Download(UseWget:boolean; URL: string; aDataStream:TStream; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''): boolean;overload;
+function GetURLDataFromCache(aURL:string; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''):string;
 function GetGitHubFileList(aURL:string;fileurllist:TStringList; bWGet:boolean=false; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''):boolean;
 {$IFDEF MSWINDOWS}
 function CheckFileSignature(aFilePath: string): boolean;
@@ -341,6 +342,7 @@ function CompareVersionStrings(s1,s2: string): longint;
 function ExistWordInString(aString:pchar; aSearchString:string; aSearchOptions: TStringSearchOptions): Boolean;
 function GetEnumNameSimple(aTypeInfo:PTypeInfo;const aEnum:integer):string;
 function GetEnumValueSimple(aTypeInfo:PTypeInfo;const aEnum:string):integer;
+function ContainsDigit(const s: string): Boolean;
 //Find a library, if any
 function LibWhich(aLibrary: string): boolean;
 // Emulates/runs which to find executable in path. If not found, returns empty string
@@ -477,8 +479,14 @@ type
     FileList:TStringList;
   end;
 
+  TURLDataCache = record
+    URL:string;
+    Data:string;
+  end;
+
 var
   GitHubFileListCache:array of TGitHubStore;
+  URLDataCache:array of TURLDataCache;
 
 
 function GetStringFromBuffer(const field:PChar):string;
@@ -1056,12 +1064,8 @@ begin
     XdgDesktopContent.Add('Encoding=UTF-8');
     XdgDesktopContent.Add('Type=Application');
     XdgDesktopContent.Add('Icon='+ExtractFilePath(Target)+'images/icons/lazarus.ico');
-    {$ifdef LCLQT5}
     XdgDesktopContent.Add('Path='+ExtractFilePath(Target));
-    XdgDesktopContent.Add('Exec=./'+ExtractFileName(Target)+' '+TargetArguments+' %f');
-    {$else}
     XdgDesktopContent.Add('Exec='+Target+' '+TargetArguments+' %f');
-    {$endif}
     XdgDesktopContent.Add('Name='+ShortcutName);
     XdgDesktopContent.Add('GenericName=Lazarus IDE with Free Pascal Compiler');
     XdgDesktopContent.Add('Category=Application;IDE;Development;GUIDesigner;Programming;');
@@ -1265,10 +1269,15 @@ begin
   if Length(Output)>0 then
   begin
     i:=Pos('-r',Output);
+    if (i>0) then
+    begin
+      i:=Pos('-release',Output); // prevent -release from being detected as -r ... tricky
+      if (i=0) then Inc(i);
+    end;
     if (i=0) then i:=Pos('-',Output);
     if (i>0) then
     begin
-      Delete(Output,1,i+1);
+      Delete(Output,1,i);
       Result:=Trim(Output);
     end;
   end;
@@ -2274,6 +2283,77 @@ begin
   end;
 end;
 
+function GetURLDataFromCache(aURL:string; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''):string;
+var
+  aStore:TURLDataCache;
+  s:string;
+  Ss: TStringStream;
+  success:boolean;
+  i:integer;
+begin
+  s:='';
+
+  i:=0;
+  success:=false;
+  if Length(URLDataCache)>0 then
+  begin
+    for aStore in URLDataCache do
+    begin
+      if (aStore.URL=aURL) then
+      begin
+        s:=aStore.Data;
+        success:=true;
+        break;
+      end;
+      Inc(i);
+    end;
+  end;
+
+  //if (Length(s)=0) then
+  if ((Length(s)=0) OR ( (Pos('api.github.com',aURL)<>0) AND (Pos('"message": "Not Found"',s)<>0)) ) then
+  begin
+    // Indicate that we cannot reuse index
+    if (NOT success) then i:=-1;
+    success:=false;
+  end;
+
+  if (NOT success) then
+  begin
+    s:='';
+    Ss := TStringStream.Create('');
+    try
+      success:=Download(False,aURL,Ss,HTTPProxyHost,HTTPProxyPort,HTTPProxyUser,HTTPProxyPassword);
+      if (NOT success) then
+      begin
+        {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)}
+        Ss.Clear;
+        {$ENDIF}
+        Ss.Position:=0;
+        success:=Download(True,aURL,Ss,HTTPProxyHost,HTTPProxyPort,HTTPProxyUser,HTTPProxyPassword);
+      end;
+      if success then s:=Ss.DataString;
+    finally
+      Ss.Free;
+    end;
+
+    if (success AND (Length(s)>0)) then
+    begin
+      if (i=-1) then
+      begin
+        SetLength(URLDataCache,Length(URLDataCache)+1);
+        i:=High(URLDataCache);
+      end;
+      with URLDataCache[i] do
+      begin
+        URL:=aURL;
+        Data:=s;
+      end;
+    end;
+  end;
+
+  result:=s;
+end;
+
 function GetGitHubFileList(aURL:string;fileurllist:TStringList; bWGet:boolean=false; HTTPProxyHost: string=''; HTTPProxyPort: integer=0; HTTPProxyUser: string=''; HTTPProxyPassword: string=''):boolean;
 var
   Ss: TStringStream;
@@ -2283,9 +2363,10 @@ var
   JsonArray: TJSONArray;
   i:integer;
   aStore:TGitHubStore;
-  localwget:boolean;
 begin
   result:=false;
+
+  json:=nil;
 
   Content:='';
 
@@ -2316,47 +2397,23 @@ begin
 
   if (NOT result) then
   begin
-    localwget:=bWGet;
-    repeat
-      Ss := TStringStream.Create('');
+    Content:=GetURLDataFromCache(aURL,HTTPProxyHost,HTTPProxyPort,HTTPProxyUser,HTTPProxyPassword);
+    result:=((Length(Content)>0) AND (Pos('"message": "Not Found"',Content)=0));
+
+    Json:=nil;
+    if result then
+    begin
       try
-        {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)}
-        Ss.Clear;
-        {$ENDIF}
-        Ss.Position:=0;
-        Ss.Size:=0;
-        result:=
-          Download(
-            localwget,
-            aURL,
-            Ss,
-            HTTPProxyHost,
-            HTTPProxyPort,
-            HTTPProxyUser,
-            HTTPProxyPassword
-          );
-        Content:='';
-        if result then Content:=Ss.DataString;
-      finally
-        Ss.Free;
+        Json:=GetJSON(Content);
+      except
+        Json:=nil;
       end;
+    end;
 
-      result:=((Length(Content)>0) AND (Pos('Not Found',Content)=0));
+    result:=(Json<>nil);
 
-      Json:=nil;
-      if result then
-      begin
-        try
-          Json:=GetJSON(Content);
-        except
-          Json:=nil;
-        end;
-      end;
-
-      result:=Assigned(Json);
-
-      if result then
-      begin
+    if result then
+    begin
         try
           JsonArray:=Json.FindPath('assets') as TJSONArray;
           i:=JsonArray.Count;
@@ -2376,10 +2433,7 @@ begin
         finally
           Json.Free;
         end;
-      end;
-
-      localwget:=(NOT localwget);
-    until ((NOT localwget) OR (result));
+    end;
 
   end;
 
@@ -3375,6 +3429,19 @@ begin
   end;
 end;
 
+function ContainsDigit(const s: string): Boolean;
+const
+  Digits: set of Char = ['0'..'9'];
+var
+  i: Integer;
+begin
+  if (Length(s)=0) then exit(false);
+  result := true;
+  for i := 1 to Length(s) do
+    if s[i] in Digits then exit;
+  result := false;
+end;
+
 function LibWhich(aLibrary: string): boolean;
 {$ifdef Unix}
 const
@@ -3421,17 +3488,18 @@ begin
 
   {$ifdef Unix}
   {$ifndef Haiku}
-  if NOT result then
+  if (NOT result) then
   begin
     for i:=Low(UNIXSEARCHDIRS) to High(UNIXSEARCHDIRS) do
     begin
       OutputString:='';
       sd:=UNIXSEARCHDIRS[i];
-      RunCommand('find',[sd,'-type','f','-name',aLibrary],OutputString,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
+      // Search file
+      RunCommand('find',[sd,'-type','f','-name',aLibrary,'-print','2>/dev/null'],OutputString,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
       result:=(Pos(aLibrary,OutputString)>0);
       if result then
       begin
-        ThreadLog('Library searcher found '+aLibrary+' inside '+sd+'.',etDebug);
+        ThreadLog('Library searcher found '+aLibrary+' file inside '+sd+'.',etInfo);
         break;
       end;
     end;
@@ -3439,12 +3507,34 @@ begin
 
   if (NOT result) then
   begin
-    OutputString:='';
-    RunCommand('sh',['-c','"ldconfig -p | grep '+aLibrary+'"'],OutputString,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
-    result:=(Pos(aLibrary,OutputString)>0);
-    if result then
+    for i:=Low(UNIXSEARCHDIRS) to High(UNIXSEARCHDIRS) do
     begin
-      ThreadLog('Library '+aLibrary+' found by ldconfig.',etDebug);
+      OutputString:='';
+      sd:=UNIXSEARCHDIRS[i];
+      // Search symlink
+      RunCommand('find',[sd,'-type','l','-name',aLibrary,'-print','2>/dev/null'],OutputString,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
+      result:=(Pos(aLibrary,OutputString)>0);
+      if result then
+      begin
+        ThreadLog('Library searcher found '+aLibrary+' symlink inside '+sd+'.',etInfo);
+        break;
+      end;
+    end;
+  end;
+
+  if (NOT result) then
+  begin
+    sd:=Which('ldconfig');
+    if (Length(sd)=0) then sd:='/sbin/ldconfig';
+    if FileExists(sd) then
+    begin
+      OutputString:='';
+      RunCommand('sh',['-c','"'+sd+' -p | grep '+aLibrary+'"'],OutputString,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
+      result:=( (Pos(aLibrary,OutputString)>0) AND (Pos('not found',OutputString)=0));
+      if result then
+      begin
+        ThreadLog('Library '+aLibrary+' found by ldconfig.',etInfo);
+      end;
     end;
   end;
   {$endif}
@@ -3606,42 +3696,53 @@ end;
 function CheckExecutable(const Executable:string; const Parameters:array of String; ExpectOutput: string; Level: TEventType; beSilent:boolean): boolean;
 var
   aResultCode: longint;
-  ExeName: string;
+  ExeName,ExePath: string;
   Output: string;
 begin
   Result:=false;
-  try
-    Output:='';
-    ExeName := ExtractFileName(Executable);
-    RunCommandIndir('',Executable,Parameters, Output, aResultCode,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
-    if (aResultCode>=0) then //Not all non-0 result codes are errors. There's no way to tell, really
-    begin
-      if (ExpectOutput <> '') then
+
+  ExeName := ExtractFileName(Executable);
+
+  if FilenameIsAbsolute(Executable) then
+    ExePath := Executable
+  else
+    ExePath := Which(Executable);
+
+  if FileExists(ExePath) then
+  begin
+    try
+      Output:='';
+      RunCommandIndir('',Executable,Parameters, Output, aResultCode,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
+      if (aResultCode>=0) then //Not all non-0 result codes are errors. There's no way to tell, really
       begin
-        Result := AnsiContainsText(Output, ExpectOutput);
-        if (NOT Result) then
+        if (ExpectOutput <> '') then
         begin
-          // This is not a warning/error message as sometimes we can use multiple different versions of executables
-          if ((Level<>etCustom) AND (NOT beSilent)) then
+          Result := AnsiContainsText(Output, ExpectOutput);
+          if (NOT Result) then
           begin
-            if (NOT FileExists(Executable)) then
-              ThreadLog(Executable + ' not found.',Level)
-            else
-              ThreadLog(Executable + ' is not a valid ' + ExeName + ' application. ' +
-              ExeName + ' exists but shows no (' + ExpectOutput + ') in its output.',Level);
+            // This is not a warning/error message as sometimes we can use multiple different versions of executables
+            if ((Level<>etCustom) AND (NOT beSilent)) then
+            begin
+              if (NOT FileExists(ExePath)) then
+                ThreadLog(Executable + ' not found.',Level)
+              else
+                ThreadLog(Executable + ' is not a valid ' + ExeName + ' application. ' +
+                ExeName + ' exists but shows no (' + ExpectOutput + ') in its output.',Level);
+            end;
           end;
-        end;
-      end
-      else
-        Result := true; //not all non-0 result codes are errors. There's no way to tell, really
-    end;
-  except
-    on E: Exception do
-    begin
-      // This is not a warning/error message as sometimes we can use multiple different versions of executables
-      if ((Level<>etCustom) AND (NOT beSilent)) then ThreadLog(Executable + ' is not a valid ' + ExeName + ' application (' + 'Exception: ' + E.ClassName + '/' + E.Message + ')', Level);
+        end
+        else
+          Result := true; //not all non-0 result codes are errors. There's no way to tell, really
+      end;
+    except
+      on E: Exception do
+      begin
+        // This is not a warning/error message as sometimes we can use multiple different versions of executables
+        if ((Level<>etCustom) AND (NOT beSilent)) then ThreadLog(Executable + ' is not a valid ' + ExeName + ' application (' + 'Exception: ' + E.ClassName + '/' + E.Message + ')', Level);
+      end;
     end;
   end;
+
   if ((Result) AND (NOT beSilent)) then
     ThreadLog('Found valid ' + ExeName + ' application.',etDebug);
 end;
@@ -4057,6 +4158,7 @@ var
   Content      : string;
   Success      : boolean;
 begin
+  json:=nil;
   Success:=false;
   NewVersion:=false;
   result:='';
@@ -4087,7 +4189,7 @@ begin
         except
           Json:=nil;
         end;
-        if JSON=nil then exit;
+        if (JSON=nil) then exit;
         try
           JsonObject := TJSONObject(Json);
           // Example ---
@@ -5774,6 +5876,8 @@ begin
     end;
   end;
   Finalize(GitHubFileListCache);
+
+  Finalize(URLDataCache);
 end;
 
 finalization

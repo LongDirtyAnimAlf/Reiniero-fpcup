@@ -115,6 +115,7 @@ type
   private
     FSoftFloat  : boolean;
     FUseLibc    : boolean;
+    FUseRevInc  : boolean;
     FTargetCompilerName: string;
     FBootstrapCompiler: string;
     FBootstrapCompilerDirectory: string;
@@ -481,6 +482,9 @@ begin
   // Safeguards
   if (CrossInstaller.TargetCPU=TCPU.arm) AND (CrossInstaller.TargetOS=TOS.embedded) then result:=false;
 
+  // Safeguards
+  if (CrossInstaller.TargetCPU=TCPU.xtensa) AND (CrossInstaller.TargetOS=TOS.freertos) then result:=false;
+
   if (CrossInstaller.TargetCPU=TCPU.wasm32) then result:=false;
 end;
 
@@ -820,7 +824,6 @@ var
   FPCCfg:String; //path+filename of the fpc.cfg configuration file
   CrossOptions:String;
   i,j:integer;
-  OldPath:String;
   Options:String;
   s1,s2:string;
   UnitSearchPath:string;
@@ -909,13 +912,7 @@ begin
 
       FPCCfg := FFPCCompilerBinPath + FPCCONFIGFILENAME;
 
-      OldPath:=GetPath;
-      try
-        {$ifdef MSWINDOWS}
-        // Add FPC tools path to path if necessary
-        SetPath(FMakeDir,true,false);
-        {$endif MSWINDOWS}
-
+      begin
         // Add binutils path to path if necessary
         if CrossInstaller.BinUtilsPathInPath then
            SetPath(IncludeTrailingPathDelimiter(CrossInstaller.BinUtilsPath),false,true);
@@ -1146,6 +1143,16 @@ begin
           {$IFDEF MSWINDOWS}
           Processor.Process.Parameters.Add('UPXPROG=echo'); //Don't use UPX
           //Processor.Process.Parameters.Add('COPYTREE=echo'); //fix for examples in Win svn, see build FAQ
+          // If we have a (forced) local GIT client, set GIT to prevent picking up a stray git in the path
+          s1:=GitClient.RepoExecutable;
+          if (Length(s1)>0) then
+          begin
+            if (Pos(' ',s1)>0) then s1:=ExtractShortPathName(s1);
+            // do we have a stray sh.exe in the path ...
+            if (Length(Which('sh.exe'))>0) then
+              s1:=StringReplace(s1,'\','/',[rfReplaceAll]);
+            Processor.Process.Parameters.Add('GIT='+s1);
+          end;
           {$ELSE}
           Processor.Process.Parameters.Add('INSTALL_BINDIR='+ExcludeTrailingPathDelimiter(FFPCCompilerBinPath));
           {$ENDIF}
@@ -1342,16 +1349,15 @@ begin
             end;
           end;
 
-          if ((SourceVersionNum<>0) AND (SourceVersionNum>=CalculateFullVersion(2,6,0))) then
+          {$ifdef FORCEREVISION}
+          s2:=GetRevision(ModuleName);
+          s2:=AnsiDequotedStr(s2,'''');
+          if ( (Length(s2)>1) AND (s2<>'failure') AND (Pos(' ',s2)=0) ) then
           begin
-            s2:=GetRevision(ModuleName);
-            s2:=AnsiDequotedStr(s2,'''');
-            if ( (Length(s2)>1) AND (s2<>'failure') AND (Pos(' ',s2)=0) ) then
-            begin
-              Processor.Process.Parameters.Add('REVSTR='+s2);
-              Processor.Process.Parameters.Add('REVINC=force');
-            end;
+            Processor.Process.Parameters.Add('REVSTR='+s2);
+            Processor.Process.Parameters.Add('REVINC=force');
           end;
+          {$endif FORCEREVISION}
 
           {$ifdef solaris}
           {$IF defined(CPUX64) OR defined(CPUX86)}
@@ -1674,8 +1680,6 @@ begin
             end;
           end;
         end;
-      finally
-        SetPath(OldPath,false,false);
       end;
     end;
 
@@ -1808,9 +1812,13 @@ begin
   OperationSucceeded:=true;
 
   s1:=CompilerVersion(FCompiler);
-  if (s1<>'0.0.0')
-    then Infoln('FPC native builder: Using FPC bootstrap compiler with version: '+s1, etInfo)
-    else Infoln(infotext+'FPC bootstrap version error: '+s1+' ! Should never happen: expect many errors !!', etError);
+
+  if (ModuleName=_FPC) then
+  begin
+    if (s1<>'0.0.0')
+      then Infoln('FPC native builder: Using FPC bootstrap compiler with version: '+s1, etInfo)
+      else Infoln(infotext+'FPC bootstrap version error: '+s1+' ! Should never happen: expect many errors !!', etError);
+  end;
 
   //if clean failed (due to missing compiler), try again !
   if (NOT FCleanModuleSuccess) then
@@ -1869,9 +1877,12 @@ begin
   {$ENDIF}
   FErrorLog.Clear;
 
+
   if (NOT FNoJobs) then
   begin
+    {$ifndef win64}
     Processor.Process.Parameters.Add('--jobs='+IntToStr(FCPUCount));
+    {$endif win64}
     Processor.Process.Parameters.Add('FPMAKEOPT=--threads='+IntToStr(FCPUCount));
   end;
 
@@ -1918,6 +1929,17 @@ begin
   end;
   Processor.Process.Parameters.Add('UPXPROG=echo'); //Don't use UPX
   //Processor.Process.Parameters.Add('COPYTREE=echo'); //fix for examples in Win svn, see build FAQ
+
+  // If we have a (forced) local GIT client, set GIT to prevent picking up a stray git in the path
+  s1:=GitClient.RepoExecutable;
+  s1:=GitClient.RepoExecutable;
+  if (Length(s1)>0) then
+  begin
+    if (Pos(' ',s1)>0) then s1:=ExtractShortPathName(s1);
+    if (Length(Which('sh.exe'))>0) then
+      s1:=StringReplace(s1,'\','/',[rfReplaceAll]);
+    Processor.Process.Parameters.Add('GIT='+s1);
+  end;
   {$ELSE}
   Processor.Process.Parameters.Add('INSTALL_BINDIR='+ExcludeTrailingPathDelimiter(FFPCCompilerBinPath));
   {$ENDIF}
@@ -1977,16 +1999,25 @@ begin
   end;
   {$ENDIF}
 
-  if ((SourceVersionNum<>0) AND (SourceVersionNum>=CalculateFullVersion(2,6,0))) then
+  {$ifdef FORCEREVISION}
+  if (ModuleName<>_REVISIONFPC) then
   begin
-    s2:=Trim(ActualRevision);
-    s2:=AnsiDequotedStr(s2,'''');
-    if ( (Length(s2)>1) AND (s2<>'failure') AND (Pos(' ',s2)=0) ) then
+    if FUseRevInc then
     begin
-      Processor.Process.Parameters.Add('REVSTR='+s2);
-      Processor.Process.Parameters.Add('REVINC=force');
+      s1:=s1+' -dREVINC';
+    end
+    else
+    begin
+      s2:=Trim(ActualRevision);
+      s2:=AnsiDequotedStr(s2,'''');
+      if ( (Length(s2)>1) AND (s2<>'failure') AND (Pos(' ',s2)=0) ) then
+      begin
+        Processor.Process.Parameters.Add('REVSTR='+s2);
+        Processor.Process.Parameters.Add('REVINC=force');
+      end;
     end;
   end;
+  {$endif FORCEREVISION}
 
   {$if (NOT defined(FPC_HAS_TYPE_EXTENDED)) AND (defined (CPUX86_64))}
   if FSoftFloat then
@@ -2018,17 +2049,21 @@ begin
 
   Processor.Process.CurrentDirectory:='';
   case ModuleName of
-    _FPC,_MAKEFILECHECKFPC:
+    _REVISIONFPC:
     begin
-      Processor.Process.CurrentDirectory:=ExcludeTrailingPathDelimiter(FSourceDirectory);
+      Processor.Process.CurrentDirectory:=ConcatPaths([FSourceDirectory,'compiler']);
     end;
     _PAS2JS:
     begin
-      Processor.Process.CurrentDirectory:=IncludeTrailingPathDelimiter(FSourceDirectory)+'utils'+DirectorySeparator+'pas2js';
+      Processor.Process.CurrentDirectory:=ConcatPaths([FSourceDirectory,'utils','pas2js']);
       // first run fpcmake to generate correct makefile
       // is this still needed !!?? No !!
       //SysUtils.DeleteFile(IncludeTrailingPathDelimiter(Processor.Process.CurrentDirectory)+'fpmake'+GetExeExt);
       //ExecuteCommandInDir(FFPCCompilerBinPath+'fpcmake'+GetExeExt,Processor.Process.CurrentDirectory,FVerbose);
+    end;
+    else
+    begin
+      Processor.Process.CurrentDirectory:=ExcludeTrailingPathDelimiter(FSourceDirectory);
     end;
   end;
 
@@ -2048,6 +2083,11 @@ begin
     Processor.Process.Parameters.Add('fpc_baseinfo');
   end
   else
+  if ModuleName=_REVISIONFPC then
+  begin
+    Processor.Process.Parameters.Add('revision');
+  end
+  else
   begin
     Processor.Process.Parameters.Add('all');
     //If we have separate source and install, always use the install command
@@ -2057,9 +2097,7 @@ begin
 
   try
     ProcessorResult:=Processor.ExecuteAndWait;
-    //Restore FPCDIR environment variable ... could be trivial, but batter safe than sorry
-    //Processor.Environment.SetVar('FPCDIR',FPCDirStore);
-    if ProcessorResult <> 0 then
+    if (ProcessorResult<>0) then
     begin
       OperationSucceeded := False;
       WritelnLog(etError, infotext+'Error running '+Processor.Executable+' for '+ModuleName+' failed with exit code '+IntToStr(ProcessorResult)+LineEnding+'. Details: '+FErrorLog.Text,true);
@@ -2836,6 +2874,7 @@ var
   FreeBSDVersion:integer;
   {$ENDIF}
   s:string;
+  aPath:string;
   {$ifdef Darwin}
   s1:string;
   {$endif}
@@ -3311,17 +3350,35 @@ begin
 
   if result then
   begin
-
     if assigned(CrossInstaller) then
     begin
       CrossInstaller.SolarisOI:=FSolarisOI;
       CrossInstaller.MUSL:=FMUSL;
     end;
+  end;
 
+  if result then
+  begin
     {$IFDEF MSWINDOWS}
-    s:='';
-    if Assigned(SVNClient) then if SVNClient.ValidClient then s:=s+PathSeparator+ExtractFileDir(SVNClient.RepoExecutable);
-    if Assigned(GITClient) then if GITClient.ValidClient then s:=s+PathSeparator+ExtractFileDir(GITClient.RepoExecutable);
+    aPath:='';
+    if Assigned(SVNClient) AND SVNClient.ValidClient then
+    begin
+      s:=SVNClient.RepoExecutable;
+      if (Pos(' ',s)>0) then s:=ExtractShortPathName(s);
+      aPath:=aPath+PathSeparator+ExtractFileDir(s);
+    end;
+    if Assigned(GITClient) AND GITClient.ValidClient then
+    begin
+      s:=GITClient.RepoExecutable;
+      if (Pos(' ',s)>0) then s:=ExtractShortPathName(s);
+      aPath:=aPath+PathSeparator+ExtractFileDir(s);
+    end;
+    if Assigned(HGClient) AND HGClient.ValidClient then
+    begin
+      s:=HGClient.RepoExecutable;
+      if (Pos(' ',s)>0) then s:=ExtractShortPathName(s);
+      aPath:=aPath+PathSeparator+ExtractFileDir(s);
+    end;
     // Try to ignore existing make.exe, fpc.exe by setting our own path:
     // add install/fpc/utils to solve data2inc not found by fpcmkcfg
     // also add src/fpc/utils to solve data2inc not found by fpcmkcfg
@@ -3335,7 +3392,7 @@ begin
       ExcludeTrailingPathDelimiter(FSourceDirectory)+PathSeparator+
       IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+PathSeparator+
       IncludeTrailingPathDelimiter(FSourceDirectory)+'utils'+
-      s,
+      aPath,
       false,false);
     {$ENDIF MSWINDOWS}
     {$IFDEF UNIX}
@@ -3371,6 +3428,7 @@ begin
       true,false);
     {$ENDIF UNIX}
   end;
+
   GetVersion;
   InitDone:=result;
 end;
@@ -3642,7 +3700,9 @@ begin
       Processor.Process.Parameters.Add('compiler_cycle');
       if (NOT FNoJobs) then
       begin
+        {$ifndef win64}
         Processor.Process.Parameters.Add('--jobs='+IntToStr(FCPUCount));
+        {$endif win64}
         Processor.Process.Parameters.Add('FPMAKEOPT=--threads='+IntToStr(FCPUCount));
       end;
       Processor.Process.Parameters.Add('FPC='+FCompiler);
@@ -3731,6 +3791,47 @@ begin
     if (GetTargetOS=GetOS(TOS.freebsd)) then FUseLibc:=True;
     if (GetTargetOS=GetOS(TOS.openbsd)) AND (SourceVersionNum>CalculateNumericalVersion('3.2.0')) then FUseLibc:=True;
   end;
+
+  {$ifdef FORCEREVISION}
+  if (NOT(Self is TFPCCrossInstaller)) then
+  begin
+    FUseRevInc:=true;
+    if (SourceVersionNum<>0) then if (SourceVersionNum<CalculateFullVersion(3,2,3)) then FUseRevInc:=false;
+    if FUseRevInc then
+    begin
+      Infoln('FPC builder: Checking auto-generated (Makefile) revision.inc for compiler revision', etInfo);
+      FUseRevInc:=false;
+      // Generate revision.inc through Makefile to check its contents
+      s:=IncludeTrailingPathDelimiter(FSourceDirectory)+'compiler'+PathDelim+REVINCFILENAME;
+      DeleteFile(s);
+      if BuildModuleCustom(_REVISIONFPC) then
+      begin
+        // Check revision.inc for errors
+        if FileExists(s) then
+        begin
+          ConfigText:=TStringList.Create;
+          try
+            ConfigText.LoadFromFile(s);
+            if (ConfigText.Count>0) then
+            begin
+              VersionSnippet:=ConfigText.Strings[0];
+              VersionSnippet:=AnsiDequotedStr(VersionSnippet,'''');
+              VersionSnippet:=AnsiDequotedStr(VersionSnippet,'"');
+              if (Length(VersionSnippet)>0) AND (Pos(' ',VersionSnippet)=0) AND (ContainsDigit(VersionSnippet)) then FUseRevInc:=true;
+            end;
+          finally
+            ConfigText.Free;
+          end;
+          if (NOT FUseRevInc) then
+          begin
+            Infoln('FPC builder: Contents of auto-generated (Makefile) revision.inc incorrect. Deleting and preventing use !', etWarning);
+            DeleteFile(s);
+          end;
+        end;
+      end;
+    end;
+  end;
+  {$endif FORCEREVISION}
 
   // Now: the real build of FPC !!!
   OperationSucceeded:=BuildModuleCustom(ModuleName);
@@ -4497,7 +4598,9 @@ begin
     Processor.Process.CurrentDirectory:=ExcludeTrailingPathDelimiter(FSourceDirectory);
     if (NOT FNoJobs) then
     begin
+      {$ifndef win64}
       Processor.Process.Parameters.Add('--jobs='+IntToStr(FCPUCount));
+      {$endif win64}
       Processor.Process.Parameters.Add('FPMAKEOPT=--threads='+IntToStr(FCPUCount));
     end;
     Processor.Process.Parameters.Add('FPC='+aCleanupCompiler);
@@ -4595,9 +4698,11 @@ begin
       Infoln(infotext+'Deleting fpc.sh script.', etInfo);
       Sysutils.DeleteFile(FFPCCompilerBinPath+'fpc.sh');
       {$ENDIF UNIX}
-      Infoln(infotext+'Deleting revision.inc.', etInfo);
-      aDir:=ConcatPaths([FSourceDirectory,'compiler']);
-      DeleteFile(aDir+DirectorySeparator+'revision.inc');
+      {$ifdef FORCEREVISION}
+      //Infoln(infotext+'Deleting '+REVINCFILENAME, etInfo);
+      //aDir:=ConcatPaths([FSourceDirectory,'compiler']);
+      //DeleteFile(aDir+DirectorySeparator+REVINCFILENAME);
+      {$endif FORCEREVISION}
     end;
 
     // Delete units
@@ -4710,8 +4815,6 @@ var
   s              : string;
   SourceVersion  : string;
   SourceInfo     : TRevision;
-  FilePath       : string;
-  aIndex         : integer;
 begin
   result:=inherited;
   result:=InitModule;
@@ -4832,32 +4935,11 @@ begin
       UpdateWarnings.Free;
     end;
 
+    {$ifdef FORCEREVISION}
     CreateRevision(ModuleName,ActualRevision);
+    {$endif FORCEREVISION}
 
     if (SourceVersion<>'0.0.0') then PatchModule(ModuleName);
-    {
-    if (NOT Ultibo) AND ( (SourceVersion<>'0.0.0') AND (CompareVersionStrings(SourceVersion,'3.3.1')>=0) ) then
-    begin
-      FilePath:=ConcatPaths([FSourceDirectory,'compiler'])+PathDelim+'version.pas';
-      if (FileExists(FilePath)) then
-      begin
-        UpdateWarnings:=TStringList.Create;
-        try
-          UpdateWarnings.LoadFromFile(FilePath);
-          aIndex:=StringListContains(UpdateWarnings,'+''-r''+{$i revision.inc}');
-          if (aIndex<>-1) then
-          begin
-            s:=UpdateWarnings.Strings[aIndex];
-            s:=StringReplace(s,'-r','-',[]);
-            UpdateWarnings.Strings[aIndex]:=s;
-            UpdateWarnings.SaveToFile(FilePath);
-          end;
-        finally
-          UpdateWarnings.Free;
-        end;
-      end;
-    end;
-    }
   end
   else
   begin
@@ -4906,10 +4988,11 @@ begin
 
   FTargetCompilerName:=GetCompilerName(GetTargetCPU);
 
-  FCompiler := '';
-  FUseLibc  := false;
+  FCompiler  := '';
+  FUseLibc   := false;
+  FUseRevInc := false;
 
-  InitDone:=false;
+  InitDone   := false;
 end;
 
 destructor TFPCInstaller.Destroy;
