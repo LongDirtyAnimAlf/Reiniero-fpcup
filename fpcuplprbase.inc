@@ -160,6 +160,8 @@ begin
   writeln('                       Options can be overwritten by command line parameters.');
   writeln(' inisection=<sec>      Section name to be used if an ini file is specified.');
   writeln('                       If not given, use [General]');
+  writeln(' onlyupbootstrappers   Only try to download bootstrappers from up itself');
+  writeln('                       Usefull in case the FPC ftp server is down.');
   writeln(' keeplocalchanges      Keep locally modified files (normally these would be');
   writeln('                       backed up as .diff files before doing repo revert.');
   writeln(' reapplylocalchanges   Back up locally modified files into .diff file and');
