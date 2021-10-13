@@ -3,7 +3,7 @@
   <ProjectSession>
     <PathDelim Value="\"/>
     <Version Value="12"/>
-    <BuildModes Count="5" Active="win32">
+    <BuildModes Count="6" Active="Default">
       <Item1 Name="linuxarmhf">
         <MacroValues Count="1">
           <Macro1 Name="LCLWidgetType" Value="nogui"/>
@@ -45,44 +45,7 @@
           </Other>
         </CompilerOptions>
       </Item1>
-      <Item2 Name="darwini386">
-        <CompilerOptions>
-          <Version Value="11"/>
-          <PathDelim Value="\"/>
-          <Target>
-            <Filename Value="bin\$NameOnly($(ProjFile))-$(TargetCPU)-$(TargetOS)"/>
-          </Target>
-          <SearchPaths>
-            <IncludeFiles Value="$(ProjOutDir)"/>
-            <OtherUnitFiles Value="synaser;crossinstallers;dcpcrypt;dcpcrypt\Hashes;dcpcrypt\Ciphers"/>
-            <UnitOutputDirectory Value="libfpcup\$(TargetCPU)-$(TargetOS)"/>
-          </SearchPaths>
-          <CodeGeneration>
-            <SmartLinkUnit Value="True"/>
-            <TargetCPU Value="i386"/>
-            <TargetOS Value="darwin"/>
-            <Optimizations>
-              <OptimizationLevel Value="2"/>
-            </Optimizations>
-          </CodeGeneration>
-          <Linking>
-            <Debugging>
-              <GenerateDebugInfo Value="False"/>
-              <StripSymbols Value="True"/>
-              <UseExternalDbgSyms Value="True"/>
-            </Debugging>
-            <LinkSmart Value="True"/>
-          </Linking>
-          <Other>
-            <WriteFPCLogo Value="False"/>
-            <CustomOptions Value="-dFPCONLY"/>
-            <ExecuteBefore>
-              <CompileReasons Run="False"/>
-            </ExecuteBefore>
-          </Other>
-        </CompilerOptions>
-      </Item2>
-      <Item3 Name="darwinx64">
+      <Item2 Name="darwinx64">
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -118,8 +81,82 @@
             </ExecuteBefore>
           </Other>
         </CompilerOptions>
+      </Item2>
+      <Item3 Name="darwinarm64">
+        <CompilerOptions>
+          <Version Value="11"/>
+          <PathDelim Value="\"/>
+          <Target>
+            <Filename Value="bin\$NameOnly($(ProjFile))-$(TargetCPU)-$(TargetOS)"/>
+          </Target>
+          <SearchPaths>
+            <IncludeFiles Value="$(ProjOutDir)"/>
+            <OtherUnitFiles Value="synaser;crossinstallers;dcpcrypt;dcpcrypt\Hashes;dcpcrypt\Ciphers"/>
+            <UnitOutputDirectory Value="libfpcup\$(TargetCPU)-$(TargetOS)"/>
+          </SearchPaths>
+          <CodeGeneration>
+            <SmartLinkUnit Value="True"/>
+            <TargetCPU Value="aarch64"/>
+            <TargetOS Value="darwin"/>
+            <Optimizations>
+              <OptimizationLevel Value="2"/>
+            </Optimizations>
+          </CodeGeneration>
+          <Linking>
+            <Debugging>
+              <GenerateDebugInfo Value="False"/>
+              <StripSymbols Value="True"/>
+              <UseExternalDbgSyms Value="True"/>
+            </Debugging>
+            <LinkSmart Value="True"/>
+          </Linking>
+          <Other>
+            <WriteFPCLogo Value="False"/>
+            <CustomOptions Value="-dFPCONLY"/>
+            <ExecuteBefore>
+              <CompileReasons Run="False"/>
+            </ExecuteBefore>
+          </Other>
+        </CompilerOptions>
       </Item3>
-      <Item4 Name="darwinxppc">
+      <Item4 Name="darwini386">
+        <CompilerOptions>
+          <Version Value="11"/>
+          <PathDelim Value="\"/>
+          <Target>
+            <Filename Value="bin\$NameOnly($(ProjFile))-$(TargetCPU)-$(TargetOS)"/>
+          </Target>
+          <SearchPaths>
+            <IncludeFiles Value="$(ProjOutDir)"/>
+            <OtherUnitFiles Value="synaser;crossinstallers;dcpcrypt;dcpcrypt\Hashes;dcpcrypt\Ciphers"/>
+            <UnitOutputDirectory Value="libfpcup\$(TargetCPU)-$(TargetOS)"/>
+          </SearchPaths>
+          <CodeGeneration>
+            <SmartLinkUnit Value="True"/>
+            <TargetCPU Value="i386"/>
+            <TargetOS Value="darwin"/>
+            <Optimizations>
+              <OptimizationLevel Value="2"/>
+            </Optimizations>
+          </CodeGeneration>
+          <Linking>
+            <Debugging>
+              <GenerateDebugInfo Value="False"/>
+              <StripSymbols Value="True"/>
+              <UseExternalDbgSyms Value="True"/>
+            </Debugging>
+            <LinkSmart Value="True"/>
+          </Linking>
+          <Other>
+            <WriteFPCLogo Value="False"/>
+            <CustomOptions Value="-dFPCONLY"/>
+            <ExecuteBefore>
+              <CompileReasons Run="False"/>
+            </ExecuteBefore>
+          </Other>
+        </CompilerOptions>
+      </Item4>
+      <Item5 Name="darwinxppc">
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -155,8 +192,8 @@
             </ExecuteBefore>
           </Other>
         </CompilerOptions>
-      </Item4>
-      <Item5 Name="darwinxppc64">
+      </Item5>
+      <Item6 Name="darwinxppc64">
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -192,12 +229,12 @@
             </ExecuteBefore>
           </Other>
         </CompilerOptions>
-      </Item5>
+      </Item6>
       <SessionEnabledMatrixOptions Count="1">
         <Item1 Mode="linuxarmhf" Option="233755810855"/>
       </SessionEnabledMatrixOptions>
     </BuildModes>
-    <ManyBuildModesSelection Value="win32,win64,linuxi386,linux64,linuxaarch64,freebsdi386,freebsdx64,linuxppc64,linuxarmhf,darwini386,darwinx64,darwinxppc,darwinxppc64"/>
+    <ManyBuildModesSelection Value="win32,win64,linuxi386,linux64,linuxaarch64,freebsdi386,freebsdx64,linuxppc64,linuxarmhf,darwinx64,darwini386,darwinxppc,darwinxppc64"/>
     <Units Count="49">
       <Unit0>
         <Filename Value="fpcup.lpr"/>
@@ -267,10 +304,12 @@
         <Filename Value="installeruniversal.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerUniversal"/>
-        <EditorIndex Value="-1"/>
-        <TopLine Value="2352"/>
-        <CursorPos X="3" Y="2378"/>
+        <IsVisibleTab Value="True"/>
+        <EditorIndex Value="3"/>
+        <TopLine Value="2455"/>
+        <CursorPos X="8" Y="2470"/>
         <UsageCount Value="200"/>
+        <Loaded Value="True"/>
       </Unit8>
       <Unit9>
         <Filename Value="fpcup.ini"/>
@@ -382,7 +421,6 @@
       <Unit23>
         <Filename Value="settings.ini"/>
         <IsPartOfProject Value="True"/>
-        <IsVisibleTab Value="True"/>
         <EditorIndex Value="2"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>

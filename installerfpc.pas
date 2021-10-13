@@ -2874,7 +2874,9 @@ var
   FreeBSDVersion:integer;
   {$ENDIF}
   s:string;
+  {$ifdef MSWindows}
   aPath:string;
+  {$endif}
   {$ifdef Darwin}
   s1:string;
   {$endif}
@@ -3063,6 +3065,7 @@ begin
           begin
             Infoln(localinfotext+'Got a V'+aLocalBootstrapVersion+' bootstrap compiler from official FPC bootstrap sources.',etInfo);
             FBootstrapCompilerURL := FPCFTPURL+'dist/'+aLocalBootstrapVersion+'/bootstrap/'+aCompilerArchive;
+            Infoln(localinfotext+'Location [URL]: '+FBootstrapCompilerURL,etInfo);
           end;
         end;
 

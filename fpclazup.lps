@@ -3,7 +3,7 @@
   <ProjectSession>
     <PathDelim Value="\"/>
     <Version Value="12"/>
-    <BuildModes Count="5" Active="Debug">
+    <BuildModes Count="6" Active="Default">
       <Item1 Name="linuxarmhf">
         <MacroValues Count="1">
           <Macro1 Name="LCLWidgetType" Value="nogui"/>
@@ -45,43 +45,7 @@
           </Other>
         </CompilerOptions>
       </Item1>
-      <Item2 Name="darwini386">
-        <CompilerOptions>
-          <Version Value="11"/>
-          <PathDelim Value="\"/>
-          <Target>
-            <Filename Value="bin\$NameOnly($(ProjFile))-$(TargetCPU)-$(TargetOS)"/>
-          </Target>
-          <SearchPaths>
-            <IncludeFiles Value="$(ProjOutDir);dcpcrypt\Ciphers"/>
-            <OtherUnitFiles Value="synaser;crossinstallers;dcpcrypt\Hashes;dcpcrypt;dcpcrypt\Ciphers"/>
-            <UnitOutputDirectory Value="libfpclazup\$(TargetCPU)-$(TargetOS)"/>
-          </SearchPaths>
-          <CodeGeneration>
-            <SmartLinkUnit Value="True"/>
-            <TargetCPU Value="i386"/>
-            <TargetOS Value="darwin"/>
-            <Optimizations>
-              <OptimizationLevel Value="2"/>
-            </Optimizations>
-          </CodeGeneration>
-          <Linking>
-            <Debugging>
-              <GenerateDebugInfo Value="False"/>
-              <StripSymbols Value="True"/>
-              <UseExternalDbgSyms Value="True"/>
-            </Debugging>
-            <LinkSmart Value="True"/>
-          </Linking>
-          <Other>
-            <WriteFPCLogo Value="False"/>
-            <ExecuteBefore>
-              <CompileReasons Run="False"/>
-            </ExecuteBefore>
-          </Other>
-        </CompilerOptions>
-      </Item2>
-      <Item3 Name="darwinx64">
+      <Item2 Name="darwinx64">
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -116,8 +80,80 @@
             </ExecuteBefore>
           </Other>
         </CompilerOptions>
+      </Item2>
+      <Item3 Name="darwinarm64">
+        <CompilerOptions>
+          <Version Value="11"/>
+          <PathDelim Value="\"/>
+          <Target>
+            <Filename Value="bin\$NameOnly($(ProjFile))-$(TargetCPU)-$(TargetOS)"/>
+          </Target>
+          <SearchPaths>
+            <IncludeFiles Value="$(ProjOutDir);dcpcrypt\Ciphers"/>
+            <OtherUnitFiles Value="synaser;crossinstallers;dcpcrypt\Hashes;dcpcrypt;dcpcrypt\Ciphers"/>
+            <UnitOutputDirectory Value="libfpclazup\$(TargetCPU)-$(TargetOS)"/>
+          </SearchPaths>
+          <CodeGeneration>
+            <SmartLinkUnit Value="True"/>
+            <TargetCPU Value="aarch64"/>
+            <TargetOS Value="darwin"/>
+            <Optimizations>
+              <OptimizationLevel Value="2"/>
+            </Optimizations>
+          </CodeGeneration>
+          <Linking>
+            <Debugging>
+              <GenerateDebugInfo Value="False"/>
+              <StripSymbols Value="True"/>
+              <UseExternalDbgSyms Value="True"/>
+            </Debugging>
+            <LinkSmart Value="True"/>
+          </Linking>
+          <Other>
+            <WriteFPCLogo Value="False"/>
+            <ExecuteBefore>
+              <CompileReasons Run="False"/>
+            </ExecuteBefore>
+          </Other>
+        </CompilerOptions>
       </Item3>
-      <Item4 Name="darwinppc">
+      <Item4 Name="darwini386">
+        <CompilerOptions>
+          <Version Value="11"/>
+          <PathDelim Value="\"/>
+          <Target>
+            <Filename Value="bin\$NameOnly($(ProjFile))-$(TargetCPU)-$(TargetOS)"/>
+          </Target>
+          <SearchPaths>
+            <IncludeFiles Value="$(ProjOutDir);dcpcrypt\Ciphers"/>
+            <OtherUnitFiles Value="synaser;crossinstallers;dcpcrypt\Hashes;dcpcrypt;dcpcrypt\Ciphers"/>
+            <UnitOutputDirectory Value="libfpclazup\$(TargetCPU)-$(TargetOS)"/>
+          </SearchPaths>
+          <CodeGeneration>
+            <SmartLinkUnit Value="True"/>
+            <TargetCPU Value="i386"/>
+            <TargetOS Value="darwin"/>
+            <Optimizations>
+              <OptimizationLevel Value="2"/>
+            </Optimizations>
+          </CodeGeneration>
+          <Linking>
+            <Debugging>
+              <GenerateDebugInfo Value="False"/>
+              <StripSymbols Value="True"/>
+              <UseExternalDbgSyms Value="True"/>
+            </Debugging>
+            <LinkSmart Value="True"/>
+          </Linking>
+          <Other>
+            <WriteFPCLogo Value="False"/>
+            <ExecuteBefore>
+              <CompileReasons Run="False"/>
+            </ExecuteBefore>
+          </Other>
+        </CompilerOptions>
+      </Item4>
+      <Item5 Name="darwinppc">
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -152,8 +188,8 @@
             </ExecuteBefore>
           </Other>
         </CompilerOptions>
-      </Item4>
-      <Item5 Name="darwinppc64">
+      </Item5>
+      <Item6 Name="darwinppc64">
         <CompilerOptions>
           <Version Value="11"/>
           <PathDelim Value="\"/>
@@ -188,12 +224,12 @@
             </ExecuteBefore>
           </Other>
         </CompilerOptions>
-      </Item5>
+      </Item6>
       <SessionEnabledMatrixOptions Count="1">
         <Item1 Mode="linuxarmhf" Option="233755810855"/>
       </SessionEnabledMatrixOptions>
     </BuildModes>
-    <ManyBuildModesSelection Value="win32,win64,linuxi386,linux64,linuxaarch64,freebsdi386,freebsdx64,linuxppc64,linuxarmhf,darwini386,darwinx64,darwinppc,darwinppc64"/>
+    <ManyBuildModesSelection Value="win32,win64,linuxi386,linux64,linuxaarch64,freebsdi386,freebsdx64,linuxppc64,linuxarmhf,darwinx64,darwini386,darwinppc,darwinppc64"/>
     <Units Count="47">
       <Unit0>
         <Filename Value="fpclazup.lpr"/>

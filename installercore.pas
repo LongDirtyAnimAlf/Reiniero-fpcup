@@ -401,6 +401,8 @@ type
     FSVNClient: TSVNClient;
     FRepositoryUpdated: boolean;
     FSourcePatches: string;
+    FPreInstallScriptPath: string;
+    FPostInstallScriptPath: string;
     FMajorVersion: integer; //major part of the version number, e.g. 1 for 1.0.8, or -1 if unknown
     FMinorVersion: integer; //minor part of the version number, e.g. 0 for 1.0.8, or -1 if unknown
     FReleaseVersion: integer; //release part of the version number, e.g. 8 for 1.0.8, or -1 if unknown
@@ -543,6 +545,8 @@ type
     property TAG: string read FURL write FTAG;
     // patches
     property SourcePatches: string write FSourcePatches;
+    property PreInstallScriptPath: string write FPreInstallScriptPath;
+    property PostInstallScriptPath: string write FPostInstallScriptPath;
     // do not download the repo itself, but only get the files (of master)
     property ExportOnly: boolean write FExportOnly;
     property NoJobs: boolean write FNoJobs;
@@ -1248,9 +1252,10 @@ begin
             //aURL:='https://github.com/git-for-windows/git/releases/download/v2.19.0.windows.1/MinGit-2.19.0-32-bit.zip';
             //aURL:='https://github.com/git-for-windows/git/releases/download/v2.21.0.windows.1/MinGit-2.21.0-32-bit.zip';
             //aURL:='https://github.com/git-for-windows/git/releases/download/v2.22.0.windows.1/MinGit-2.22.0-32-bit.zip';
-            aURL:='https://github.com/git-for-windows/git/releases/download/v2.23.0.windows.1/MinGit-2.23.0-32-bit.zip';
+            //aURL:='https://github.com/git-for-windows/git/releases/download/v2.23.0.windows.1/MinGit-2.23.0-32-bit.zip';
             //aURL:='https://github.com/git-for-windows/git/releases/download/v2.24.1.windows.2/MinGit-2.24.1.2-32-bit.zip';
             //aURL:='https://github.com/git-for-windows/git/releases/download/v2.25.1.windows.1/MinGit-2.25.1-32-bit.zip';
+            aURL:='https://github.com/git-for-windows/git/releases/download/v2.33.0.windows.2/MinGit-2.33.0.2-32-bit.zip';
             {$else}
             //Output:='git64.7z';
             Output:='git64.zip';
@@ -1259,9 +1264,10 @@ begin
             //aURL:='https://github.com/git-for-windows/git/releases/download/v2.19.0.windows.1/MinGit-2.19.0-64-bit.zip';
             //aURL:='https://github.com/git-for-windows/git/releases/download/v2.21.0.windows.1/MinGit-2.21.0-64-bit.zip';
             //aURL:='https://github.com/git-for-windows/git/releases/download/v2.22.0.windows.1/MinGit-2.22.0-64-bit.zip';
-            aURL:='https://github.com/git-for-windows/git/releases/download/v2.23.0.windows.1/MinGit-2.23.0-64-bit.zip';
+            //aURL:='https://github.com/git-for-windows/git/releases/download/v2.23.0.windows.1/MinGit-2.23.0-64-bit.zip';
             //aURL:='https://github.com/git-for-windows/git/releases/download/v2.24.1.windows.2/MinGit-2.24.1.2-64-bit.zip';
             //aURL:='https://github.com/git-for-windows/git/releases/download/v2.25.1.windows.1/MinGit-2.25.1-64-bit.zip';
+            aURL:='https://github.com/git-for-windows/git/releases/download/v2.33.0.windows.2/MinGit-2.33.0.2-64-bit.zip';
             {$endif}
             Infoln(localinfotext+'GIT not found. Downloading it (may take time) from '+aURL,etInfo);
             OperationSucceeded:=GetFile(aURL,IncludeTrailingPathDelimiter(FMakeDir)+'git\'+Output);
