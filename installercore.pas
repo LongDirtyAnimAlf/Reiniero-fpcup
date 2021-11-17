@@ -1024,6 +1024,10 @@ begin
       begin
         Infoln(localinfotext+'Found OpenSLL library files.',etDebug);
         Infoln(localinfotext+'Checking for correct signature.',etDebug);
+        if (IsSSLloaded) then
+        begin
+          DestroySSLInterface; // disable ssl and release libs
+        end;
         if (NOT CheckFileSignature(SafeGetApplicationPath+'libeay32.dll')) OR (NOT CheckFileSignature(SafeGetApplicationPath+'ssleay32.dll')) then
         begin
           Infoln(localinfotext+'OpenSLL library files have wrong CPU signature.',etWarning);
@@ -1031,7 +1035,7 @@ begin
           DeleteFile(SafeGetApplicationPath+'ssleay32.dll');
           Infoln(localinfotext+'Getting correct OpenSLL library files.',etInfo);
           DownloadOpenSSL;
-          DestroySSLInterface; // disable ssl and release libs
+          //DestroySSLInterface; // disable ssl and release libs
         end;
       end;
       if (NOT IsSSLloaded) then
@@ -1096,7 +1100,9 @@ begin
     aURL:=FPCGITLABBINARIES+'/-/raw/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll])+'/install/binw32/';
 
     OperationSucceeded:=false;
-    aLocalClientBinary:=FPatchCmd;
+    aLocalClientBinary:=ExtractFilePathSafe(FPatchCmd);
+    if (Not FileExists(aLocalClientBinary)) then
+      aLocalClientBinary:=Which(aLocalClientBinary);
     if (Not FileExists(aLocalClientBinary)) then
       aLocalClientBinary:=IncludeTrailingPathDelimiter(FMakeDir) + FPatchCmd;
     if (Not FileExists(aLocalClientBinary)) then
@@ -1878,7 +1884,7 @@ begin
          for NoPatchStrip in boolean do
          begin
 
-           s:=ExtractFileName(FPatchCmd);
+           s:=ExtractFileNameSafe(FPatchCmd);
            if ((s='patch'+GetExeExt) OR (s='gpatch'+GetExeExt)) then
            begin
              if NoPatchStrip then
@@ -2085,7 +2091,7 @@ begin
 
         if Assigned(UpdateWarnings) then UpdateWarnings.Add(aModuleName + ': reapplying local changes.');
 
-        s:=ExtractFileName(FPatchCmd);
+        s:=ExtractFileNameSafe(FPatchCmd);
         if ((s='patch'+GetExeExt) OR (s='gpatch'+GetExeExt))
            then LocalPatchCmd:=FPatchCmd + ' -t -p0 -i '
            else LocalPatchCmd:=Trim(FPatchCmd) + ' ';
@@ -2116,7 +2122,7 @@ begin
             end;
             if CheckoutOrUpdateReturnCode=0 then
             begin
-              s:=ExtractFileName(FPatchCmd);
+              s:=ExtractFileNameSafe(FPatchCmd);
               if ((s='patch'+GetExeExt) OR (s='gpatch'+GetExeExt))
                  then LocalPatchCmd:=FPatchCmd + ' -t -p0 --binary -i '
                  else LocalPatchCmd:=Trim(FPatchCmd) + ' ';
@@ -2188,7 +2194,14 @@ begin
     FilesList:=FindAllDirectories(FPCArchiveDir,False);
     if FilesList.Count=1 then aName:=FilesList[0];
     FreeAndNil(FilesList);
-    if Pos(LowerCase(ModuleName),LowerCase(ExtractFileName(aName)))>0 then
+    if (
+      (Pos(LowerCase(ModuleName),LowerCase(ExtractFileName(aName)))>0)
+      OR
+      ((ModuleName=_FPC) AND (Pos('source-release',LowerCase(ExtractFileName(aName)))>0))
+      OR
+      ((ModuleName=_LAZARUS) AND (Pos('lazarus-lazarus',LowerCase(ExtractFileName(aName)))>0))
+      )
+    then
     //if LowerCase(ExtractFileName(aName))=LowerCase(ModuleName) then
     begin
       Infoln(infotext+'Moving files due to extra path.',etInfo);
@@ -3215,6 +3228,7 @@ const
   {$ifndef FPCONLY}
   DARWINCHECKMAGIC='useride: ';
   DARWINHACKMAGIC='./lazbuild$(SRCEXEEXT) --lazarusdir=. --build-ide= --ws=$(LCL_PLATFORM)';
+  HAIKUHACKMAGIC='$(DIFF) $(TEMPNAME3) $(EXENAME)';
   {$endif}
 var
   PatchList:TStringList;
@@ -3427,7 +3441,6 @@ begin
     end;
   end;
 
-
   {$ifdef Haiku}
   // we will hack into FPC itself to prevent FPU crash on Haiku
   //if FOnlinePatching then
@@ -3455,10 +3468,43 @@ begin
         PatchList.Free;
       end;
     end;
+
+    PatchList:=TStringList.Create;
+    try
+      PatchList.Clear;
+      PatchFilePath:=ConcatPaths([FSourceDirectory,'compiler'])+DirectorySeparator+MAKEFILENAME;
+
+      if (FileExists(PatchFilePath)) then
+      begin
+        PatchList.LoadFromFile(PatchFilePath);
+        j:=-1;
+        for i:=0 to (PatchList.Count-1) do
+        begin
+          s:=PatchList.Strings[i];
+          if (Pos(HAIKUHACKMAGIC,s)>0) then
+          begin
+            // check if we were already there
+            if (Pos('haiku',PatchList.Strings[i-1]) = 0) then
+            begin
+              j:=i;
+            end;
+            break;
+          end;
+        end;
+        if (j<>-1) then
+        begin
+          Inc(j);
+          PatchList.Insert(j,'endif');
+          PatchList.Insert(j-1,'ifneq ($(OS_TARGET), haiku)');
+          PatchList.SaveToFile(PatchFilePath);
+        end;
+      end;
+
+    finally
+      PatchList.Free;
+    end;
   end;
   {$endif}
-
-
 
   // we will hack into FPC itself for better isolation
   // needs more testing
@@ -3629,7 +3675,7 @@ begin
           Processor.Process.CurrentDirectory := ExcludeTrailingPathDelimiter(FSourceDirectory);
 
           // check for default values
-          s:=ExtractFileName(FPatchCmd);
+          s:=ExtractFileNameSafe(FPatchCmd);
           if ((s='patch'+GetExeExt) OR (s='gpatch'+GetExeExt)) then
           begin
             Processor.Process.Parameters.Add('-t');

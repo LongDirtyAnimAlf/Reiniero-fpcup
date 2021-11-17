@@ -245,6 +245,7 @@ procedure CreateHomeStartLink(Target, TargetArguments, ShortcutName: string);
 // Delete shortcut on desktop
 procedure DeleteDesktopShortcut(ShortcutName: string);
 {$ENDIF MSWINDOWS}
+function FindFileInDirList(Filename, DirectoryList: String): String;
 function FindFileInDir(Filename, Path: String): String;
 function FindFileInDirWildCard(Filename, Path: String): String;
 // Copy a directory recursive
@@ -353,6 +354,8 @@ function CheckExecutable(Executable:string;Parameters:array of string;ExpectOutp
 function GetJava: string;
 function GetJavac: string;
 function CheckJava: boolean;
+function ExtractFilePathSafe(const AFilename: string): string;
+function ExtractFileNameSafe(const AFilename: string): string;
 function FileNameWithoutExt(const AFilename: string): string;
 function FileNameWithoutAllExt(const AFilename: string): string;
 function FileNameAllExt(const AFilename: string): string;
@@ -362,7 +365,8 @@ function DirectoryIsEmpty(Directory: string): Boolean;
 function GetTargetCPU:string;
 function GetTargetOS:string;
 function GetTargetCPUOS:string;
-function GetDistro:string;
+function GetFPCBuildVersion:string;
+function GetDistro(const aID:string=''):string;
 function GetFreeBSDVersion:byte;
 function checkGithubRelease(const aURL:string):string;
 {$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION < 30200)}
@@ -422,7 +426,6 @@ uses
   {$ifdef ENABLEEMAIL}
   ,mimemess,mimepart,smtpsend
   {$endif}
-  ,ssl_openssl
   {$endif}
   ,process
   ,processutils
@@ -1518,6 +1521,32 @@ begin
   SysUtils.DeleteFile(LinkName);
 end;
 {$ENDIF MSWINDOWS}
+
+function FindFileInDirList(Filename, DirectoryList: String): String;
+var
+  DirList: TStringList;
+  ADirectory: String;
+  AFile: string;
+begin
+  Result := '';
+  DirList:=TStringList.Create;
+  try
+    DirList.Delimiter:=PathSeparator;
+    DirList.StrictDelimiter:=True;
+    DirList.DelimitedText:=SetDirSeparators(DirectoryList);
+    for ADirectory in DirList do
+    begin
+      AFile:=IncludeTrailingPathDelimiter(ADirectory)+Filename;
+      if FileExists(AFile) then
+      begin
+        Result := AFile;
+        Break;
+      end;
+    end;
+  finally
+    DirList.Free;
+  end;
+end;
 
 function FindFileInDir(Filename, Path: String): String;
 var
@@ -3232,21 +3261,33 @@ begin
   result:=s;
 end;
 function GetDarwinSDKLocation:string;
+const
+  SDKCOMMAND = '--show-sdk-path';
 var
   Output:string;
 begin
+  result:='';
   Output:=ConcatPaths([GetXCodeLocation,'Platforms','MacOSX.platform','Developer','SDKs','MacOSX.sdk']);
   if DirectoryExists(Output) then
     result:=Output
   else
   begin
     Output:='';
-    RunCommand('xcrun',['--show-sdk-path'], Output);
-    Output:=Trim(Output);
-    if (Length(Output)>0) then
-      result:=Output;
+    RunCommand('xcrun',['-h'], Output);
+    if (Pos(SDKCOMMAND,Output)>0) then
+    begin
+      Output:='';
+      RunCommand('xcrun',[SDKCOMMAND], Output);
+      Output:=Trim(Output);
+      if (Length(Output)>0) then
+      begin
+        if DirectoryExists(Output) then
+          result:=Output
+      end;
+    end;
   end;
 end;
+
 function GetDarwinToolsLocation:string;
 const
   BINARY = 'clang';
@@ -3451,7 +3492,9 @@ end;
 function LibWhich(aLibrary: string): boolean;
 {$ifdef Unix}
 const
-  UNIXSEARCHDIRS : array [0..1] of string = (
+  UNIXSEARCHDIRS : array [0..3] of string = (
+  '/lib',
+  '/lib64',
   '/usr/lib',
   '/usr/local/lib'
   );
@@ -3470,19 +3513,44 @@ var
 {$endif}
 begin
   result:=false;
+  {$ifdef Unix}
 
-  {$ifdef Haiku}
-  if NOT result then
+  if (NOT result) then
   begin
-    for i:=Low(HAIKUSEARCHDIRS) to High(HAIKUSEARCHDIRS) do
+    OutputString:=FileSearch(aLibrary,SysUtils.GetEnvironmentVariable('LIBRARY_PATH'));
+    //OutputString:=FindFileInDirList(aLibrary,SysUtils.GetEnvironmentVariable('LIBRARY_PATH'));
+    result:=(Length(OutputString)>0);
+    if result then ThreadLog('Library searcher found '+aLibrary+' in path @ '+OutputString,etDebug);
+  end;
+
+  if (NOT result) then
+  begin
+    {$ifdef Haiku}
+    for sd in HAIKUSEARCHDIRS do
+    {$else}
+    for sd in UNIXSEARCHDIRS do
+    {$endif}
     begin
       OutputString:='';
-      sd:=HAIKUSEARCHDIRS[i];
+      {$ifdef Haiku}
       {$ifndef CPUX86}
       if (RightStr(sd,4)='/x86') then continue;
       {$endif}
-      RunCommand('find',[sd,'-type','f','-name',aLibrary],OutputString,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
-      result:=(Pos(aLibrary,OutputString)>0);
+      {$endif}
+      if (NOT result) then
+      begin
+        //try to find a file
+        //OutputString:=FileSearch(aLibrary,SysUtils.GetEnvironmentVariable('LIBRARY_PATH'));
+        //OutputString:=FindFileInDirList(aLibrary,SysUtils.GetEnvironmentVariable('LIBRARY_PATH'));
+        RunCommand('find',[sd,'-type','f','-name',aLibrary],OutputString,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
+        result:=(Pos(aLibrary,OutputString)>0);
+      end;
+      if (NOT result) then
+      begin
+        //try to find a symlink to a file
+        RunCommand('find',[sd,'-type','l','-name',aLibrary],OutputString,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
+        result:=(Pos(aLibrary,OutputString)>0);
+      end;
       if result then
       begin
         ThreadLog('Library searcher found '+aLibrary+' inside '+sd+'.',etDebug);
@@ -3490,44 +3558,8 @@ begin
       end;
     end;
   end;
-  {$endif}
 
-  {$ifdef Unix}
   {$ifndef Haiku}
-  if (NOT result) then
-  begin
-    for i:=Low(UNIXSEARCHDIRS) to High(UNIXSEARCHDIRS) do
-    begin
-      OutputString:='';
-      sd:=UNIXSEARCHDIRS[i];
-      // Search file
-      RunCommand('find',[sd,'-type','f','-name',aLibrary,'-print','2>/dev/null'],OutputString,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
-      result:=(Pos(aLibrary,OutputString)>0);
-      if result then
-      begin
-        ThreadLog('Library searcher found '+aLibrary+' file inside '+sd+'.',etInfo);
-        break;
-      end;
-    end;
-  end;
-
-  if (NOT result) then
-  begin
-    for i:=Low(UNIXSEARCHDIRS) to High(UNIXSEARCHDIRS) do
-    begin
-      OutputString:='';
-      sd:=UNIXSEARCHDIRS[i];
-      // Search symlink
-      RunCommand('find',[sd,'-type','l','-name',aLibrary,'-print','2>/dev/null'],OutputString,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
-      result:=(Pos(aLibrary,OutputString)>0);
-      if result then
-      begin
-        ThreadLog('Library searcher found '+aLibrary+' symlink inside '+sd+'.',etInfo);
-        break;
-      end;
-    end;
-  end;
-
   if (NOT result) then
   begin
     sd:=Which('ldconfig');
@@ -3892,6 +3924,26 @@ begin
   {$endif}
 end;
 
+function ExtractFilePathSafe(const AFilename: string): string;
+var
+  i,j : longint;
+  EndSep : Set of Char;
+begin
+  i:=Length(AFilename);
+  EndSep:=AllowDirectorySeparators+AllowDriveSeparators;
+  while (i > 0) and not CharInSet(AFilename[i],EndSep) do
+    Dec(i);
+  j:=i+1;
+  while (j<Length(AFilename)) and (AFilename[j]<>' ') do
+    Inc(j);
+  result:=Copy(AFilename,1,j-1);
+end;
+
+function ExtractFileNameSafe(const AFilename: string): string;
+begin
+  result:=ExtractFileName(ExtractFilePathSafe(AFilename));
+end;
+
 function FileNameWithoutExt(const AFilename: string): string;
 var
   s1,s2:string;
@@ -4007,10 +4059,17 @@ begin
   result:=GetTargetCPU+'-'+GetTargetOS;
 end;
 
+function GetFPCBuildVersion:string;
+begin
+  result:=lowercase({$I %FPCVERSION%});// + ' on ' +GetTargetCPUOS;
+end;
 
-function GetDistro:string;
+function GetDistro(const aID:string):string;
 var
-  Major,Minor,Build,Patch,i,j: Integer;
+  {$if defined(Darwin) OR defined(MSWindows)}
+  Major,Minor,Build,Patch: Integer;
+  {$endif}
+  i,j: Integer;
   AllOutput : TStringList;
   s,t:ansistring;
   success:boolean;
@@ -4028,10 +4087,17 @@ begin
           try
             AllOutput.Text:=s;
             s:='';
-            s:=AllOutput.Values['NAME'];
-            if Length(s)=0 then s := AllOutput.Values['ID_LIKE'];
-            if Length(s)=0 then s := AllOutput.Values['DISTRIB_ID'];
-            if Length(s)=0 then s := AllOutput.Values['ID'];
+            if Length(aID)>0 then
+            begin
+              s:=AllOutput.Values[aID];
+            end
+            else
+            begin
+              s:=AllOutput.Values['NAME'];
+              if Length(s)=0 then s := AllOutput.Values['ID_LIKE'];
+              if Length(s)=0 then s := AllOutput.Values['DISTRIB_ID'];
+              if Length(s)=0 then s := AllOutput.Values['ID'];
+            end;
             success:=(Length(s)>0);
           finally
             AllOutput.Free;
@@ -4137,7 +4203,7 @@ var
   i,j:integer;
 begin
   result:=0;
-  s:=GetDistro;
+  s:=GetDistro('VERSION');
   if Length(s)>0 then
   begin
     i:=1;
