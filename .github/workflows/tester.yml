@@ -18,27 +18,27 @@ jobs:
         config:
           - os: windows-latest
             name: 'Windows 32'
-            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.2.0c/fpclazup-i386-win32.exe'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.2.0f/fpclazup-i386-win32.exe'
             fpcup-opt: '--fpcVersion="stable.gitlab" --lazVersion="trunk.gitlab"'
             
           - os: windows-latest
             name: 'Windows 64'
-            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.2.0c/fpclazup-x86_64-win64.exe'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.2.0f/fpclazup-x86_64-win64.exe'
             fpcup-opt: '--fpcVersion="stable.gitlab" --lazVersion="trunk.gitlab"'
 
           - os: ubuntu-latest
             name: 'Linux 64'
-            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.2.0c/fpclazup-x86_64-linux'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.2.0f/fpclazup-x86_64-linux'
             fpcup-opt: '--fpcVersion="stable.gitlab" --lazVersion="trunk.gitlab"'
 
           - os: macos-latest
             name: 'MacOS 64'
-            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.2.0c/fpclazup-x86_64-darwin'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.2.0f/fpclazup-x86_64-darwin'
             fpcup-opt: '--fpcVersion="stable.gitlab" --lazVersion="trunk.gitlab"'
 
           - os: ubuntu-latest
             name: 'AArch64'
-            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.2.0c/fpclazup-x86_64-linux'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.2.0f/fpclazup-x86_64-linux'
             fpcup-opt: '--fpcVersion="stable.gitlab" --lazVersion="trunk.gitlab"'
 
     steps:
@@ -56,9 +56,7 @@ jobs:
     - name: Install AArch64 Cross Compiler
       if: matrix.config.name == 'AArch64'
       run: |
-        curl --retry 5 -L -o libs.zip https://github.com/LongDirtyAnimAlf/fpcupdeluxe/releases/download/crosslibs_v1.1/CrossLibsLinuxAarch64.zip && unzip -o libs.zip -d lazarus/
-        curl --retry 5 -L -o bins.zip https://github.com/LongDirtyAnimAlf/fpcupdeluxe/releases/download/linuxx64crossbins_v1.0/CrossBinsLinuxAarch64.zip && unzip -o bins.zip -d lazarus/cross/bin
-        ./fpcup --installdir=lazarus --ostarget=linux --cputarget=aarch64 --only="FPCCleanOnly,FPCBuildOnly" --crossbindir=lazarus/cross/bin --crosslibdir=lazarus/cross/lib/aarch64-linux --noconfirm --verbose
+        ./fpcup --installdir=lazarus --ostarget=linux --cputarget=aarch64 --only="FPCCleanOnly,FPCBuildOnly" --autotools --noconfirm --verbose
     - name: Test
       run: |
         ./lazarus/lazarus/lazbuild --help

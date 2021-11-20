@@ -234,8 +234,9 @@
       <Unit0>
         <Filename Value="fpclazup.lpr"/>
         <IsPartOfProject Value="True"/>
-        <TopLine Value="204"/>
-        <CursorPos Y="238"/>
+        <IsVisibleTab Value="True"/>
+        <TopLine Value="30"/>
+        <CursorPos Y="48"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
       </Unit0>
@@ -266,8 +267,8 @@
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerCore"/>
         <EditorIndex Value="-1"/>
-        <TopLine Value="3091"/>
-        <CursorPos X="3" Y="3095"/>
+        <TopLine Value="4348"/>
+        <CursorPos X="24" Y="4368"/>
         <UsageCount Value="200"/>
       </Unit4>
       <Unit5>
@@ -275,8 +276,8 @@
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerFpc"/>
         <EditorIndex Value="-1"/>
-        <TopLine Value="3604"/>
-        <CursorPos X="9" Y="3621"/>
+        <TopLine Value="868"/>
+        <CursorPos X="37" Y="889"/>
         <UsageCount Value="200"/>
       </Unit5>
       <Unit6>
@@ -319,12 +320,10 @@
         <Filename Value="installermanager.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="installerManager"/>
-        <IsVisibleTab Value="True"/>
-        <EditorIndex Value="2"/>
-        <TopLine Value="305"/>
-        <CursorPos X="50" Y="344"/>
+        <EditorIndex Value="-1"/>
+        <TopLine Value="1651"/>
+        <CursorPos X="14" Y="1692"/>
         <UsageCount Value="200"/>
-        <Loaded Value="True"/>
       </Unit10>
       <Unit11>
         <Filename Value="m_crosswin64.pas"/>
@@ -417,7 +416,7 @@
       <Unit22>
         <Filename Value="settings.ini"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="3"/>
+        <EditorIndex Value="2"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
         <DefaultSyntaxHighlighter Value="Ini"/>
@@ -426,8 +425,8 @@
         <Filename Value="m_crossinstaller.pas"/>
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="-1"/>
-        <TopLine Value="801"/>
-        <CursorPos Y="809"/>
+        <TopLine Value="58"/>
+        <CursorPos X="11" Y="74"/>
         <UsageCount Value="200"/>
       </Unit23>
       <Unit24>
@@ -566,8 +565,8 @@
       <Unit41>
         <Filename Value="revision.inc"/>
         <IsPartOfProject Value="True"/>
-        <EditorIndex Value="4"/>
-        <CursorPos Y="4"/>
+        <EditorIndex Value="3"/>
+        <CursorPos X="29" Y="4"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
       </Unit41>
@@ -581,13 +580,13 @@
         <Filename Value="m_any_to_androidjvm.pas"/>
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="-1"/>
-        <UsageCount Value="181"/>
+        <UsageCount Value="182"/>
       </Unit43>
       <Unit44>
         <Filename Value="m_any_to_javajvm.pas"/>
         <IsPartOfProject Value="True"/>
         <EditorIndex Value="-1"/>
-        <UsageCount Value="181"/>
+        <UsageCount Value="182"/>
       </Unit44>
       <Unit45>
         <Filename Value="fpcuputil.pas"/>
@@ -595,7 +594,7 @@
         <EditorIndex Value="-1"/>
         <TopLine Value="84"/>
         <CursorPos Y="101"/>
-        <UsageCount Value="179"/>
+        <UsageCount Value="180"/>
       </Unit45>
       <Unit46>
         <Filename Value="dcpcrypt\Ciphers\dcpdes.pas"/>
@@ -604,7 +603,7 @@
         <WindowIndex Value="-1"/>
         <TopLine Value="-1"/>
         <CursorPos X="-1" Y="-1"/>
-        <UsageCount Value="32"/>
+        <UsageCount Value="33"/>
       </Unit46>
     </Units>
     <RunParams>
