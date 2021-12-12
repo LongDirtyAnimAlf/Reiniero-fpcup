@@ -126,8 +126,8 @@ type
     function GetCompilerVersionNumber(aVersion: string; const index:byte=0): integer;
   protected
     function GetVersionFromUrl(aUrl: string): string;override;
-    function GetVersionFromSource(aSourcePath: string): string;override;
-    function GetReleaseCandidateFromSource({%H-}aSourcePath:string):integer;override;
+    function GetVersionFromSource: string;override;
+    function GetReleaseCandidateFromSource:integer;override;
     // Build module descendant customisation
     function BuildModuleCustom(ModuleName:string): boolean; virtual;
     // Retrieves compiler version string
@@ -1991,6 +1991,9 @@ begin
     }
   end;
 
+  s2:=Which('codesign');
+  if (NOT FileExists(s2)) then Processor.Process.Parameters.Add('CODESIGN=/usr/bin/true');
+
   s2:=GetDarwinSDKLocation;
   if Length(s2)>0 then
   begin
@@ -2001,7 +2004,7 @@ begin
   begin
     // always add the default library location
     s1:='-Fl'+'/usr/lib '+s1;
-  end;;
+  end;
   {$ENDIF}
 
   {$ifdef FORCEREVISION}
@@ -2253,7 +2256,7 @@ begin
     result:=aVersion;
 end;
 
-function TFPCInstaller.GetVersionFromSource(aSourcePath: string): string;
+function TFPCInstaller.GetVersionFromSource: string;
 const
   VNO  = 'version_nr';
   RNO  = 'release_nr';
@@ -2276,8 +2279,8 @@ var
 begin
   result := '0.0.0';
 
-  if (NOT DirectoryExists(aSourcePath)) then exit;
-  if DirectoryIsEmpty(aSourcePath) then exit;
+  if (NOT DirectoryExists(SourceDirectory)) then exit;
+  if DirectoryIsEmpty(SourceDirectory) then exit;
 
   version_nr:='';
   release_nr:='';
@@ -2289,7 +2292,7 @@ begin
   found_build_nr:=false;
   //found_minorbuild_nr:=false;
 
-  s:=IncludeTrailingPathDelimiter(aSourcePath) + 'compiler' + DirectorySeparator + 'version.pas';
+  s:=IncludeTrailingPathDelimiter(SourceDirectory) + 'compiler' + DirectorySeparator + 'version.pas';
   if FileExists(s) then
   begin
 
@@ -2380,7 +2383,7 @@ begin
   begin
     Infoln('Tried to get FPC version from version.pas, but no version.pas found',etError);
     // fail-over ... not very reliable however
-    s:=IncludeTrailingPathDelimiter(aSourcePath) + FPCMAKEFILENAME;
+    s:=IncludeTrailingPathDelimiter(SourceDirectory) + FPCMAKEFILENAME;
     if FileExists(s) then
     begin
       AssignFile(TxtFile,s);
@@ -2404,7 +2407,7 @@ begin
   end;
 end;
 
-function TFPCInstaller.GetReleaseCandidateFromSource(aSourcePath:string):integer;
+function TFPCInstaller.GetReleaseCandidateFromSource:integer;
 const
   MPNO = 'minorpatch';
 var
@@ -2419,7 +2422,7 @@ begin
   minorbuild_nr:='';
   found_minorbuild_nr:=false;
 
-  s:=IncludeTrailingPathDelimiter(aSourcePath) + 'compiler' + DirectorySeparator + 'version.pas';
+  s:=IncludeTrailingPathDelimiter(SourceDirectory) + 'compiler' + DirectorySeparator + 'version.pas';
   if FileExists(s) then
   begin
 
@@ -3665,7 +3668,7 @@ begin
     else
     begin
       s:=VersionSnippet;
-      x:=GetReleaseCandidateFromSource(SourceDirectory);
+      x:=GetReleaseCandidateFromSource;
       if (x<>0) then
         s:=s+'.rc'+InttoStr(x);
       CreateBinutilsList(s);
@@ -4420,6 +4423,7 @@ begin
           ConfigText.Append('');
           if (Length(s)>0) then
             ConfigText.Append('# MacOS 10.14 Mojave and newer have libs and tools in new, yet non-standard directory');
+
           s:=GetDarwinSDKLocation;
           if (Length(s)>0) AND (DirectoryExists(s)) then
           begin
@@ -4427,7 +4431,13 @@ begin
             ConfigText.Append('-XR'+s);
             ConfigText.Append('#ENDIF');
             ConfigText.Append('-Fl'+s+'/usr/lib');
+          end
+          else
+          begin
+            // always add the default library location
+            ConfigText.Append('-Fl/usr/lib');
           end;
+
           s:=GetDarwinToolsLocation;
           if (Length(s)>0) AND (DirectoryExists(s)) then
             ConfigText.Append('-FD'+s);

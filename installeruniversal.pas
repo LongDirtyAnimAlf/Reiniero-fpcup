@@ -82,6 +82,7 @@ type
     // Keep track of whether Lazarus needs to be rebuilt after package installation
     // or running lazbuild with an .lpk
     FLazarusNeedsRebuild:boolean;
+    FLazarusVersion:string;
     // LCL widget set to be built
     FLCL_Platform: string;
     function RebuildLazarus:boolean;
@@ -101,6 +102,9 @@ type
     function RemovePackages(sl:TStringList): boolean;
     // Uninstall a single package:
     function UnInstallPackage(PackagePath, WorkingDir: string): boolean;
+    function GetVersionFromUrl({%H-}aUrl: string): string;override;
+    function GetVersionFromSource: string;override;
+    function GetReleaseCandidateFromSource:integer;override;
     {$endif}
     // Filters (a module's) sl stringlist and runs all <Directive> commands:
     function RunCommands(Directive:string;sl:TStringList):boolean;
@@ -120,6 +124,7 @@ type
     property LazarusPrimaryConfigPath:string read FLazarusPrimaryConfigPath;
     // LCL widget set to be built
     property LCL_Platform: string write FLCL_Platform;
+    property LazarusVersion:string read FLazarusVersion;
     {$endif}
     // Build module
     function BuildModule(ModuleName:string): boolean; override;
@@ -666,7 +671,9 @@ begin
   // installpackage
   {$ifndef FPCONLY}
   FLazarusNeedsRebuild:=false;
+  FLazarusVersion:=GetVersion;
   {$endif}
+
   InitDone:=result;
 end;
 
@@ -1145,9 +1152,18 @@ begin
 
       if (LowerCase(ModuleName)='fpdebug') then
       begin
+        // only install fpdebug on windows and linux intel.
+        {$if NOT defined(MSWindows) AND NOT defined(Linux)}
+        continue;
+        {$else}
+        {$if NOT defined(CPUX64) AND NOT defined(CPUX86)}
+        continue;
+        {$endif}
+        {$endif}
+
         // only install fpdebug on Lazarus 2.2.0 and better.
         // ALF
-        //if (CompareVersionStrings(FLazarusVersion,'2.2.0')<0) then
+        if (CompareVersionStrings(LazarusVersion,'2.2.0')<0) then
         begin
           WritelnLog(localinfotext+'Skipping '+ModuleName, True);
           continue;
@@ -1173,9 +1189,7 @@ begin
           try
             LazarusConfig.SetVariable(EnvironmentConfig, 'EnvironmentOptions/Debugger/Configs/Config/ConfigName', 'FpDebug');
             LazarusConfig.SetVariable(EnvironmentConfig, 'EnvironmentOptions/Debugger/Configs/Config/ConfigClass', 'TFpDebugDebugger');
-            {$if defined(MSWindows) or defined(Linux)}
             LazarusConfig.SetVariable(EnvironmentConfig, 'EnvironmentOptions/Debugger/Configs/Config/Active',True);
-            {$endif}
           finally
             LazarusConfig.Free;
           end;
@@ -1350,6 +1364,46 @@ begin
 end;
 
 {$ifndef FPCONLY}
+function TUniversalInstaller.GetVersionFromSource:string;
+var
+  aFileName:string;
+begin
+  result:='0.0.0';
+  aFileName:=IncludeTrailingPathDelimiter(LazarusInstallDir) + LAZBUILDNAME + GetExeExt;
+  if FileExists(aFileName) then
+  begin
+    Processor.Executable := aFileName;
+    Processor.Process.Parameters.Clear;
+    Processor.Process.Parameters.Add('--version');
+    try
+      ProcessorResult:=Processor.ExecuteAndWait;
+      if ProcessorResult = 0 then
+      begin
+        if Processor.WorkerOutput.Count>0 then
+        begin
+          // lazbuild outputs version info as last line
+          result:=Processor.WorkerOutput.Strings[Processor.WorkerOutput.Count-1];
+        end;
+      end;
+    except
+      on E: Exception do
+      begin
+        WritelnLog(etError, infotext+'Getting lazbuild version info failed with an exception!'+LineEnding+'Details: '+E.Message,true);
+      end;
+    end;
+  end;
+end;
+
+function TUniversalInstaller.GetVersionFromURL(aUrl:string):string;
+begin
+  result:='0.0.0';
+end;
+
+function TUniversalInstaller.GetReleaseCandidateFromSource:integer;
+begin
+  result:=0;
+end;
+
 function TUniversalInstaller.UnInstallPackage(PackagePath, WorkingDir: string): boolean;
 const
   PACKAGE_KEYSTART='UserPkgLinks/';
