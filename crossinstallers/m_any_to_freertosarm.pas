@@ -59,6 +59,7 @@ const
   StaticLibName2='libc_nano.a';
 var
   aABI:TABI;
+  S:string;
 begin
   result:=FLibsFound;
 
@@ -70,12 +71,12 @@ begin
     ShowInfo('Cross-libs: No subarch defined. Expect fatal errors.',etError);
 
   // simple: check presence of library file in basedir
-  result:=SearchLibrary(Basepath,LIBCNAME);
+  result:=SearchLibrary(Basepath,LIBCFILENAME);
   // search local paths based on libbraries provided for or adviced by fpc itself
   if not result then
-    result:=SimpleSearchLibrary(BasePath,DirName,LIBCNAME);
+    result:=SimpleSearchLibrary(BasePath,DirName,LIBCFILENAME);
   if ((not result) AND (FSubArch<>TSUBARCH.saNone)) then
-    result:=SimpleSearchLibrary(BasePath,IncludeTrailingPathDelimiter(DirName)+SubarchName,LIBCNAME);
+    result:=SimpleSearchLibrary(BasePath,IncludeTrailingPathDelimiter(DirName)+SubarchName,LIBCFILENAME);
 
   // do the same as above, but look for a static freertos lib
   if not result then
@@ -117,15 +118,15 @@ begin
   begin
     FLibsFound:=True;
 
-    if PerformLibraryPathMagic then
+    if PerformLibraryPathMagic(S) then
     begin
-      AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath));
+      AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(S));
     end
     else
     begin
       // If we do not have magic, add subarch to enclose
       AddFPCCFGSnippet('#IFDEF CPU'+UpperCase(SubArchName));
-      AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath));
+      AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(S));
       AddFPCCFGSnippet('#ENDIF CPU'+UpperCase(SubArchName));
     end;
   end;
@@ -140,10 +141,10 @@ begin
   result:=inherited;
   if result then exit;
 
-  FBinUtilsPrefix:=GetCPU(TargetCPU)+'-none-eabi-';
+  FBinUtilsPrefix:=TargetCPUName+'-none-eabi-';
 
   // Start with any names user may have given
-  AsFile:=FBinUtilsPrefix+'as'+GetExeExt;
+  AsFile:=BinUtilsPrefix+ASFILENAME+GetExeExt;
 
   result:=SearchBinUtil(BasePath,AsFile);
   if not result then

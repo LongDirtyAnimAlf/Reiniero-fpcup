@@ -42,6 +42,8 @@ const
   ErrorNotFound='An error occurred getting cross compiling binutils/libraries.'+LineEnding+
     'todo: specify what exactly is missing';
 
+  CrossWindowsSuggestion = 'Suggestion for cross binutils: the crossfpc binutils at https://gitlab.com/freepascal.org/fpc/binaries/-/tree/main/i386-win32.';
+
   MAXDARWINVERSION=20;
   MINDARWINVERSION=7;
 
@@ -57,21 +59,20 @@ const
   UnixBinDirs :array[0..2] of string = ('/usr/local/bin','/usr/bin','/bin');
   UnixLibDirs :array[0..2] of string = ('/usr/local/lib','/usr/lib','/lib');
   {$endif}
-  DEFAULTARMCPU = 'ARMV7A';
-
-  LIBCNAME='libc.so';
+  DEFAULTARMCPU  = 'ARMV7A';
 
   CROSSPATH      = 'cross';
   CROSSBINPATH   = CROSSPATH+DirectorySeparator+'bin';
   CROSSLIBPATH   = CROSSPATH+DirectorySeparator+'lib';
 
-  LDSEARCHFILE  = 'ld';
-  SEARCHFILE    = 'as';
+  LIBCFILENAME   = 'libc.so';
+  LDFILENAME     = 'ld';
+  ASFILENAME     = 'as';
 
 type
   TCPU      = (cpuNone,i386,x86_64,arm,aarch64,powerpc,powerpc64,mips,mipsel,avr,jvm,i8086,sparc,sparc64,riscv32,riscv64,m68k,xtensa,wasm32);
   TOS       = (osNone,win32,win64,linux,android,darwin,freebsd,openbsd,aix,wince,iphonesim,embedded,java,msdos,haiku,solaris,dragonfly,netbsd,morphos,aros,amiga,go32v2,freertos,ios,ultibo,wasi);
-  TSUBARCH  = (saNone,armv4,armv4t,armv6,armv6m,armv7a,armv7em,armv7m,avr1,avr2,avr25,avr35,avr4,avr5,avr51,avr6,avrtiny,avrxmega3,pic32mx,rv32imac,rv32ima,rv32im,rv32i,rv64imac,rv64ima,rv64im,rv64i,lx6,lx106);
+  TSUBARCH  = (saNone,armv4,armv4t,armv6,armv6m,armv7a,armv7em,armv7m,armv8,avr1,avr2,avr25,avr35,avr4,avr5,avr51,avr6,avrtiny,avrxmega3,pic32mx,rv32imac,rv32ima,rv32im,rv32i,rv64imac,rv64ima,rv64im,rv64i,lx6,lx106);
   //TABI      = (default,sysv,aix,darwin,elfv2,eabi,armeb,eabihf,oldwin32gnu,aarch64ios,riscvhf,linux386_sysv,windowed,call0);
   TABI      = (default,eabi,eabihf,aarch64ios,riscvhf,windowed,call0);
   TARMARCH  = (none,armel,armeb,armhf);
@@ -81,13 +82,14 @@ type
 
 const
   SUBARCH_OS         = [TOS.embedded,TOS.freertos,TOS.ultibo];
-  SUBARCH_CPU        = [TCPU.arm,TCPU.avr,TCPU.mipsel,TCPU.riscv32,TCPU.riscv64,TCPU.xtensa];
+  SUBARCH_CPU        = [TCPU.arm,TCPU.aarch64,TCPU.avr,TCPU.mipsel,TCPU.riscv32,TCPU.riscv64,TCPU.xtensa]; //for Ultibo added TCPU.aarch64
   SUBARCH_ARM        = [TSUBARCH.armv4..TSUBARCH.armv7m];
   SUBARCH_AVR        = [TSUBARCH.avr1..TSUBARCH.avrxmega3];
   SUBARCH_MIPSEL     = [TSUBARCH.pic32mx];
   SUBARCH_RISCV32    = [TSUBARCH.rv32imac..TSUBARCH.rv32i];
   SUBARCH_RISCV64    = [TSUBARCH.rv64imac..TSUBARCH.rv64i];
   SUBARCH_XTENSA     = [TSUBARCH.lx6..TSUBARCH.lx106];
+  SUBARCH_ULTIBO     = [TSUBARCH.armv6,TSUBARCH.armv7a,TSUBARCH.armv8];
 
   ABI_ARM            = [TABI.default,TABI.eabi,TABI.eabihf];
   ABI_XTENSA         = [TABI.default,TABI.windowed,TABI.call0];
@@ -100,13 +102,17 @@ type
   TSearchSetting = (ssUp,ssAuto,ssCustom);
 
 const
-  ARMArchFPCStr : array[TARMARCH] of string=(
+  ARMArchFPCStr : array[TARMARCH] of string = (
     '','-dFPC_ARMEL','-dFPC_ARMEB','-dFPC_ARMHF'
   );
-  FPCUP_AUTO_MAGIC  = 'FPCUP_AUTO';
+  FPCUP_AUTO_MAGIC      = 'FPCUP_AUTO';
 
-  FPC_SUBARCH_MAGIC = '$FPCSUBARCH';
-  FPC_ABI_MAGIC     = '$FPCABI';
+  FPC_TARGET_MAGIC      = '$FPCTARGET';
+  FPC_SUBARCH_MAGIC     = '$FPCSUBARCH';
+  FPC_ABI_MAGIC         = '$FPCABI';
+
+  DEFAULTSEARCHSETTING  = TSearchSetting.ssUp;
+  DEFAULTARMARCH        = TARMARCH.none;
 
 type
   TCrossUtil = record
@@ -116,7 +122,7 @@ type
     CrossBuildOptions:string;
     CrossARMArch:TARMARCH;
     Compiler:string;
-    Available:boolean;
+    //Available:boolean;
   end;
 
   TCrossUtils = array[TCPU,TOS,TSUBARCH] of TCrossUtil;
@@ -148,7 +154,7 @@ type
     FLibsFound,FBinsFound,FCrossOptsAdded:boolean;
     FSolarisOI:boolean;
     FMUSL:boolean;
-    function PerformLibraryPathMagic:boolean;
+    function PerformLibraryPathMagic(out LibraryPath:string):boolean;
     function SearchLibrary(Directory, LookFor: string): boolean;
     function SimpleSearchLibrary(BasePath,DirName: string; const LookFor:string): boolean;
     function SearchBinUtil(Directory, LookFor: string): boolean;
@@ -255,7 +261,7 @@ uses
 
 function GetCPU(aCPU:TCPU):string;
 begin
-  if (aCPU<Low(TCPU)) OR (aCPU>High(TCPU)) then
+  if (aCPU<Low(TCPU)) OR (aCPU>High(TCPU)) OR (aCPU=TCPU.cpuNone) then
     raise Exception.Create('Invalid CPU for GetCPU.');
   result:=GetEnumNameSimple(TypeInfo(TCPU),Ord(aCPU));
 end;
@@ -284,7 +290,7 @@ end;
 
 function GetOS(aOS:TOS):string;
 begin
-  if (aOS<Low(TOS)) OR (aOS>High(TOS)) then
+  if (aOS<Low(TOS)) OR (aOS>High(TOS)) OR (aOS=TOS.osNone) then
     raise Exception.Create('Invalid OS for GetOS.');
   result:=GetEnumNameSimple(TypeInfo(TOS),Ord(aOS));
 end;
@@ -354,7 +360,13 @@ begin
       TCPU.xtensa:   if (aOS<>TOS.ultibo) then result:=SUBARCH_XTENSA;
     end;
     // Limit some special targets
-    if (aOS=TOS.ultibo) then result:=[TSUBARCH.armv6,TSUBARCH.armv7a];
+    if (aOS=TOS.ultibo) then
+    begin
+      case aCPU of
+        TCPU.arm:      result:=[TSUBARCH.armv6,TSUBARCH.armv7a];
+        TCPU.aarch64:  result:=[TSUBARCH.armv8];
+      end;
+    end;
     if ((aOS=TOS.freertos) AND (aCPU=TCPU.arm)) then result:=[TSUBARCH.armv6m,TSUBARCH.armv7em,TSUBARCH.armv7m];
   end;
 end;
@@ -369,10 +381,10 @@ end;
 function GetTARMArch(aARMArch:string):TARMARCH;
 begin
   if Length(aARMArch)=0 then
-    result:=TARMARCH.none
+    result:=DEFAULTARMARCH
   else
   if aARMArch='default' then
-    result:=TARMARCH.none
+    result:=DEFAULTARMARCH
   else
     result:=TARMARCH(GetEnumValueSimple(TypeInfo(TARMARCH),aARMArch));
   if Ord(result) < 0 then
@@ -416,6 +428,7 @@ begin
       TCPU.xtensa:   if (aOS<>TOS.ultibo) then result:=ABI_XTENSA;
       TCPU.riscv64:  if (aOS<>TOS.ultibo) then result:=ABI_RISCV64;
     end;
+    //if ((aOS=TOS.ultibo) AND (aCPU=TCPU.arm)) then result:=TABI.eabi;
   end;
 end;
 
@@ -545,13 +558,15 @@ begin
   //if Length(extrainfo)>0 then Infoln(CrossModuleName + ' bins : '+extrainfo, etInfo);
 end;
 
-function TCrossInstaller.PerformLibraryPathMagic:boolean;
+function TCrossInstaller.PerformLibraryPathMagic(out LibraryPath:string):boolean;
 var
   aPath:TStringArray;
   aIndex:integer;
   aABI:TABI;
 begin
   result:=false;
+
+  LibraryPath:=FLibsPath;
 
   // Skip for some combo's until we have structured libs
   if (Self.TargetOS=TOS.embedded) AND (Self.TargetCPU<>TCPU.arm) then exit;
@@ -588,7 +603,7 @@ begin
     end;
   end;
 
-  if result then FLibsPath:=ConcatPaths(aPath);
+  if result then LibraryPath:=ConcatPaths(aPath);
 end;
 
 function TCrossInstaller.SearchLibrary(Directory, LookFor: string): boolean;
@@ -596,11 +611,11 @@ begin
   result:=SearchUtil(Directory, LookFor, true);
   if NOT result then
   begin
-    if LookFor=LIBCNAME then result:=SearchUtil(Directory, LIBCNAME+'.6', true);
+    if LookFor=LIBCFILENAME then result:=SearchUtil(Directory, LIBCFILENAME+'.6', true);
   end;
   if NOT result then
   begin
-    if LookFor=LIBCNAME then result:=SearchUtil(Directory, LIBCNAME+'.7', true);
+    if LookFor=LIBCFILENAME then result:=SearchUtil(Directory, LIBCFILENAME+'.7', true);
   end;
 end;
 
@@ -609,11 +624,11 @@ begin
   result:=FPCUPToolsSearch(BasePath,DirName,true,LookFor);
   if NOT result then
   begin
-    if LookFor=LIBCNAME then result:=FPCUPToolsSearch(BasePath,DirName,true,LIBCNAME+'.6');
+    if LookFor=LIBCFILENAME then result:=FPCUPToolsSearch(BasePath,DirName,true,LIBCFILENAME+'.6');
   end;
   if NOT result then
   begin
-    if LookFor=LIBCNAME then result:=FPCUPToolsSearch(BasePath,DirName,true,LIBCNAME+'.7');
+    if LookFor=LIBCFILENAME then result:=FPCUPToolsSearch(BasePath,DirName,true,LIBCFILENAME+'.7');
   end;
 end;
 
@@ -872,6 +887,8 @@ end;
 
 {$ifdef LCL}
 procedure InitDefaultCrossSettings;
+const
+  ARMLESSOS: set of TOS = [TOS.win32..TOS.wasi] - [TOS.android,TOS.win32,TOS.win64,TOS.iphonesim,TOS.java,TOS.msdos,TOS.solaris,TOS.morphos,TOS.aros,TOS.amiga,TOS.go32v2,TOS.wasi];
 var
   CPU:TCPU;
   OS:TOS;
@@ -883,9 +900,11 @@ var
 begin
   for OS := Low(TOS) to High(TOS) do
   begin
+    if OS=TOS.osNone then continue;
 
     for CPU := Low(TCPU) to High(TCPU) do
     begin
+      if CPU=TCPU.cpuNone then continue;
 
       SetSelectedSubArch(CPU,OS,TSUBARCH.saNone);
 
@@ -900,13 +919,13 @@ begin
         else
           s2:=s1;
 
-        CrossUtils[CPU,OS,SUBARCH].Setting:=TSearchSetting.ssUp;
+        CrossUtils[CPU,OS,SUBARCH].Setting:=DEFAULTSEARCHSETTING;
         CrossUtils[CPU,OS,SUBARCH].LibDir:='';
         CrossUtils[CPU,OS,SUBARCH].BinDir:='';
         CrossUtils[CPU,OS,SUBARCH].Compiler:='';
 
         aCrossOptionSetting:='';
-        aARMABISetting:=TARMARCH.none;
+        aARMABISetting:=DEFAULTARMARCH;
 
         // Set defaults for CrossBuildOptions
 
@@ -914,7 +933,7 @@ begin
         if (
           (CPU=TCPU.arm)
           AND (NOT (OS in SUBARCH_OS))
-          AND (NOT (OS in [TOS.android,TOS.win32,TOS.win64,TOS.iphonesim,TOS.java,TOS.msdos,TOS.solaris,TOS.morphos,TOS.aros,TOS.amiga,TOS.go32v2]))
+          AND (OS in ARMLESSOS)
           ) then
         begin
           // default: armhf
@@ -1012,6 +1031,11 @@ begin
               aCrossOptionSetting:='-CfVFPV2 -CIARM -CaEABIHF -OoFASTMATH ';
             if SUBARCH=TSubarch.armv7a then
               aCrossOptionSetting:='-CfVFPV3 -CIARM -CaEABIHF -OoFASTMATH ';
+          end;
+          if (CPU=TCPU.aarch64) then
+          begin
+            if SUBARCH=TSubarch.armv8 then
+              aCrossOptionSetting:='-CfVFP -OoFASTMATH ';
           end;
         end;
 

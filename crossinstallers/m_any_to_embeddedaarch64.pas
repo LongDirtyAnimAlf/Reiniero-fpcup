@@ -61,6 +61,8 @@ end;
 function TAny_Embeddedaarch64.GetLibs(Basepath:string): boolean;
 const
   LibName='libgcc.a';  // is this correct ??
+var
+  S:string;
 begin
   // Arm-embedded does not need libs by default, but user can add them.
   result:=FLibsFound;
@@ -86,15 +88,15 @@ begin
     FLibsFound:=True;
     SearchLibraryInfo(true);
 
-    if PerformLibraryPathMagic then
+    if PerformLibraryPathMagic(S) then
     begin
-      AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath));
+      AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(S));
     end
     else
     begin
       // If we do not have magic, add subarch to enclose
       AddFPCCFGSnippet('#IFDEF CPU'+UpperCase(SubArchName));
-      AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath));
+      AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(S));
       AddFPCCFGSnippet('#ENDIF CPU'+UpperCase(SubArchName));
     end;
   end;
@@ -130,7 +132,7 @@ begin
   if result then exit;
 
   // Start with any names user may have given
-  AsFile:=FBinUtilsPrefix+'as'+GetExeExt;
+  AsFile:=BinUtilsPrefix+ASFILENAME+GetExeExt;
 
   result:=SearchBinUtil(BasePath,AsFile);
   if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
@@ -152,7 +154,7 @@ begin
   if not result then
   begin
     BinPrefixTry:='aarch64-elf-';
-    AsFile:=BinPrefixTry+'as'+GetExeExt;
+    AsFile:=BinPrefixTry+ASFILENAME+GetExeExt;
     result:=SearchBinUtil(BasePath,AsFile);
     if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
     if result then FBinUtilsPrefix:=BinPrefixTry;
@@ -162,7 +164,7 @@ begin
   if not result then
   begin
     BinPrefixTry:='';
-    AsFile:=BinPrefixTry+'as'+GetExeExt;
+    AsFile:=BinPrefixTry+ASFILENAME+GetExeExt;
     result:=SearchBinUtil(BasePath,AsFile);
     if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
     if result then FBinUtilsPrefix:=BinPrefixTry;

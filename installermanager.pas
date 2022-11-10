@@ -174,11 +174,11 @@ type
     FBootstrapCompilerDirectory: string;
     FClean: boolean;
     FConfigFile: string;
-    FCrossCPU_Target: TCPU;
     {$ifndef FPCONLY}
     FLCL_Platform: string; //really LCL widgetset
     {$endif}
     FCrossOPT: string;
+    FCrossCPU_Target: TCPU;
     FCrossOS_Target: TOS;
     FCrossOS_SubArch: TSUBARCH;
     FFPCDesiredRevision: string;
@@ -378,10 +378,10 @@ type
     function LoadFPCUPConfig:boolean;
     function CheckValidCPUOS(aCPU:TCPU=TCPU.cpuNone;aOS:TOS=TOS.osNone): boolean;
     function ParseSubArchsFromSource: TStringList;
-    procedure GetCrossToolsFileName(var BinsFileName,LibsFileName:string);
-    procedure GetCrossToolsPath(var BinPath,LibPath:string);
-    function GetCrossBinsURL(var BaseBinsURL,BinsFileName:string):boolean;
-    function GetCrossLibsURL(var BaseLibsURL,LibsFileName:string):boolean;
+    procedure GetCrossToolsFileName(out BinsFileName,LibsFileName:string);
+    procedure GetCrossToolsPath(out BinPath,LibPath:string);
+    function GetCrossBinsURL(out BaseBinsURL:string; var BinsFileName:string):boolean;
+    function GetCrossLibsURL(out BaseLibsURL:string; var LibsFileName:string):boolean;
 
     // Stop talking. Do it! Returns success status
     function Run: boolean;
@@ -852,13 +852,11 @@ end;
 
 function TFPCupManager.CheckValidCPUOS(aCPU:TCPU;aOS:TOS): boolean;
 var
-  TxtFile:Text;
-  s,sourceline:string;
-  x:integer;
-  sl:TStringList;
-  cpuindex,osindex:integer;
-  aLocalCPU:TCPU;
-  aLocalOS:TOS;
+  s           : string;
+  x           : integer;
+  sl          : TStringList;
+  aLocalCPU   : TCPU;
+  aLocalOS    : TOS;
 begin
   result:=false;
 
@@ -869,8 +867,9 @@ begin
 
   if ((aLocalCPU=TCPU.cpuNone) OR (aLocalOS=TOS.osNone)) then exit;
 
-  //parsing systems.inc for valid CPU / OS system
+  //parsing systems.inc or .pas for valid CPU / OS system
   s:=ConcatPaths([FPCSourceDirectory,'compiler'])+DirectorySeparator+'systems.inc';
+  if (NOT FileExists(s)) then s:=ConcatPaths([FPCSourceDirectory,'compiler'])+DirectorySeparator+'systems.pas';
   if FileExists(s) then
   begin
     sl:=TStringList.Create;
@@ -878,165 +877,14 @@ begin
       sl.LoadFromFile(s);
       s:='system_'+GetCPU(aLocalCPU)+'_'+GetOS(aLocalOS);
       x:=StringListContains(sl,s);
-      if (x<>-1) then result:=true;
+      if (x<>-1) then
+      begin
+        s:=sl[x];
+        if (Pos('obsolete_',s)=0) then result:=true;
+      end;
     finally
       sl.Free;
     end;
-  end;
-
-  if (NOT result) then
-  begin
-
-    cpuindex:=-1;
-    osindex:=-1;
-
-    //parsing fpmkunit.pp for valid CPU / OS combos
-    s:=ConcatPaths([FPCSourceDirectory,'packages','fpmkunit','src'])+DirectorySeparator+'fpmkunit.pp';
-    if FileExists(s) then
-    begin
-
-      AssignFile(TxtFile,s);
-      Reset(TxtFile);
-      while NOT EOF (TxtFile) do
-      begin
-        Readln(TxtFile,s);
-        s:=StringReplace(s, ' ', '', [rfReplaceAll]); //Remove all spaces from string;
-        //s:=DelSpace(s);
-
-        x:=Pos('TCpu=(',s);
-        if x>0 then
-        begin
-          //We got the array with CPU defines: parse it (a bit rough)
-          sourceline:=s;
-          while NOT EOF (TxtFile) do
-          begin
-            Readln(TxtFile,s);
-            s:=StringReplace(s, ' ', '', [rfReplaceAll]); //Remove all spaces from string;
-            sourceline:=sourceline+s;
-            x:=Pos(');',s);
-            if x>0 then
-            begin
-              sourceline:=StringReplace(sourceline, #13, '', [rfReplaceAll]);
-              sourceline:=StringReplace(sourceline, #10, '', [rfReplaceAll]);
-              break;
-            end;
-          end;
-          //Sourceline now holds a single line containing all CPU's available;
-          //E.g. : TCpu=(cpuNone,i386,m68k,...);
-          x:=Pos('=(',sourceline);
-          if x>0 then
-          begin
-            Delete(sourceline,1,x+2);
-          end;
-          x:=Pos(');',sourceline);
-          if x>0 then
-          begin
-            Delete(sourceline,x,MaxInt);
-          end;
-          sl:=TStringList.Create;
-          try
-            sl.Delimiter:=',';
-            sl.StrictDelimiter:=true;
-            sl.DelimitedText:=sourceline;
-            cpuindex:=sl.IndexOf(GetCPU(aLocalCPU));
-          finally
-            sl.Free;
-          end;
-        end;
-
-        x:=Pos('TOS=(',s);
-        if x>0 then
-        begin
-          //We got the array with OS defines: parse it (a bit rough)
-          sourceline:=s;
-          while NOT EOF (TxtFile) do
-          begin
-            Readln(TxtFile,s);
-            s:=StringReplace(s, ' ', '', [rfReplaceAll]); //Remove all spaces from string;
-            sourceline:=sourceline+s;
-            x:=Pos(');',s);
-            if x>0 then
-            begin
-              sourceline:=StringReplace(sourceline, #13, '', [rfReplaceAll]);
-              sourceline:=StringReplace(sourceline, #10, '', [rfReplaceAll]);
-              break;
-            end;
-          end;
-          //Sourceline now holds a single line containing all OS's available;
-          //E.g. : TOS=(osNone,linux,go32v2,win32,.....);
-          x:=Pos('=(',sourceline);
-          if x>0 then
-          begin
-            Delete(sourceline,1,x+2);
-          end;
-          x:=Pos(');',sourceline);
-          if x>0 then
-          begin
-            Delete(sourceline,x,MaxInt);
-          end;
-          sl:=TStringList.Create;
-          try
-            sl.Delimiter:=',';
-            sl.StrictDelimiter:=true;
-            sl.DelimitedText:=sourceline;
-            osindex:=sl.IndexOf(GetOS(aLocalOS));
-          finally
-            sl.Free;
-          end;
-        end;
-
-        x:=Pos('OSCPUSupported:array[TOS,TCpu]',s);
-        if ((x>0) AND (cpuindex>=0) AND (osindex>=0)) then
-        begin
-          // read the dummy line with CPU-OS combo's
-          Readln(TxtFile,s);
-
-          // Read towards the correct OS line
-          while (osindex>=0) do
-          begin
-            Readln(TxtFile,s);
-            Dec(osindex);
-          end;
-
-          x:=Pos('(',s);
-          if x>0 then
-          begin
-            Delete(s,1,x);
-          end;
-          x:=Pos(')',s);
-          if x>0 then
-          begin
-            Delete(s,x,MaxInt);
-          end;
-          s:=StringReplace(s, ' ', '', [rfReplaceAll]); //Remove all spaces from string;
-          s:=Trim(s);
-
-          //We now have: "false,false,false,true,...."
-          sl:=TStringList.Create;
-          try
-            sl.Delimiter:=',';
-            sl.StrictDelimiter:=true;
-            sl.DelimitedText:=s;
-            if sl.Count>cpuindex then
-            begin
-              if sl[cpuindex]='true' then
-              begin
-                result:=true;
-                break;
-              end;
-            end;
-          finally
-            sl.Free;
-          end;
-
-          break;
-
-        end;
-
-      end;
-      CloseFile(TxtFile);
-    end;
-
   end;
 end;
 
@@ -1097,7 +945,7 @@ begin
   end;
 end;
 
-procedure TFPCupManager.GetCrossToolsFileName(var BinsFileName,LibsFileName:string);
+procedure TFPCupManager.GetCrossToolsFileName(out BinsFileName,LibsFileName:string);
 var
   s:string;
 begin
@@ -1108,7 +956,8 @@ begin
         if CrossCPU_Target=TCPU.powerpc then s:='PowerPC' else
           if CrossCPU_Target=TCPU.powerpc64 then s:='PowerPC64' else
             if CrossCPU_Target=TCPU.avr then s:='AVR' else
-              s:=UppercaseFirstChar(GetCPU(CrossCPU_Target));
+              if CrossCPU_Target=TCPU.m68k then s:='m68k' else
+                s:=UppercaseFirstChar(GetCPU(CrossCPU_Target));
 
   BinsFileName:=s;
 
@@ -1227,7 +1076,7 @@ begin
   {$endif MSWINDOWS}
 end;
 
-procedure TFPCupManager.GetCrossToolsPath(var BinPath,LibPath:string);
+procedure TFPCupManager.GetCrossToolsPath(out BinPath,LibPath:string);
 begin
   // Setting the location of libs and bins on our system, so they can be found by fpcupdeluxe
   // Normally, we have the standard names for libs and bins paths
@@ -1315,7 +1164,7 @@ begin
   end;
 end;
 
-function TFPCupManager.GetCrossBinsURL(var BaseBinsURL,BinsFileName:string):boolean;
+function TFPCupManager.GetCrossBinsURL(out BaseBinsURL:string; var BinsFileName:string):boolean;
 var
   s:string;
   success:boolean;
@@ -1477,7 +1326,7 @@ begin
 
 end;
 
-function TFPCupManager.GetCrossLibsURL(var BaseLibsURL,LibsFileName:string):boolean;
+function TFPCupManager.GetCrossLibsURL(out BaseLibsURL:string; var LibsFileName:string):boolean;
 var
   s:string;
   success:boolean;
@@ -1726,9 +1575,9 @@ end;
 
 function TFPCupManager.GetCrossCombo_Target:string;
 begin
-  result:=GetCPU(FCrossCPU_Target)+'-'+GetOS(FCrossOS_Target);
-  if (FCrossOS_SubArch<>TSUBARCH.saNone) then
-    result:=result+'-'+GetSubarch(FCrossOS_SubArch);
+  result:=GetCPU(CrossCPU_Target)+'-'+GetOS(CrossOS_Target);
+  if (CrossOS_SubArch<>TSUBARCH.saNone) then
+    result:=result+'-'+GetSubarch(CrossOS_SubArch);
 end;
 
 { TSequencer }
@@ -1848,9 +1697,10 @@ function TSequencer.DoExec(FunctionName: string): boolean;
   const
     DEBIAN_INSTALL_COMMAND='sudo apt-get install';
 
-    DEBIAN_LIBS : array [0..15] of string = (
+    DEBIAN_LIBS : array [0..16] of string = (
     'unrar',
     'unzip',
+    'p7zip',
     'wget',
     'make',
     'gcc',
@@ -2125,10 +1975,10 @@ begin
 
   CrossCompiling:=(FParent.CrossCPU_Target<>TCPU.cpuNone) OR (FParent.CrossOS_Target<>TOS.osNone);
 
-  if Ultibo then
-    LocalFPCSourceDir:=IncludeTrailingPathDelimiter(FParent.FPCSourceDirectory)+'source'
-  else
-    LocalFPCSourceDir:=FParent.FPCSourceDirectory;
+  //if Ultibo then
+  //  LocalFPCSourceDir:=IncludeTrailingPathDelimiter(FParent.FPCSourceDirectory)+'source'
+  //else
+  LocalFPCSourceDir:=FParent.FPCSourceDirectory;
 
   //check if this is a known module:
 
@@ -2148,7 +1998,7 @@ begin
         exit; //all fine, continue with current FInstaller
       end
       else
-        FInstaller.free; // get rid of old FInstaller
+        FInstaller.Free; // get rid of old FInstaller
     end;
 
     if CrossCompiling then
@@ -2567,7 +2417,7 @@ var
   localinfotext:string;
 begin
   result:=true;
-  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' ('+SequenceName+'): ';
+  localinfotext:=TrimLeft(Copy(UnCamel(Self.ClassName),2,MaxInt))+' ('+SequenceName+'): ';
   try
     if not assigned(FParent.FModuleList) then
     begin

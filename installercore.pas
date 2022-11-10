@@ -70,9 +70,12 @@ const
 
   FPCGITLAB             = GITLAB + 'fpc';
   FPCGITLABREPO         = FPCGITLAB + '/source';
-  FPCGITLABBINARIES     = FPCGITLAB + '/build';
+  FPCGITLABBUILDBINARIES= FPCGITLAB + '/build';
   FPCTRUNKBRANCH        = 'main';
-  FPCBINARIES           = FPCGITLABBINARIES + '/-/raw/'+FPCTRUNKBRANCH;
+  FPCTRUNKBINARIES      = FPCGITLABBUILDBINARIES + '/-/raw/'+FPCTRUNKBRANCH;
+  {$ifdef win32}
+  FPCGITLABBINARIES     = FPCGITLAB + '/binaries';
+  {$endif}
 
   LAZARUSGITLAB         = GITLAB + 'lazarus';
   LAZARUSGITLABREPO     = LAZARUSGITLAB + '/lazarus';
@@ -102,7 +105,7 @@ const
   REVINCFILENAME        = 'revision.inc';
 
   {$IFDEF WINDOWS}
-  PREBUILTBINUTILSURLWINCE = FPCBINARIES+'/install/crossbinwce';
+  PREBUILTBINUTILSURLWINCE = FPCTRUNKBINARIES+'/install/crossbinwce';
   {$ENDIF}
 
   {$ifdef win64}
@@ -124,7 +127,7 @@ const
   //NASMWIN64URL='https://www.nasm.us/pub/nasm/releasebuilds/2.13/win64/nasm-2.13-win64.zip';
   NASMWIN32URL='https://www.nasm.us/pub/nasm/releasebuilds/2.14/win32/nasm-2.14-win32.zip';
   NASMWIN64URL='https://www.nasm.us/pub/nasm/releasebuilds/2.14/win64/nasm-2.14-win64.zip';
-  NASMFPCURL=FPCBINARIES+'/install/crossbinmsdos/nasm.exe';
+  NASMFPCURL=FPCTRUNKBINARIES+'/install/crossbinmsdos/nasm.exe';
 
   GITREPO='https://github.com/LongDirtyAnimAlf';
   FPCUPGITREPO=GITREPO+'/fpcupdeluxe';
@@ -148,6 +151,19 @@ const
   FPC_OFFICIAL_MINIMUM_BOOTSTRAPVERSION=(2*10000+2*100+4);
   {$endif}
 
+  {$ifdef WINDOWS}
+  Crypto_DLL_Name = 'libeay32';
+  SSL_DLL_Name    = 'ssleay32';
+
+  {$ifdef win64}
+    SSL_DLL_Names:    array[1..4] of string = ('libssl-3-x64',    'libssl-1_1-x64',    SSL_DLL_Name, 'libssl32');
+    Crypto_DLL_Names: array[1..4] of string = ('libcrypto-3-x64', 'libcrypto-1_1-x64', Crypto_DLL_Name, Crypto_DLL_Name);
+  {$endif}
+  {$ifdef win32}
+    SSL_DLL_Names:    array[1..4] of string = ('libssl-3',    'libssl-1_1',    SSL_DLL_Name, 'libssl32');
+    Crypto_DLL_Names: array[1..4] of string = ('libcrypto-3', 'libcrypto-1_1', Crypto_DLL_Name, Crypto_DLL_Name);
+  {$endif}
+
   {$ifdef win64}
   OpenSSLSourceURL : array [0..4] of string = (
     //'https://indy.fulgan.com/SSL/openssl-1.0.2u-x64_86-win64.zip',
@@ -168,6 +184,8 @@ const
     'https://indy.fulgan.com/SSL/Archive/openssl-1.0.2p-i386-win32.zip'
     );
   {$endif}
+  {$endif}
+
 
   REVISIONSLOG = 'fpcuprevisions.log';
 
@@ -370,6 +388,9 @@ type
     function IsLazarusInstaller:boolean;
     function IshelpInstaller:boolean;
     function IsUniversalInstaller:boolean;
+    {$IFDEF MSWINDOWS}
+    function GetStrayShell: boolean;
+    {$ENDIF MSWINDOWS}
   protected
     FFPCInstallDir             : string;
     FFPCSourceDir              : string;
@@ -480,7 +501,7 @@ type
     function GetVersionFromURL({%H-}aUrl:string):string;virtual;
     function GetReleaseCandidateFromSource:integer;virtual;
     function GetVersion:string;
-
+    function InitInfoText(const ExtraInfo:string=''):string;
   public
     InfoText: string;
     LocalInfoText: string;
@@ -512,10 +533,10 @@ type
     property Compiler: string {read GetCompiler} write FCompiler;
     // Compiler options passed on to make as OPT= or FPCOPT=
     property CompilerOptions: string write FCompilerOptions;
-    // SubArch for target embedded
-    property CrossOS_SubArch: TSUBARCH read FCrossOS_SubArch;
-    // When cross-compiling for arm: hardfloat or softfloat calling convention
-    property CrossOS_ABI: TABI read FCrossOS_ABI;
+    property CrossCPU_Target: TCPU read FCrossCPU_Target; //When cross-compiling: CPU, e.g. x86_64
+    property CrossOS_Target: TOS read FCrossOS_Target; //When cross-compiling: OS, e.g. win64
+    property CrossOS_SubArch: TSUBARCH read FCrossOS_SubArch;// SubArch for target embedded
+    property CrossOS_ABI: TABI read FCrossOS_ABI;    // When cross-compiling for arm: hardfloat or softfloat calling convention
     // Options for cross compiling. User can specify his own, but cross compilers can set defaults, too
     property CrossOPT: string read FCrossOPT write FCrossOPT;
     property CrossToolsDirectory:string read FCrossToolsDirectory write FCrossToolsDirectory;
@@ -571,6 +592,9 @@ type
     property SourceVersionStr:string read GetFullVersionString;
     property SourceVersionNum:dword read GetFullVersion;
     property SanityCheck:boolean read GetSanityCheck;
+    {$IFDEF MSWINDOWS}
+    property StrayShell: boolean read GetStrayShell;
+    {$ENDIF MSWINDOWS}
     function GetCompilerName(Cpu_Target:TCPU):string;overload;
     function GetCompilerName(Cpu_Target:string):string;overload;
     function GetCrossCompilerName(Cpu_Target:TCPU):string;
@@ -606,15 +630,15 @@ type
 
     // Uninstall module
     function UnInstallModule(ModuleName: string): boolean; virtual;
-    procedure Infoln(Message: string; const Level: TEventType=etInfo);
+    procedure Infoln(const Message: string; const Level: TEventType=etInfo);
 
-    function ExecuteCommand(Commandline: string; Verbosity:boolean): integer; overload;
-    function ExecuteCommand(Commandline: string; out Output:string; Verbosity:boolean): integer; overload;
+    function ExecuteCommand(const Commandline: string; Verbosity:boolean): integer; overload;
+    function ExecuteCommand(const Commandline: string; out Output:string; Verbosity:boolean): integer; overload;
     function ExecuteCommand(const ExeName:String;const Arguments:array of String;Verbosity:boolean):integer;
     function ExecuteCommand(const ExeName:String;const Arguments:array of String;out Output:string;Verbosity:boolean):integer;overload;
-    function ExecuteCommandInDir(Commandline, Directory: string; Verbosity:boolean): integer; overload;
-    function ExecuteCommandInDir(Commandline, Directory: string; out Output:string; Verbosity:boolean): integer; overload;
-    function ExecuteCommandInDir(Commandline, Directory: string; out Output:string; PrependPath: string; Verbosity:boolean): integer; overload;
+    function ExecuteCommandInDir(const Commandline, Directory: string; Verbosity:boolean): integer; overload;
+    function ExecuteCommandInDir(const Commandline, Directory: string; out Output:string; Verbosity:boolean): integer; overload;
+    function ExecuteCommandInDir(const Commandline, Directory: string; out Output:string; PrependPath: string; Verbosity:boolean): integer; overload;
     function ExecuteCommandInDir(const ExeName:String;const Arguments:array of String;const Directory:String;out Output:string; PrependPath: string;Verbosity:boolean):integer;overload;
 
     constructor Create;
@@ -637,10 +661,7 @@ uses
   //LMessages,
   LCLIntf,
   {$endif}
-  process
-  {$IFDEF UNIX}
-  ,LazFileUtils
-  {$ENDIF UNIX}
+  process,LazFileUtils
   {$IF NOT DEFINED(HAIKU) AND NOT DEFINED(AROS) AND NOT DEFINED(MORPHOS)}
   //,ssl_openssl
   // for runtime init of openssl
@@ -664,9 +685,9 @@ var
   target: string;
 begin
   result:=nil;
-  if ((FCrossCPU_Target<>TCPU.cpuNone) AND (FCrossOS_Target<>TOS.osNone)) then
+  if ((CrossCPU_Target<>TCPU.cpuNone) AND (CrossOS_Target<>TOS.osNone)) then
   begin
-    if (NOT Assigned(FCrossInstaller)) OR ((FCrossInstaller.TargetCPU<>FCrossCPU_Target)  OR (FCrossInstaller.TargetOS<>FCrossOS_Target)) then
+    if (NOT Assigned(FCrossInstaller)) OR ((FCrossInstaller.TargetCPU<>CrossCPU_Target)  OR (FCrossInstaller.TargetOS<>CrossOS_Target)) then
     begin
       target := GetFPCTarget(false);
       FCrossInstaller:=nil;
@@ -705,7 +726,7 @@ begin
   if (NOT DirectoryExists(FInstallDirectory)) then exit;
   if CheckDirectory(FInstallDirectory) then exit;
 
-  if ((FCrossCPU_Target=TCPU.cpuNone) OR (FCrossOS_Target=TOS.osNone)) then exit;
+  if ((CrossCPU_Target=TCPU.cpuNone) OR (CrossOS_Target=TOS.osNone)) then exit;
 
   //if (Self is TFPCCrossInstaller) then
   begin
@@ -776,7 +797,7 @@ begin
         Inc(SnipBegin);
       end;
 
-      result:=((GetCPU(FCrossCPU_Target)=aCPU) AND (GetOS(FCrossOS_Target)=aOS));
+      result:=((GetCPU(CrossCPU_Target)=aCPU) AND (GetOS(CrossOS_Target)=aOS));
 
     finally
       ConfigText.Free;
@@ -906,7 +927,7 @@ begin
     // disable for now .... not working 100%
     {
     // do we have a stray sh.exe in the path ...
-    if (Length(Which('sh.exe'))>0) then
+    if StrayShell then
     begin
       FShell := GetEnvironmentVariable('COMSPEC');
       //ExecuteCommand('cmd.exe /C echo %COMSPEC%', output, False);
@@ -924,6 +945,22 @@ begin
   {$ENDIF MSWINDOWS}
   Result := FShell;
 end;
+
+{$IFDEF MSWINDOWS}
+function TInstaller.GetStrayShell: boolean;
+begin
+  result:=false;
+  {$ifdef win32}
+  //result:=(NOT CheckExecutable('echo',['''mytestrevision'''],'''mytestrevision''',false));
+  {$endif}
+  {$ifdef win64}
+  //result:=(NOT CheckExecutable('echo',['''mytestrevision'''],'''mytestrevision''',false));
+  {$endif}
+  //if result then Infoln(infotext+'Found stray echo in path. Using gecho.exe command from custom binaries !',etWarning);
+  result:=(Length(Which('sh.exe'))>0);
+  if result then Infoln(infotext+'Found stray shell in path. Adjusting path !',etDebug);
+end;
+{$ENDIF MSWINDOWS}
 
 procedure TInstaller.SetVerbosity(aValue:boolean);
 begin
@@ -972,18 +1009,23 @@ begin
   if Assigned(SVNClient) then SVNClient.HTTPProxyUser:=FHTTPProxyUser;
 end;
 
+function TInstaller.InitInfoText(const ExtraInfo:string):string;
+begin
+  result:=TrimLeft(Copy(UnCamel(Self.ClassName),2,MaxInt))+ExtraInfo;
+  //if (Length(ExtraInfo)>0) then result:=result+' '+ExtraInfo;
+end;
+
 function TInstaller.CheckAndGetTools: boolean;
 var
-  OperationSucceeded: boolean;
+  CryptoSucceeded,OperationSucceeded: boolean;
   {$ifdef MSWINDOWS}
   aURL,aFile,Output: string;
+  i:integer;
   {$endif}
 begin
-  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (CheckAndGetTools): ';
-
   OperationSucceeded := true;
-
-  if not FNeededExecutablesChecked then
+  localinfotext:=InitInfoText(' (CheckAndGetTools): ');
+  if (not FNeededExecutablesChecked) then
   begin
     // The extractors used depend on the bootstrap compiler URL/file we download
     // todo: adapt extractor based on URL that's being passed (low priority as these will be pretty stable)
@@ -1036,38 +1078,37 @@ begin
     {$ifndef USEONLYCURL}
     if OperationSucceeded then
     begin
-      // always get ssl libs if they are not there: sometimes system wide libs do not work
-      if (NOT FileExists(SafeGetApplicationPath+'libeay32.dll')) OR (NOT FileExists(SafeGetApplicationPath+'ssleay32.dll')) then
-      begin
-        Infoln(localinfotext+'Getting OpenSSL library files.',etInfo);
-        DownloadOpenSSL;
-        DestroySSLInterface; // disable ssl and release libs
-      end
-      else
-      begin
-        Infoln(localinfotext+'Found OpenSSL library files.',etDebug);
-        Infoln(localinfotext+'Checking for correct signature.',etDebug);
-        if (IsSSLloaded) then
-        begin
-          DestroySSLInterface; // disable ssl and release libs
-        end;
-        if (NOT CheckFileSignature(SafeGetApplicationPath+'libeay32.dll')) OR (NOT CheckFileSignature(SafeGetApplicationPath+'ssleay32.dll')) then
-        begin
-          Infoln(localinfotext+'OpenSSL library files have wrong CPU signature.',etWarning);
-          DeleteFile(SafeGetApplicationPath+'libeay32.dll');
-          DeleteFile(SafeGetApplicationPath+'ssleay32.dll');
-          Infoln(localinfotext+'Getting correct OpenSSL library files.',etInfo);
-          DownloadOpenSSL;
-          //DestroySSLInterface; // disable ssl and release libs
-        end;
-      end;
-      if (NOT IsSSLloaded) then
+
+      CryptoSucceeded:=IsSSLloaded;
+      if (NOT CryptoSucceeded) then
       begin
         InitSSLInterface;
+        CryptoSucceeded:=IsSSLloaded;
+      end;
+
+      if (NOT CryptoSucceeded) then
+      begin
+        i:=Low(SSL_DLL_Names);
+        while ( (not CryptoSucceeded) AND (i<=High(SSL_DLL_Names)) ) do
+        begin
+          CryptoSucceeded:=(FileExists(SafeGetApplicationPath+Crypto_DLL_Names[i]+GetLibExt)) AND (FileExists(SafeGetApplicationPath+SSL_DLL_Names[i]+GetLibExt));
+          Inc(i);
+        end;
+        if (NOT CryptoSucceeded) then
+        begin
+          Infoln(localinfotext+'Getting OpenSSL library files.',etInfo);
+          DownloadOpenSSL;
+          DestroySSLInterface; // disable ssl and release libs
+        end;
+        if (NOT IsSSLloaded) then
+        begin
+          InitSSLInterface;
+          CryptoSucceeded:=IsSSLloaded;
+        end;
       end;
     end;
 
-    if (NOT IsSSLloaded) then
+    if (NOT CryptoSucceeded) then
       Infoln(localinfotext+'Could not init SSL interface.',etWarning);
     {$endif}
 
@@ -1129,8 +1170,8 @@ begin
     if (Not FileExists(aFile)) then
     begin
       aFile:=IncludeTrailingPathDelimiter(FMakeDir) + 'patch.exe';
-      //aURL:=FPCBINARIES+'/install/binw32/';
-      aURL:=FPCGITLABBINARIES+'/-/raw/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll])+'/install/binw32/';
+      //aURL:=FPCTRUNKBINARIES+'/install/binw32/';
+      aURL:=FPCGITLABBUILDBINARIES+'/-/raw/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll])+'/install/binw32/';
       GetFile(aURL+'patch.exe',aFile);
       GetFile(aURL+'patch.exe.manifest',aFile + '.manifest');
     end;
@@ -1138,8 +1179,8 @@ begin
 
 
     // Get pwd binary from default binutils URL. If its not there, the make clean command will fail
-    //aURL:=FPCBINARIES+'/install/binw'+{$ifdef win64}'64'{$else}'32'{$endif}+'/';
-    aURL:=FPCGITLABBINARIES+'/-/raw/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll])+'/install/binw'+{$ifdef win64}'64'{$else}'32'{$endif}+'/';
+    //aURL:=FPCTRUNKBINARIES+'/install/binw'+{$ifdef win64}'64'{$else}'32'{$endif}+'/';
+    aURL:=FPCGITLABBUILDBINARIES+'/-/raw/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll])+'/install/binw'+{$ifdef win64}'64'{$else}'32'{$endif}+'/';
     aFile:='pwd.exe';
     GetFile(aURL+aFile,IncludeTrailingPathDelimiter(FMakeDir)+aFile);
 
@@ -1239,7 +1280,6 @@ begin
           with TNormalUnzipper.Create do
           begin
             try
-              //OperationSucceeded:=DoUnZip(IncludeTrailingPathDelimiter(FMakeDir)+'unrar\'+Output,IncludeTrailingPathDelimiter(FMakeDir)+'unrar\',['bin\unrar.exe','\bin\unrar3.dll']);
               OperationSucceeded:=DoUnZip(IncludeTrailingPathDelimiter(FMakeDir)+'unrar\'+Output,IncludeTrailingPathDelimiter(FMakeDir)+'unrar\',[]);
             finally
               Free;
@@ -1305,7 +1345,8 @@ begin
             //aURL:='https://github.com/git-for-windows/git/releases/download/v2.25.1.windows.1/MinGit-2.25.1-64-bit.zip';
             aURL:='https://github.com/git-for-windows/git/releases/download/v2.33.0.windows.2/MinGit-2.33.0.2-64-bit.zip';
             {$endif}
-            Infoln(localinfotext+'GIT not found. Downloading it (may take time) from '+aURL,etInfo);
+            Infoln(localinfotext+'GIT client not found. Downloading it',etInfo);
+            Infoln(localinfotext+'GIT client download (may take time) from '+aURL,etDebug);
             OperationSucceeded:=GetFile(aURL,IncludeTrailingPathDelimiter(FMakeDir)+'git\'+Output);
             if NOT OperationSucceeded then
             begin
@@ -1369,7 +1410,8 @@ begin
           aURL:=FPCUPGITREPO+'/releases/download/windowsx64bins_v1.0/'+Output;
           {$endif}
           ForceDirectoriesSafe(IncludeTrailingPathDelimiter(FMakeDir)+'hg');
-          Infoln(localinfotext+'HG (mercurial) client not found. Downloading it (may take time) from '+aURL,etInfo);
+          Infoln(localinfotext+'HG (mercurial) client not found. Downloading it',etInfo);
+          Infoln(localinfotext+'HG (mercurial) client download (may take time) from '+aURL,etDebug);
           OperationSucceeded:=GetFile(aURL,IncludeTrailingPathDelimiter(FMakeDir)+'hg\'+Output);
           if NOT OperationSucceeded then
           begin
@@ -1466,9 +1508,10 @@ begin
       // check if we have make ... otherwise get it from standard URL
       if (NOT FileExists(Make)) then
       begin
-        aURL:=FPCGITLABBINARIES+'/-/raw/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll])+'/install/binw'+{$ifdef win64}'64'{$else}'32'{$endif}+'/'+ExtractFileName(Make);
-        //aURL:=FPCBINARIES+'/install/binw'+{$ifdef win64}'64'{$else}'32'{$endif}+'/'+ExtractFileName(Make);
-        Infoln(localinfotext+'Make binary not found. Getting it from: '+aURL+'.',etInfo);
+        aURL:=FPCGITLABBUILDBINARIES+'/-/raw/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll])+'/install/binw'+{$ifdef win64}'64'{$else}'32'{$endif}+'/'+ExtractFileName(Make);
+        //aURL:=FPCTRUNKBINARIES+'/install/binw'+{$ifdef win64}'64'{$else}'32'{$endif}+'/'+ExtractFileName(Make);
+        Infoln(localinfotext+'Make binary not found. Getting it.',etInfo);
+        Infoln(localinfotext+'Make binary download from: '+aURL+'.',etDebug);
         GetFile(aURL,Make);
         OperationSucceeded:=FileExists(Make);
       end;
@@ -1481,22 +1524,21 @@ begin
     FNeededExecutablesChecked:=OperationSucceeded;
   end;
   Result := OperationSucceeded;
+  localinfotext:=infotext;
 end;
 
 function TInstaller.CheckAndGetNeededBinUtils: boolean;
 var
   {$IFDEF MSWINDOWS}
-  AllThere: boolean;
-  i: integer;
-  InstallPath:string;
+  AllThere           : boolean;
+  i                  : integer;
+  InstallPath        : string;
   {$ENDIF MSWINDOWS}
-  OperationSucceeded: boolean;
-  s1,s2: string;
+  OperationSucceeded : boolean;
+  s1                 : string;
 begin
-  s2:=Copy(Self.ClassName,2,MaxInt)+' (DownloadBinUtils): ';
-
   OperationSucceeded := true;
-
+  localinfotext:=InitInfoText(' (DownloadBinUtils): ');
   {$IFDEF MSWINDOWS}
   if OperationSucceeded then
   begin
@@ -1505,7 +1547,6 @@ begin
     AllThere:=true;
     if DirectoryExists(FMakeDir) = false then
     begin
-      Infoln(s2+'Make path ' + FMakeDir + ' does not exist. Going to download binutils.',etInfo);
       AllThere:=false;
     end
     else
@@ -1536,8 +1577,9 @@ begin
     end;
     if not(AllThere) then
     begin
-      Infoln(s2+'Make path [' + FMakeDir + '] does not have (all) binutils. Going to download needed binutils.',etInfo);
-      //Infoln(s2+'Some binutils missing: going to get them.',etInfo);
+      Infoln(localinfotext+'Make path [' + FMakeDir + '] does not have (all) binutils.',etDebug);
+      Infoln(localinfotext+'Going to download needed binutils.',etInfo);
+      //Infoln(localinfotext+'Some binutils missing: going to get them.',etInfo);
       OperationSucceeded := DownloadBinUtils;
     end;
   end;
@@ -1553,7 +1595,7 @@ begin
       begin
         if CheckExecutable(Make, ['-v'], '') then
         begin
-          Infoln(s2+'Found make binary here: '+Make+'. But it is not GNU Make.',etError);
+          Infoln(localinfotext+'Found make binary here: '+Make+'. But it is not GNU Make.',etError);
           OperationSucceeded := false;
         end;
       end;
@@ -1568,11 +1610,11 @@ begin
       s1:=Which('ld');
       if (NOT CheckExecutable(s1, ['-v'], 'GNU ld')) then
       begin
-        Infoln(s2+'Found ld binary here: '+s1+'. But it is not GNU ld. Expect errors',etWarning);
+        Infoln(localinfotext+'Found ld binary here: '+s1+'. But it is not GNU ld. Expect errors',etWarning);
         s1:=Which('ld.bfd');
         if (NOT CheckExecutable(s1, ['-v'], 'GNU ld')) then
         begin
-          Infoln(s2+'Found GNU ld.bfd binary here: '+s1+'. Could be used through symlinking.',etWarning);
+          Infoln(localinfotext+'Found GNU ld.bfd binary here: '+s1+'. Could be used through symlinking.',etWarning);
         end;
         OperationSucceeded := true;
       end;
@@ -1583,6 +1625,7 @@ begin
   end;
 
   Result := OperationSucceeded;
+  localinfotext:=infotext;
 end;
 
 procedure TInstaller.CreateBinutilsList(aVersion:string);
@@ -1615,11 +1658,11 @@ begin
   SetLength(FUtilFiles,0); //clean out any cruft
 
   {$ifdef MSWINDOWS}
-  //aSourceURL:=FPCBINARIES+'/install/binw32/';
-  aSourceURL:=FPCGITLABBINARIES+'/-/raw/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll])+'/install/binw32/';
+  //aSourceURL:=FPCTRUNKBINARIES+'/install/binw32/';
+  aSourceURL:=FPCGITLABBUILDBINARIES+'/-/raw/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll])+'/install/binw32/';
   {$ifdef win64}
   //aSourceURL64:=FPCBINARIES+'/install/binw64/';
-  aSourceURL64:=FPCGITLABBINARIES+'/-/raw/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll])+'/install/binw64/';
+  aSourceURL64:=FPCGITLABBUILDBINARIES+'/-/raw/release_'+StringReplace(DEFAULTFPCVERSION,'.','_',[rfReplaceAll])+'/install/binw64/';
   {$endif}
 
   // Common to both 32 and 64 bit windows (i.e. 32 bit files)
@@ -1639,11 +1682,7 @@ begin
   // add win32/64 gdb from lazarus
   AddNewUtil('gdb' + GetExeExt,SourceURL_gdb_default,'',ucDebugger32);
   AddNewUtil('gdb' + GetExeExt,SourceURL64_gdb_default,'',ucDebugger64);
-  //AddNewUtil('libiconv-2.dll',SourceURL64_gdb_default,'',ucDebugger64);
-
-  // add win32/64 gdb from fpcup
-  //AddNewUtil('i386-win32-gdb.zip',SourceURL_gdb,'',ucDebugger32);
-  //AddNewUtil('x86_64-win64-gdb.zip',SourceURL64_gdb,'',ucDebugger64);
+  //AddNewUtil('libiconv-2'+GetLibExt,SourceURL64_gdb_default,'',ucDebugger64);
 
   {$ifdef win32}
   AddNewUtil('ar' + GetExeExt,aSourceURL,'',ucBinutil);
@@ -1654,19 +1693,11 @@ begin
   AddNewUtil('gdate' + GetExeExt,aSourceURL,'',ucBinutil);
   // just add default 32 bit debugger for all usercases as a binutil !
   AddNewUtil('gdb' + GetExeExt,aSourceURL,'',ucBinutil);
-  AddNewUtil('libexpat-1.dll',aSourceURL,'',ucBinutil);
+  AddNewUtil('libexpat-1'+GetLibExt,aSourceURL,'',ucBinutil);
   AddNewUtil('gecho' + GetExeExt,aSourceURL,'',ucBinutil);
   AddNewUtil('ginstall' + GetExeExt,aSourceURL,'',ucBinutil);
   AddNewUtil('ginstall' + GetExeExt + '.manifest',aSourceURL,'',ucBinutil);
   AddNewUtil('gmkdir' + GetExeExt,aSourceURL,'',ucBinutil);
-  //AddNewUtil('GoRC' + GetExeExt,aSourceURL,'',ucBinutil);
-  {
-  https://svn.freepascal.org/svn/lazarus/binaries/i386-win32/gdb/bin/
-  only has libexpat-1, so no need for these:
-  AddNewUtil('libgcc_s_dw2-1.dll',aSourceURL,'',ucBinutil);
-  AddNewUtil('libiconv-2.dll',aSourceURL,'',ucBinutil);
-  AddNewUtil('libintl-8.dll',aSourceURL,'',ucBinutil);
-  }
   AddNewUtil('ld' + GetExeExt,aSourceURL,'',ucBinutil);
   AddNewUtil('make' + GetExeExt,aSourceURL,'',ucBinutil);
   AddNewUtil('mv' + GetExeExt,aSourceURL,'',ucBinutil);
@@ -1675,8 +1706,19 @@ begin
   AddNewUtil('rm' + GetExeExt,aSourceURL,'',ucBinutil);
   AddNewUtil('strip' + GetExeExt,aSourceURL,'',ucBinutil);
 
-  AddNewUtil('Qt4Pas5.dll',SourceURL_QT,'',ucQtFile);
-  AddNewUtil('Qt5Pas1.dll',SourceURL_QT5,'',ucQtFile);
+  AddNewUtil('Qt4Pas5'+GetLibExt,SourceURL_QT,'',ucQtFile);
+  AddNewUtil('Qt5Pas1'+GetLibExt,SourceURL_QT5,'',ucQtFile);
+
+  // Add special versions for crosss-compiling towards win64
+
+  aSourceURL:=FPCGITLABBINARIES+'/-/raw/main/i386-win32/';
+  AddNewUtil('x86_64-win64-ar' + GetExeExt,aSourceURL,'',ucBinutil);
+  AddNewUtil('x86_64-win64-as' + GetExeExt,aSourceURL,'',ucBinutil);
+  AddNewUtil('x86_64-win64-ld' + GetExeExt,aSourceURL,'',ucBinutil);
+  AddNewUtil('x86_64-win64-nm' + GetExeExt,aSourceURL,'',ucBinutil);
+  AddNewUtil('x86_64-win64-objcopy' + GetExeExt,aSourceURL,'',ucBinutil);
+  AddNewUtil('x86_64-win64-objdump' + GetExeExt,aSourceURL,'',ucBinutil);
+  AddNewUtil('x86_64-win64-strip' + GetExeExt,aSourceURL,'',ucBinutil);
   {$endif win32}
 
   {$ifdef win64}
@@ -1688,7 +1730,7 @@ begin
   AddNewUtil('gdate' + GetExeExt,aSourceURL64,'',ucBinutil);
   // just add default 64 bit debugger for all usercases as a binutil !
   AddNewUtil('gdb' + GetExeExt,SourceURL64_gdb_default,'',ucBinutil);
-  //AddNewUtil('libiconv-2.dll',SourceURL64_gdb_default,'',ucBinutil);
+  //AddNewUtil('libiconv-2'+GetLibExt,SourceURL64_gdb_default,'',ucBinutil);
   AddNewUtil('gecho' + GetExeExt,aSourceURL64,'',ucBinutil);
   AddNewUtil('ginstall' + GetExeExt,aSourceURL64,'',ucBinutil);
   AddNewUtil('ginstall' + GetExeExt + '.manifest',aSourceURL64,'',ucBinutil);
@@ -1757,7 +1799,7 @@ var
 begin
   Result := false;
 
-  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' ('+Copy(aClient.ClassName,2,MaxInt)+': '+aModuleName+'): ';
+  localinfotext:=InitInfoText(' ('+Copy(aClient.ClassName,2,MaxInt)+': '+aModuleName+'): ');
 
   // check if we do have a client !!
   if NOT aClient.ValidClient then
@@ -1991,7 +2033,7 @@ var
 begin
   result:=true;
 
-  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (DownloadFromSVN: '+aModuleName+'): ';
+  localinfotext:=InitInfoText(' (DownloadFromSVN: '+aModuleName+'): ');
 
   // check if we do have a client !!
   if NOT SVNClient.ValidClient then
@@ -2183,7 +2225,7 @@ var
 begin
   result:=false;
 
-  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (DownloadFromURL: '+ModuleName+'): ';
+  localinfotext:=InitInfoText(' (DownloadFromURL: '+ModuleName+'): ');
 
   if (Length(FURL)=0) then exit;
 
@@ -2285,7 +2327,7 @@ var
   InstallPath:string;
   RemotePath:string;
 begin
-  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (DownloadBinUtils): ';
+  localinfotext:=InitInfoText(' (DownloadBinUtils): ');
   //Parent directory of files. Needs trailing backslash.
   ForceDirectoriesSafe(FMakeDir);
   Result := true;
@@ -2306,7 +2348,7 @@ begin
 
       RemotePath:=FUtilFiles[Counter].RootURL + FUtilFiles[Counter].FileName;
 
-      //if (FUtilFiles[Counter].FileName='libiconv-2.dll') then continue;
+      //if (FUtilFiles[Counter].FileName='libiconv-2'+GetLibExt) then continue;
 
       DownloadSuccess:=GetFile(FUtilFiles[Counter].RootURL + FUtilFiles[Counter].FileName,InstallPath+FUtilFiles[Counter].FileName);
 
@@ -2317,7 +2359,7 @@ begin
       end
       else
       begin
-        Infoln(localinfotext+'Downloading: ' + FUtilFiles[Counter].FileName + ' into ' + ExtractFileDir(InstallPath) + ' success.',etInfo);
+        Infoln(localinfotext+'Downloading: ' + FUtilFiles[Counter].FileName + ' into ' + ExtractFileDir(InstallPath) + ' success.',etDebug);
 
         if ExtractFileExt(FUtilFiles[Counter].FileName)='.zip' then
         begin
@@ -2350,7 +2392,7 @@ var
   SourceURL,BinsZip:string;
   OperationSucceeded:boolean;
 begin
-  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (DownloadBinUtils): ';
+  localinfotext:=InitInfoText(' (DownloadBinUtils): ';
   //Parent directory of files. Needs trailing backslash.
   ForceDirectoriesSafe(FMakeDir);
   Result := true;
@@ -2414,7 +2456,7 @@ var
   SVNZip,SVNDir,aSourceURL: string;
   i:integer;
 begin
-  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (DownloadSVN): ';
+  localinfotext:=InitInfoText(' (DownloadSVN): ');
 
   OperationSucceeded := false;
 
@@ -2465,7 +2507,7 @@ begin
 
   if OperationSucceeded then
   begin
-    WritelnLog(localinfotext + 'SVN download and unpacking ok. Not going to search SVN client itself in ' + SVNDir, true);
+    WritelnLog(etDebug,localinfotext + 'SVN download and unpacking ok', true);
     OperationSucceeded := FindSVNSubDirs;
     if OperationSucceeded then
       SysUtils.Deletefile(SVNZip); //Get rid of temp zip if success.
@@ -2485,28 +2527,31 @@ begin
 
   OperationSucceeded := false;
 
-  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (DownloadOpenSSL): ';
+  localinfotext:=InitInfoText(' (DownloadOpenSSL): ');
 
-  Infoln(localinfotext+'No OpenSSL library files available for SSL. Going to download them.',etWarning);
+  Infoln(localinfotext+'No OpenSSL library files available for SSL. Going to download them. Might take some time.',etWarning);
 
   // Direct download OpenSSL from from Lazarus binaries
   if (NOT OperationSucceeded) then
   begin
-    OpenSSLFileName:='libeay32.dll';
-    OperationSucceeded:=GetFile(OPENSSL_URL_LATEST+'/'+OpenSSLFileName,SafeGetApplicationPath+OpenSSLFileName,true,true);
-    if OperationSucceeded then
+    i:=Low(SSL_DLL_Names);
+    while ( (not OperationSucceeded) AND (i<=High(SSL_DLL_Names)) ) do
     begin
-      OpenSSLFileName:='ssleay32.dll';
+      OpenSSLFileName:=Crypto_DLL_Names[i]+GetLibExt;
       OperationSucceeded:=GetFile(OPENSSL_URL_LATEST+'/'+OpenSSLFileName,SafeGetApplicationPath+OpenSSLFileName,true,true);
+      if OperationSucceeded then
+      begin
+        OpenSSLFileName:=SSL_DLL_Names[i]+GetLibExt;
+        OperationSucceeded:=GetFile(OPENSSL_URL_LATEST+'/'+OpenSSLFileName,SafeGetApplicationPath+OpenSSLFileName,true,true);
+      end;
+      Inc(i);
     end;
   end;
 
   // Direct download OpenSSL from public sources
   if (NOT OperationSucceeded) then
   begin
-    localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (DownloadOpenSSL): ';
-
-    Infoln(localinfotext+'Got OpenSSL from '+OPENSSL_URL_LATEST+'.',etWarning);
+    localinfotext:=InitInfoText(' (DownloadOpenSSL): ');
 
     OpenSSLFileName := GetTempFileNameExt('FPCUPTMP','zip');
 
@@ -2541,14 +2586,16 @@ begin
       begin
         try
           resultcode:=2;
-          SysUtils.Deletefile(SafeGetApplicationPath+'libeay32.dll');
+          //DLLExt;
+          GetExeExt;
+          SysUtils.Deletefile(SafeGetApplicationPath+Crypto_DLL_Name+GetLibExt);
           if GetLastOSError<>5 then // no access denied
           begin
-            SysUtils.Deletefile(SafeGetApplicationPath+'ssleay32.dll');
+            SysUtils.Deletefile(SafeGetApplicationPath+SSL_DLL_Name+GetLibExt);
             if GetLastOSError<>5 then // no access denied
             begin
               resultcode:=1;
-              if DoUnZip(OpenSSLFileName,SafeGetApplicationPath,['libeay32.dll','ssleay32.dll']) then resultcode:=0;
+              if DoUnZip(OpenSSLFileName,SafeGetApplicationPath,[Crypto_DLL_Name+GetLibExt,SSL_DLL_Name+GetLibExt]) then resultcode:=0;
             end;
           end;
         finally
@@ -2599,8 +2646,6 @@ var
   //WgetFile,WgetZip: string;
   i:integer;
 begin
-  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (DownloadWget): ';
-
   Infoln(localinfotext+'No Wget found. Going to download it.',etInfo);
 
   OperationSucceeded := false;
@@ -2661,7 +2706,7 @@ var
   FreetypeDir,FreetypeBin,FreetypZip,FreetypZipDir: string;
   i:integer;
 begin
-  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (DownloadFreetype): ';
+  localinfotext:=InitInfoText(' (DownloadFreetype): ');
 
   Infoln(localinfotext+'No Freetype found. Going to download it.',etInfo);
 
@@ -2669,9 +2714,9 @@ begin
 
   FreetypeDir:=IncludeTrailingPathDelimiter(FInstallDirectory);
 
-  FreetypeBin:='freetype-6.dll';
+  FreetypeBin:='freetype-6'+GetLibExt;
   if NOT FileExists(FreetypeDir+FreetypeBin) then
-    FreetypeBin:='freetype.dll';
+    FreetypeBin:='freetype'+GetLibExt;
 
   if NOT FileExists(FreetypeDir+FreetypeBin) then
   begin
@@ -2735,7 +2780,7 @@ end;
 
 function TInstaller.DownloadZlib: boolean;
 const
-  TARGETNAME='zlib1.dll';
+  TARGETNAME='zlib1'+GetLibExt;
   SOURCEURL : array [0..1] of string = (
     FPCUPGITREPO+'/releases/download/windowsi386bins_v1.0/zlib-1.2.3-bin.zip',
     'https://sourceforge.net/projects/gnuwin32/files/zlib/1.2.3/zlib-1.2.3-bin.zip/download'
@@ -2745,7 +2790,7 @@ var
   TargetDir,TargetBin,SourceBin,SourceZip,ZipDir: string;
   i:integer;
 begin
-  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (Download '+TARGETNAME+'): ';
+  localinfotext:=InitInfoText(' (Download '+TARGETNAME+'): ');
 
   Infoln(localinfotext+'No '+TARGETNAME+' found. Going to download it.');
 
@@ -2833,7 +2878,7 @@ var
   TargetBin,SourceBin,SourceZip,ZipDir: string;
   i:integer;
 begin
-  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (Download '+TARGETNAME+'): ';
+  localinfotext:=InitInfoText(' (Download '+TARGETNAME+'): ');
 
   OperationSucceeded := false;
 
@@ -2913,7 +2958,6 @@ var
   SVNFiles: TStringList;
   OperationSucceeded: boolean;
 begin
-  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (FindSVNSubDirs): ';
   SVNDir := IncludeTrailingPathDelimiter(FMakeDir)+'svn';
   SVNFiles := FindAllFiles(SVNDir, SVNClient.RepoExecutableName + GetExeExt, true);
   try
@@ -2940,7 +2984,7 @@ begin
   if Native then
     result:=GetTargetCPU+'-'+GetTargetOS
   else
-    result:=GetCPU(FCrossCPU_Target)+'-'+GetOS(FCrossOS_Target);
+    result:=GetCPU(CrossCPU_Target)+'-'+GetOS(CrossOS_Target);
 end;
 
 function TInstaller.GetPath: string;
@@ -2968,10 +3012,10 @@ begin
   Processor.Environment.SetVar(PATHVARNAME, ResultingPath);
   if ResultingPath <> EmptyStr then
   begin
-    WritelnLog(Copy(Self.ClassName,2,MaxInt)+' (SetPath): External program path:  ' + ResultingPath, false);
+    WritelnLog(InitInfoText(' (SetPath): External program path:  ' + ResultingPath), false);
   end;
   if FVerbose then
-    Infoln(Copy(Self.ClassName,2,MaxInt)+' (SetPath): Set path to: ' + ResultingPath,etDebug);
+    Infoln(InitInfoText(' (SetPath): Set path to: ' + ResultingPath),etDebug);
 end;
 
 procedure TInstaller.WritelnLog(msg: TStrings; ToConsole: boolean = true);
@@ -3028,7 +3072,7 @@ procedure TInstaller.SetTarget(aCPU:TCPU;aOS:TOS;aSubArch:TSUBARCH);
 begin
   FCrossCPU_Target:=aCPU;
   FCrossOS_Target:=aOS;
-  if ((FCrossOS_Target in SUBARCH_OS) AND (FCrossCPU_Target in SUBARCH_CPU)) then
+  if ((CrossOS_Target in SUBARCH_OS) AND (CrossCPU_Target in SUBARCH_CPU)) then
     FCrossOS_SubArch:=aSubArch
   else
     FCrossOS_SubArch:=TSUBARCH.saNone;
@@ -3037,11 +3081,11 @@ end;
 procedure TInstaller.SetABI(aABI:TABI);
 begin
   //
-  if (FCrossCPU_Target=TCPU.arm) then
+  if (CrossCPU_Target=TCPU.arm) then
     FCrossOS_ABI:=aABI
   else
   begin
-    if (FCrossOS_Target=TOS.ios) then
+    if (CrossOS_Target=TOS.ios) then
     begin
       FCrossOS_ABI:=aABI;
       if (aABI<>TABI.default) AND (aABI<>TABI.aarch64ios) then
@@ -3133,7 +3177,7 @@ end;
 function TInstaller.BuildModule(ModuleName: string): boolean;
 begin
   result:=false;
-  infotext:=Copy(Self.ClassName,2,MaxInt)+' (BuildModule: '+ModuleName+'): ';
+  infotext:=InitInfoText(' (BuildModule: '+ModuleName+'): ');
   Infoln(infotext+'Entering ...',etDebug);
 end;
 
@@ -3141,17 +3185,17 @@ function TInstaller.CleanModule(ModuleName: string): boolean;
 begin
   result:=false;
   FCleanModuleSuccess:=false;
-  infotext:=Copy(Self.ClassName,2,MaxInt)+' (CleanModule: '+ModuleName+'): ';
+  infotext:=InitInfoText(' (CleanModule: '+ModuleName+'): ');
   Infoln(infotext+'Entering ...',etDebug);
 
   if (not DirectoryExists(FSourceDirectory)) then
   begin
-    Infoln(infotext+'No '+ModuleName+' source directory ('+FSourceDirectory+') found [yet] ... nothing to be done',etInfo);
+    Infoln(infotext+'No '+ModuleName+' source directory ('+FSourceDirectory+') found [yet] ... nothing to be done',etDebug);
     exit(true);
   end;
   if DirectoryIsEmpty(FSourceDirectory) then
   begin
-    Infoln(infotext+'No '+ModuleName+' files found in source directory ('+FSourceDirectory+') ... nothing to be done',etInfo);
+    Infoln(infotext+'No '+ModuleName+' files found in source directory ('+FSourceDirectory+') ... nothing to be done',etDebug);
     exit(true);
   end;
 end;
@@ -3159,14 +3203,14 @@ end;
 function TInstaller.ConfigModule(ModuleName: string): boolean;
 begin
   result:=false;
-  infotext:=Copy(Self.ClassName,2,MaxInt)+' (ConfigModule: '+ModuleName+'): ';
+  infotext:=InitInfoText(' (ConfigModule: '+ModuleName+'): ');
   Infoln(infotext+'Entering ...',etDebug);
 end;
 
 function TInstaller.GetModule(ModuleName: string): boolean;
 begin
   result:=false;
-  infotext:=Copy(Self.ClassName,2,MaxInt)+' (GetModule: '+ModuleName+'): ';
+  infotext:=InitInfoText(' (GetModule: '+ModuleName+'): ');
   Infoln(infotext+'Entering ...',etDebug);
 
   ForceDirectoriesSafe(FSourceDirectory);
@@ -3179,7 +3223,7 @@ var
 begin
   result:=true;
 
-  infotext:=Copy(Self.ClassName,2,MaxInt)+' (CheckModule: '+ModuleName+'): ';
+  infotext:=InitInfoText(' (CheckModule: '+ModuleName+'): ');
   Infoln(infotext+'Entering ...',etDebug);
 
   if NOT DirectoryExists(FSourceDirectory) then exit;
@@ -3209,7 +3253,7 @@ begin
     end;
   end;
 
-  Infoln(infotext+'Checking ' + ModuleName + ' sources with '+aRepoClient.ClassName,etInfo);
+  Infoln(infotext+'Checking ' + ModuleName + ' sources with '+TrimLeft(Copy(UnCamel(aRepoClient.ClassName),2,MaxInt)),etInfo);
 
   aRepoClient.Verbose          := FVerbose;
   aRepoClient.ExportOnly       := FExportOnly;
@@ -3228,18 +3272,18 @@ begin
   result:=(aRepoClient.ReturnCode<>FRET_LOCAL_REMOTE_URL_NOMATCH);
 
   if result then
-    Infoln(infotext+'sources ok.',etInfo)
+    Infoln(infotext+'Sources ok.',etDebug)
   else
   begin
     Infoln(infotext+URL_ERROR+'.',aEvent);
-    Infoln(infotext+'desired URL='+FURL,aEvent);
-    Infoln(infotext+'source URL='+aRepoClient.Repository,aEvent);
+    Infoln(infotext+'Desired URL='+FURL,aEvent);
+    Infoln(infotext+'Source URL='+aRepoClient.Repository,aEvent);
 
     if ((FSwitchURL) AND (NOT result)) then
     begin
       result:=true;
 
-      Infoln(infotext+'switching source URL',etInfo);
+      Infoln(infotext+'Switching source URL',etInfo);
 
       aRepoClient.Verbose:=FVerbose;
       aRepoClient.ExportOnly:=FExportOnly;
@@ -3703,14 +3747,17 @@ begin
       begin
         Infoln(infotext+'Trying to patch ' + ModuleName + ' with '+PatchList[i],etInfo);
         PatchFilePath:=SafeExpandFileName(PatchList[i]);
-        if NOT FileExists(PatchFilePath) then PatchFilePath:=SafeExpandFileName(SafeGetApplicationPath+PatchList[i]);
-        if NOT FileExists(PatchFilePath) then
+        if (NOT FilenameIsAbsolute(PatchFilePath)) then
         begin
-          if PatchFPC then PatchFilePath:=SafeExpandFileName(SafeGetApplicationPath+'patchfpc'+DirectorySeparator+PatchList[i])
-             {$ifndef FPCONLY}
-             else if PatchLaz then PatchFilePath:=SafeExpandFileName(SafeGetApplicationPath+'patchlazarus'+DirectorySeparator+PatchList[i])
-             {$endif}
-                else PatchFilePath:=SafeExpandFileName(SafeGetApplicationPath+'patchfpcup'+DirectorySeparator+PatchList[i]);
+          if (NOT FileExists(PatchFilePath)) then PatchFilePath:=SafeExpandFileName(SafeGetApplicationPath+PatchList[i]);
+          if NOT FileExists(PatchFilePath) then
+          begin
+            if PatchFPC then PatchFilePath:=SafeExpandFileName(SafeGetApplicationPath+'patchfpc'+DirectorySeparator+PatchList[i])
+               {$ifndef FPCONLY}
+               else if PatchLaz then PatchFilePath:=SafeExpandFileName(SafeGetApplicationPath+'patchlazarus'+DirectorySeparator+PatchList[i])
+               {$endif}
+                  else PatchFilePath:=SafeExpandFileName(SafeGetApplicationPath+'patchfpcup'+DirectorySeparator+PatchList[i]);
+          end;
         end;
 
         if FileExists(PatchFilePath) then
@@ -3963,7 +4010,7 @@ end;
 function TInstaller.UnInstallModule(ModuleName: string): boolean;
 begin
   result:=false;
-  infotext:=Copy(Self.ClassName,2,MaxInt)+' (UnInstallModule: '+ModuleName+'): ';
+  infotext:=InitInfoText(' (UnInstallModule: '+ModuleName+'): ');
   Infoln(infotext+'Entering ...',etDebug);
 end;
 
@@ -3971,14 +4018,15 @@ function TInstaller.GetFile(aURL,aFile:string; forceoverwrite:boolean=false; for
 var
   aUseWget:boolean;
 begin
-  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (GetFile): ';
+  localinfotext:=InitInfoText(' (GetFile): ');
   aUseWget:=FUseWget;
   if forcenative then aUseWget:=false;
   result:=((FileExists(aFile)) AND (NOT forceoverwrite) AND (FileSize(aFile)>0));
   if (NOT result) then
   begin
     if ((forceoverwrite) AND (SysUtils.FileExists(aFile))) then SysUtils.DeleteFile(aFile);
-    Infoln(localinfotext+'Downloading ' + aURL);
+    Infoln(localinfotext+'Downloading ' + ExtractFileName(aFile));
+    Infoln(localinfotext+'Downloading from ' + aURL,etDebug);
     result:=Download(aUseWget,aURL,aFile,FHTTPProxyHost,FHTTPProxyPort,FHTTPProxyUser,FHTTPProxyPassword);
     if (NOT result) then Infoln(localinfotext+'Could not download file with URL ' + aURL +' into ' + ExtractFileDir(aFile) + ' (filename: ' + ExtractFileName(aFile) + ')');
   end;
@@ -4129,6 +4177,7 @@ begin
   begin
     for aCPU:=Low(TCPU) to High(TCPU) do
     begin
+      if aCPU=TCPU.cpuNone then continue;
       if (Cpu_Target=GetCPU(aCPU)) then
       begin
         result:=GetDefaultCompilerFilename(aCPU,false);
@@ -4144,13 +4193,15 @@ begin
      else result:=GetDefaultCompilerFilename(Cpu_Target,false);
 end;
 
-procedure TInstaller.Infoln(Message: string; const Level: TEventType=etInfo);
+procedure TInstaller.Infoln(const Message: string; const Level: TEventType=etInfo);
+const
+  cDot : array[boolean] of string = ('.','');
 begin
   // Note: these strings should remain as is so any fpcupgui highlighter can pick it up
   if (Level<>etDebug) then
   begin
     if AnsiPos(LineEnding, Message)>0 then ThreadLog(''); //Write an empty line before multiline messagse
-    ThreadLog(BeginSnippet+' '+Seriousness[Level]+' '+ Message); //we misuse this for info output
+    ThreadLog(BeginSnippet+' '+Seriousness[Level]+' '+ Message+cDot[Message[Length(Message)]='.']); //we misuse this for info output
   end
   else
   begin
@@ -4168,14 +4219,14 @@ begin
  {$endif}
 end;
 
-function TInstaller.ExecuteCommand(Commandline: string; Verbosity: boolean): integer;
+function TInstaller.ExecuteCommand(const Commandline: string; Verbosity: boolean): integer;
 var
   s:string='';
 begin
   Result:=ExecuteCommandInDir(Commandline,'',s,Verbosity);
 end;
 
-function TInstaller.ExecuteCommand(Commandline: string; out Output: string;
+function TInstaller.ExecuteCommand(const Commandline: string; out Output: string;
   Verbosity: boolean): integer;
 begin
   Result:=ExecuteCommandInDir(Commandline,'',Output,Verbosity);
@@ -4193,7 +4244,7 @@ begin
   result:=ExecuteCommandInDir(ExeName,Arguments,'',Output,'',Verbosity);
 end;
 
-function TInstaller.ExecuteCommandInDir(Commandline, Directory: string; Verbosity: boolean
+function TInstaller.ExecuteCommandInDir(const Commandline, Directory: string; Verbosity: boolean
   ): integer;
 var
   s:string='';
@@ -4201,13 +4252,13 @@ begin
   Result:=ExecuteCommandInDir(Commandline,Directory,s,Verbosity);
 end;
 
-function TInstaller.ExecuteCommandInDir(Commandline, Directory: string;
+function TInstaller.ExecuteCommandInDir(const Commandline, Directory: string;
   out Output: string; Verbosity: boolean): integer;
 begin
   Result:=ExecuteCommandInDir(CommandLine,Directory,Output,'',Verbosity);
 end;
 
-function TInstaller.ExecuteCommandInDir(Commandline, Directory: string;
+function TInstaller.ExecuteCommandInDir(const Commandline, Directory: string;
   out Output: string; PrependPath: string; Verbosity: boolean): integer;
 var
   OldPath: string;

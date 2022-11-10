@@ -1,7 +1,6 @@
-unit m_any_to_aros386;
-
-{ Cross compiles from any (or any other OS with relevant binutils/libs) to Linux 64 bit
-Copyright (C) 2014 Reinier Olislagers
+unit m_any_to_linuxm68k;
+{ Cross compiles from any platform with correct binutils to linux m68k
+Copyright (C) 2017 Alf
 
 This library is free software; you can redistribute it and/or modify it
 under the terms of the GNU Library General Public License as published by
@@ -43,8 +42,8 @@ uses
 
 type
 
-{ Tany_Aros386 }
-Tany_Aros386 = class(TCrossInstaller)
+{ TAny_Linuxm68k }
+TAny_Linuxm68k = class(TCrossInstaller)
 private
   FAlreadyWarned: boolean; //did we warn user about errors and fixes already?
 public
@@ -57,18 +56,18 @@ public
   destructor Destroy; override;
 end;
 
-{ Tany_Aros386 }
+{ TAny_Linuxm68k }
 
-function Tany_Aros386.GetLibs(Basepath:string): boolean;
+function TAny_Linuxm68k.GetLibs(Basepath:string): boolean;
+const
+  LibName='libc.a';
 begin
   result:=FLibsFound;
-
   if result then exit;
 
   // begin simple: check presence of library file in basedir
   result:=SearchLibrary(Basepath,LIBCFILENAME);
-
-  // first search local paths based on libbraries provided for or adviced by fpc itself
+  // search local paths based on libbraries provided for or adviced by fpc itself
   if not result then
     result:=SimpleSearchLibrary(BasePath,DirName,LIBCFILENAME);
 
@@ -91,72 +90,96 @@ begin
 end;
 
 {$ifndef FPCONLY}
-function Tany_Aros386.GetLibsLCL(LCL_Platform: string; Basepath: string): boolean;
+function TAny_Linuxm68k.GetLibsLCL(LCL_Platform: string; Basepath: string): boolean;
 begin
-  // todo: get gtk at least
+  // todo: get gtk at least, add to FFPCCFGSnippet
+  ShowInfo('Todo: implement lcl libs path from basepath '+BasePath,etdebug);
   result:=inherited;
 end;
 {$endif}
 
-function Tany_Aros386.GetBinUtils(Basepath:string): boolean;
+function TAny_Linuxm68k.GetBinUtils(Basepath:string): boolean;
 var
-  AsFile: string;
-  BinPrefixTry: string;
+  AsFile        : string;
+  BinPrefixTry  : string;
+  {$ifdef UNIX}
+  i             : integer;
+  {$endif UNIX}
 begin
   result:=inherited;
   if result then exit;
 
+  // Start with any names user may have given
   AsFile:=BinUtilsPrefix+ASFILENAME+GetExeExt;
 
   result:=SearchBinUtil(BasePath,AsFile);
-
   if not result then
     result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
 
-  // Also allow for (cross)binutils without prefix
+  // Now also allow for avr- binutilsprefix
   if not result then
   begin
-    BinPrefixTry:='';
+    BinPrefixTry:='m68k-elf-';
     AsFile:=BinPrefixTry+ASFILENAME+GetExeExt;
     result:=SearchBinUtil(BasePath,AsFile);
     if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
+    {$ifdef UNIX}
+    // User may also have placed them into their regular search path:
+    if not result then
+    begin
+      for i:=Low(UnixBinDirs) to High(UnixBinDirs) do
+      begin
+        result:=SearchBinUtil(IncludeTrailingPathDelimiter(UnixBinDirs[i])+DirName, AsFile);
+        if not result then result:=SearchBinUtil(UnixBinDirs[i], AsFile);
+        if result then break;
+      end;
+    end;
+    {$endif UNIX}
     if result then FBinUtilsPrefix:=BinPrefixTry;
   end;
 
+
   SearchBinUtilsInfo(result);
 
-  if result then
+  if not result then
+  begin
+    {$ifdef MSWINDOWS}
+    ShowInfo(CrossWindowsSuggestion);
+    {$endif MSWINDOWS}
+    FAlreadyWarned:=true;
+  end
+  else
   begin
     FBinsFound:=true;
+    // Configuration snippet for FPC
     AddFPCCFGSnippet('-FD'+IncludeTrailingPathDelimiter(FBinUtilsPath));
-    AddFPCCFGSnippet('-XP'+FBinUtilsPrefix);
+    AddFPCCFGSnippet('-XP'+FBinUtilsPrefix); {Prepend the binutils names};
   end;
 end;
 
-constructor Tany_Aros386.Create;
+constructor TAny_Linuxm68k.Create;
 begin
   inherited Create;
-  FTargetCPU:=TCPU.i386;
-  FTargetOS:=TOS.aros;
+  FTargetCPU:=TCPU.m68k;
+  FTargetOS:=TOS.linux;
   Reset;
   FAlreadyWarned:=false;
   ShowInfo;
 end;
 
-destructor Tany_Aros386.Destroy;
+destructor TAny_Linuxm68k.Destroy;
 begin
   inherited Destroy;
 end;
 
 var
-  any_Aros386:Tany_Aros386;
+  Any_Linuxm68k:TAny_Linuxm68k;
 
 initialization
-  any_Aros386:=Tany_Aros386.Create;
-  RegisterCrossCompiler(any_Aros386.RegisterName,any_Aros386);
+  Any_Linuxm68k:=TAny_Linuxm68k.Create;
+  RegisterCrossCompiler(Any_Linuxm68k.RegisterName,Any_Linuxm68k);
 
 finalization
-  any_Aros386.Destroy;
-
+  Any_Linuxm68k.Destroy;
 end.
 

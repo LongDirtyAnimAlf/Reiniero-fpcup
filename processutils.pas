@@ -12,7 +12,6 @@ uses
 
 const
   Seriousness: array [TEventType] of string = ('custom:', 'info:', 'WARNING:', 'ERROR:', 'debug:');
-
   {$ifdef LCL}
   BeginSnippet='fpcupdeluxe:'; //helps identify messages as coming from fpcupdeluxe instead of make etc
   {$else}
@@ -211,6 +210,7 @@ uses
   Forms,
   Controls, // for crHourGlass
   LCLIntf,
+  LCLType,
   LMessages,
   {$endif}
   StrUtils,
@@ -870,10 +870,10 @@ begin
 
   // suppress some GIT errors, always
   if AnsiContainsText(line,'fatal: not a git repository') then exit;
+  if AnsiStartsText('fatal: No names found',line) then exit;
 
   //Haiku errors we are not interested in
   {$ifdef Haiku}
-  if AnsiStartsText('fatal: No names found',line) then exit;
   if AnsiStartsText('runtime_loader:',line) then exit;
   {$endif}
 
@@ -964,23 +964,6 @@ begin
       if AnsiContainsText(line,'hint: ') then exit;
       if AnsiContainsText(line,'verbose: ') then exit;
       if AnsiContainsText(line,'note: ') then exit;
-      if AnsiContainsText(line,'assembling ') then exit;
-      if AnsiContainsText(line,': entering directory ') then exit;
-      if AnsiContainsText(line,': leaving directory ') then exit;
-      // when generating help
-      if AnsiContainsText(line,'illegal XML element: ') then exit;
-      if AnsiContainsText(line,'Invalid paragraph content') then exit;
-      if AnsiContainsText(line,'parsing used unit ') then exit;
-      if AnsiContainsText(line,'extracting ') then exit;
-      if AnsiContainsText(line,'directory not found for option') then exit;
-      if AnsiContainsText(line,'hint(s) issued') then exit;
-      if AnsiContainsText(line,'warning(s) issued') then exit;
-
-      // during building of lazarus components, default compiler switches cause version and copyright info to be shown
-      // do not know if this is allowed, but this version / copyright info is very redundant as it is shown everytime the compiler is called ...
-      // I stand corrected if this has to be changed !
-      if AnsiContainsText(line,'Copyright (c) 1993-') then exit;
-      if AnsiContainsText(line,'Free Pascal Compiler version ') then exit;
 
       // harmless make error
       if AnsiContainsText(line,'make') then
@@ -1054,8 +1037,8 @@ begin
 
         if AnsiContainsText(line,'Removed non empty directory') then exit;
       end;
-      // suppress "trivial"* build commands
 
+      // suppress "trivial"* build commands
       {$ifdef MSWINDOWS}
       if AnsiContainsText(line,'rm.exe ') then exit;
       if AnsiContainsText(line,'mkdir.exe ') then exit;
@@ -1081,6 +1064,26 @@ begin
       if ( (AnsiContainsText(line,'/'+s) OR AnsiStartsText(s,line)) AND (AnsiContainsText(line,'.compiled') OR AnsiContainsText(line,'.tmp')) ) then exit;
       s:='grep: ';
       if AnsiContainsText(line,'/'+s) OR AnsiStartsText(s,line) then exit;
+
+      // remove hints and other "trivial"* warnings from output
+      // these line are not that interesting for the average user of fpcupdeluxe !
+      if AnsiContainsText(line,'assembling ') then exit;
+      if AnsiContainsText(line,': entering directory ') then exit;
+      if AnsiContainsText(line,': leaving directory ') then exit;
+      // when generating help
+      if AnsiContainsText(line,'illegal XML element: ') then exit;
+      if AnsiContainsText(line,'Invalid paragraph content') then exit;
+      if AnsiContainsText(line,'parsing used unit ') then exit;
+      if AnsiContainsText(line,'extracting ') then exit;
+      if AnsiContainsText(line,'directory not found for option') then exit;
+      if AnsiContainsText(line,'hint(s) issued') then exit;
+      if AnsiContainsText(line,'warning(s) issued') then exit;
+
+      // during building of lazarus components, default compiler switches cause version and copyright info to be shown
+      // do not know if this is allowed, but this version / copyright info is very redundant as it is shown everytime the compiler is called ...
+      // I stand corrected if this has to be changed !
+      if AnsiContainsText(line,'Copyright (c) 1993-') then exit;
+      if AnsiContainsText(line,'Free Pascal Compiler version ') then exit;
 
       {$ifdef Darwin}
       s:='strip -no_uuid ';
@@ -1387,12 +1390,12 @@ begin
       aMessage:=aMsg;
   end else aMessage:='';
 
-  PInfo := StrAlloc(Length(aMessage)+1);
-  StrCopy(PInfo, PChar(aMessage));
+  PInfo := StrAlloc(Length(aMessage)+16);
+  StrPCopy(PInfo, aMessage);
   if (Assigned(Application) AND Assigned(Application.MainForm)) then
   begin
-    PostMessage(Application.MainForm.Handle, WM_THREADINFO, {%H-}NativeUInt(PInfo), 0);
-    //Application.ProcessMessages;
+    if not PostMessage(Application.MainForm.Handle, WM_THREADINFO, 0, {%H-}LPARAM(PInfo)) then
+      StrDispose(PInfo);
   end;
 end;
 {$else}

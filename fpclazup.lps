@@ -235,8 +235,8 @@
         <Filename Value="fpclazup.lpr"/>
         <IsPartOfProject Value="True"/>
         <IsVisibleTab Value="True"/>
-        <TopLine Value="30"/>
-        <CursorPos Y="48"/>
+        <TopLine Value="123"/>
+        <CursorPos Y="154"/>
         <UsageCount Value="200"/>
         <Loaded Value="True"/>
       </Unit0>

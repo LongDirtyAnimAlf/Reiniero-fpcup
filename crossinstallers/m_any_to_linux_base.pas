@@ -143,14 +143,33 @@ begin
     if AnsiPos(magic, s) <> 0 then
     begin
       // Check if we have the libs
-      magic:=GetMultilibDir;
-      if (Length(magic)=0) then exit;
-      s:='/lib/'+magic; //debian (multilib) Jessie+ convention
-      if DirectoryExists(s) AND FileExists(s+DirectorySeparator+'libc.so.6') then
+
+      if (NOT FMultilib) then
       begin
-        s:='/usr/lib/'+magic; //debian (multilib) Jessie+ convention
-        if DirectoryExists(s) AND FileExists(s+DirectorySeparator+'libX11.so.6')  AND FileExists(s+DirectorySeparator+'libgdk-x11-2.0.so') then FMultilib:=True;
+        //debian (multilib) Jessie+ convention
+        magic:=GetMultilibDir;
+        if (Length(magic)=0) then exit;
+        s:='/lib/'+magic;
+        if DirectoryExists(s) AND FileExists(s+DirectorySeparator+'libc.so.6') then
+        begin
+          s:='/usr/lib/'+magic; //debian (multilib) Jessie+ convention
+          if DirectoryExists(s) AND FileExists(s+DirectorySeparator+'libX11.so.6')  AND FileExists(s+DirectorySeparator+'libgdk-x11-2.0.so') then FMultilib:=True;
+        end;
       end;
+
+      if (NOT FMultilib) then
+      begin
+        //Arch Linux convention
+        magic:=GetMultilibDirShort;
+        if (Length(magic)=0) then exit;
+        s:='/usr/'+magic;
+        if DirectoryExists(s) AND FileExists(s+DirectorySeparator+'libc.so.6') then
+        begin
+          if DirectoryExists(s) AND FileExists(s+DirectorySeparator+'libX11.so.6')  AND FileExists(s+DirectorySeparator+'libgdk-x11-2.0.so') then FMultilib:=True;
+        end;
+      end;
+
+
     end;
   end;
   result:=FMultilib;
@@ -177,7 +196,7 @@ begin
   else
   begin
     aDirName:=DirName;
-    aLibName:=LIBCNAME;
+    aLibName:=LIBCFILENAME;
   end;
 
   // begin simple: check presence of library file in basedir
@@ -193,14 +212,18 @@ begin
     AddFPCCFGSnippet('-Xd'); // do not pass parent /lib etc dir to linker}
     AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath)); // the directory to look for the target  libraries}
 
-    {$IFDEF CPU64}
-    if TargetCPU in CPUADDRSIZE_32 then
-      AddFPCCFGSnippet('-Xr/usr/lib32');
-    {$ENDIF CPU64}
-    {$IFDEF CPU32}
-    if TargetCPU in CPUADDRSIZE_64 then
-      AddFPCCFGSnippet('-Xr/usr/lib64');
-    {$ENDIF CPU32}
+    //if CheckMultilib then
+    if false then
+    begin
+      {$IFDEF CPU64}
+      if TargetCPU in CPUADDRSIZE_32 then
+        AddFPCCFGSnippet('-Xr/usr/lib32');
+      {$ENDIF CPU64}
+      {$IFDEF CPU32}
+      if TargetCPU in CPUADDRSIZE_64 then
+        AddFPCCFGSnippet('-Xr/usr/lib64');
+      {$ENDIF CPU32}
+    end;
 
     if FMUSL then
     begin
@@ -209,7 +232,7 @@ begin
     end;
   end;
 
-  if (not result) then
+  if (NOT result) then
   begin
     {$IFDEF MULTILIB}
     if CheckMultilib then
@@ -217,15 +240,31 @@ begin
       result:=true;
       FLibsFound:=True;
 
-      FLibsPath:='/lib/'+GetMultilibDir;
-      AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath));
+      // We should use -XR to define (or limit) the linker search path.
+      // But fpcupdeluxe only will add all suitable library paths
+      // So we need to disable the default linker search path to prevent linking errors.
+      AddFPCCFGSnippet('-Xd'); // do not pass parent /lib etc dir to linker}
 
-      FLibsPath:='/usr/lib/'+GetMultilibDir;
-      AddFPCCFGSnippet('-Fl'+IncludeTrailingPathDelimiter(FLibsPath));
+      s:='/lib/'+GetMultilibDir;
+      if DirectoryExists(s) then
+      begin
+        FLibsPath:=s;
+        s:=s+DirectorySeparator;
+        AddFPCCFGSnippet('-Fl'+s);
+      end;
+
+      s:='/usr/lib/'+GetMultilibDir;
+      if DirectoryExists(s) then
+      begin
+        FLibsPath:=s;
+        s:=s+DirectorySeparator;
+        AddFPCCFGSnippet('-Fl'+s);
+      end;
 
       s:='/'+GetMultilibDirShort;
       if DirectoryExists(s) then
       begin
+        FLibsPath:=s;
         s:=s+DirectorySeparator;
         AddFPCCFGSnippet('-Fl'+s);
       end;
@@ -233,6 +272,7 @@ begin
       s:='/usr/'+GetMultilibDirShort;
       if DirectoryExists(s) then
       begin
+        FLibsPath:=s;
         s:=s+DirectorySeparator;
         AddFPCCFGSnippet('-Fl'+s);
       end;
@@ -335,7 +375,7 @@ begin
 
   BinPrefixTry:=FBinUtilsPrefix;
 
-  AsFile:=BinPrefixTry+'as'+GetExeExt;
+  AsFile:=BinPrefixTry+ASFILENAME+GetExeExt;
 
   result:=SearchBinUtil(BasePath,AsFile);
   if not result then
@@ -364,7 +404,7 @@ begin
       BinPrefixTry:='';
       s:=Which('objdump');
       s:=ExtractFileDir(s);
-      AsFile:='as'+GetExeExt;
+      AsFile:=ASFILENAME+GetExeExt;
       result:=SearchBinUtil(s,AsFile);
       if not result then
         result:=SimpleSearchBinUtil(BasePath,aDirName,AsFile);
@@ -377,7 +417,7 @@ begin
   if not result then
   begin
     BinPrefixTry:=TargetCPUName+'-linux-gnu-';
-    AsFile:=BinPrefixTry+'as'+GetExeExt;
+    AsFile:=BinPrefixTry+ASFILENAME+GetExeExt;
     result:=SearchBinUtil(BasePath,AsFile);
     if (not result) then
       result:=SimpleSearchBinUtil(BasePath,aDirName,AsFile);
@@ -396,7 +436,7 @@ begin
       if (TargetCPU=TCPU.i386) then
       begin
         BinPrefixTry:='i586-linux-gnu-';
-        AsFile:=BinPrefixTry+'as'+GetExeExt;
+        AsFile:=BinPrefixTry+ASFILENAME+GetExeExt;
         result:=SearchBinUtil(BasePath,AsFile);
         if (not result) then
           result:=SimpleSearchBinUtil(BasePath,aDirName,AsFile);
@@ -417,7 +457,7 @@ begin
       if (TargetCPU=TCPU.i386) then
       begin
         BinPrefixTry:='i686-linux-gnu-';
-        AsFile:=BinPrefixTry+'as'+GetExeExt;
+        AsFile:=BinPrefixTry+ASFILENAME+GetExeExt;
         result:=SearchBinUtil(BasePath,AsFile);
         if (not result) then
           result:=SimpleSearchBinUtil(BasePath,aDirName,AsFile);
@@ -440,7 +480,7 @@ begin
   if (not result) then
   begin
     BinPrefixTry:=TargetCPUName+'-suse-linux-';
-    AsFile:=BinPrefixTry+'as'+GetExeExt;
+    AsFile:=BinPrefixTry+ASFILENAME+GetExeExt;
     result:=SearchBinUtil(BasePath,AsFile);
     if (not result) then
       result:=SimpleSearchBinUtil(BasePath,aDirName,AsFile);
@@ -457,7 +497,7 @@ begin
       if (TargetCPU=TCPU.i386) then
       begin
         BinPrefixTry:='i586-suse-linux-';
-        AsFile:=BinPrefixTry+'as'+GetExeExt;
+        AsFile:=BinPrefixTry+ASFILENAME+GetExeExt;
         result:=SearchBinUtil(BasePath,AsFile);
         if (not result) then
           result:=SimpleSearchBinUtil(BasePath,aDirName,AsFile);
@@ -476,7 +516,7 @@ begin
       if (TargetCPU=TCPU.i386) then
       begin
         BinPrefixTry:='i686-suse-linux-';
-        AsFile:=BinPrefixTry+'as'+GetExeExt;
+        AsFile:=BinPrefixTry+ASFILENAME+GetExeExt;
         result:=SearchBinUtil(BasePath,AsFile);
         if (not result) then
           result:=SimpleSearchBinUtil(BasePath,aDirName,AsFile);
@@ -497,7 +537,7 @@ begin
   if (not result) then
   begin
     BinPrefixTry:='';
-    AsFile:=BinPrefixTry+'as'+GetExeExt;
+    AsFile:=BinPrefixTry+ASFILENAME+GetExeExt;
     result:=SearchBinUtil(BasePath,AsFile);
     if (not result) then
       result:=SimpleSearchBinUtil(BasePath,aDirName,AsFile);

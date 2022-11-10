@@ -173,7 +173,7 @@ begin
   if result then exit;
 
   // Start with any names user may have given
-  AsFile:=FBinUtilsPrefix+'as'+GetExeExt;
+  AsFile:=BinUtilsPrefix+ASFILENAME+GetExeExt;
 
   result:=SearchBinUtil(BasePath,AsFile);
   if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
@@ -195,7 +195,7 @@ begin
   if not result then
   begin
     BinPrefixTry:='avr-';
-    AsFile:=BinPrefixTry+'as'+GetExeExt;
+    AsFile:=BinPrefixTry+ASFILENAME+GetExeExt;
     result:=SearchBinUtil(BasePath,AsFile);
     if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
     {$ifdef unix}
@@ -217,7 +217,7 @@ begin
   if not result then
   begin
     BinPrefixTry:='';
-    AsFile:=BinPrefixTry+'as'+GetExeExt;
+    AsFile:=BinPrefixTry+ASFILENAME+GetExeExt;
     result:=SearchBinUtil(BasePath,AsFile);
     if not result then result:=SimpleSearchBinUtil(BasePath,DirName,AsFile);
     if result then FBinUtilsPrefix:=BinPrefixTry;
@@ -228,7 +228,7 @@ begin
   if not result then
   begin
     {$ifdef mswindows}
-    ShowInfo('Suggestion for cross binutils: the crossfpc binutils (avr-embedded) at http://svn.freepascal.org/svn/fpcbuild/binaries/i386-win32/.');
+    ShowInfo(CrossWindowsSuggestion);
     {$endif}
     FAlreadyWarned:=true;
   end

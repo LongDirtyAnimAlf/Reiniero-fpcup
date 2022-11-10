@@ -191,7 +191,6 @@ type
     function GetModule(ModuleName: string): boolean; override;
   end;
 
-
   // Gets the list of modules enabled in ConfigFile. Appends to existing TStringList
   function GetModuleEnabledList(var ModuleList:TStringList):boolean;
   // Gets the sequence representation for all modules in the ini file
@@ -277,6 +276,8 @@ begin
   result:=false;
   FLazarusNeedsRebuild:=false;
 
+  Infoln(infotext+'Going to rebuild Lazarus.',etInfo);
+
   Processor.Process.Parameters.Clear;
   Processor.Process.CurrentDirectory := ExcludeTrailingPathDelimiter(LazarusSourceDir);
 
@@ -313,7 +314,8 @@ begin
     Processor.Process.Parameters.Add('LAZARUS_INSTALL_DIR='+IncludeTrailingPathDelimiter(LazarusInstallDir));
 
     //Make sure our FPC units can be found by Lazarus
-    Processor.Process.Parameters.Add('FPCDIR=' + ExcludeTrailingPathDelimiter(FPCSourceDir));
+    //Processor.Process.Parameters.Add('FPCDIR=' + ExcludeTrailingPathDelimiter(FPCSourceDir));
+    Processor.Process.Parameters.Add('FPCDIR=' + ExcludeTrailingPathDelimiter(FPCInstallDir));
 
     //Make sure Lazarus does not pick up these tools from other installs
     Processor.Process.Parameters.Add('FPCMAKE=' + FFPCCompilerBinPath+'fpcmake'+GetExeExt);
@@ -638,7 +640,7 @@ end;
 function TUniversalInstaller.InitModule: boolean;
 begin
   result:=true;
-  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (InitModule): ';
+  localinfotext:=InitInfoText(' (InitModule): ');
 
   Infoln(localinfotext+'Entering ...',etDebug);
   if InitDone then exit;
@@ -691,7 +693,7 @@ var
   PackageFiles: TStringList;
 begin
   result:=false;
-  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (InstallPackage): ';
+  localinfotext:=InitInfoText(' (InstallPackage): ');
 
   PackageName:=FileNameWithoutExt(PackagePath);
 
@@ -911,7 +913,7 @@ var
   RegisterOnly:boolean;
 begin
   Failure:=false;
-  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (RemovePackages): ';
+  localinfotext:=InitInfoText(' (RemovePackages): ');
 
   BaseWorkingdir:=GetValueFromKey(LOCATIONMAGIC,sl);
   if BaseWorkingdir='' then BaseWorkingdir:=GetValueFromKey(INSTALLMAGIC,sl);
@@ -979,6 +981,8 @@ var
   ReadyCounter:integer;
   {$ifndef FPCONLY}
   LazarusConfig:TUpdateLazConfig;
+  LegacyList:boolean;
+  ListCount:integer;
   {$endif}
 begin
   BaseWorkingdir:=GetValueFromKey(LOCATIONMAGIC,sl);
@@ -987,7 +991,7 @@ begin
   Workingdir:=BaseWorkingdir;
   ModuleName:=GetValueFromKey(NAMEMAGIC,sl);
 
-  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (AddPackages of '+ModuleName+'): ';
+  localinfotext:=InitInfoText(' (AddPackages of '+ModuleName+'): ');
 
   for RegisterOnly:=false to true do
   begin
@@ -1183,13 +1187,43 @@ begin
 
         if (LowerCase(ModuleName)='fpdebug') then
         begin
-          // due to limited features of TUpdateLazConfig, this will delete any previous item
-          // and that might be not wanted, but keep it like this
           LazarusConfig:=TUpdateLazConfig.Create(LazarusPrimaryConfigPath);
           try
-            LazarusConfig.SetVariable(EnvironmentConfig, 'EnvironmentOptions/Debugger/Configs/Config/ConfigName', 'FpDebug');
-            LazarusConfig.SetVariable(EnvironmentConfig, 'EnvironmentOptions/Debugger/Configs/Config/ConfigClass', 'TFpDebugDebugger');
-            LazarusConfig.SetVariable(EnvironmentConfig, 'EnvironmentOptions/Debugger/Configs/Config/Active',True);
+            s2:='EnvironmentOptions/Debugger/Configs/';
+            LegacyList:=LazarusConfig.IsLegacyList(EnvironmentConfig, s2);
+            ListCount:=LazarusConfig.GetListItemCount(EnvironmentConfig, s2, 'Config', LegacyList);
+
+            // Lookup previous setting, if any
+            while (ListCount>0) do
+            begin
+              Dec(ListCount);
+              s:=s2+LazarusConfig.GetListItemXPath(EnvironmentConfig,'Config',ListCount,LegacyList,True)+'/';
+              if AnsiSameText('TFpDebugDebugger',LazarusConfig.GetVariable(EnvironmentConfig, s+'ConfigClass')) then
+              begin
+                // Previous config setting found. Set flag.
+                ListCount:=-1;
+                break;
+              end;
+            end;
+
+            // Flag not set. Nothing found. Add new config.
+            if (ListCount<>-1) then
+            begin
+              // Add fpdebug settings and activate
+              ListCount:=LazarusConfig.GetListItemCount(EnvironmentConfig, s2, 'Config', LegacyList);
+              s:=s2+LazarusConfig.GetListItemXPath(EnvironmentConfig,'Config',ListCount,LegacyList,True)+'/';
+              LazarusConfig.SetVariable(EnvironmentConfig, s+'ConfigName', 'FpDebug');
+              LazarusConfig.SetVariable(EnvironmentConfig, s+'ConfigClass', 'TFpDebugDebugger');
+              // Activate fpdebug
+              LazarusConfig.SetVariable(EnvironmentConfig, s+'Active',True);
+              // Deativate other debugger(s)
+              while (ListCount>0) do
+              begin
+                Dec(ListCount);
+                s:=s2+LazarusConfig.GetListItemXPath(EnvironmentConfig,'Config',ListCount,LegacyList,True)+'/';
+                LazarusConfig.SetVariable(EnvironmentConfig, s+'Active',False);
+              end;
+            end;
           finally
             LazarusConfig.Free;
           end;
@@ -1253,7 +1287,7 @@ var
   Workingdir:string;
   ReadyCounter:integer;
 begin
-  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (RunCommands: '+Directive+'): ';
+  localinfotext:=InitInfoText(' (RunCommands: '+Directive+'): ');
 
   result:=true; //not finding any instructions at all should not be a problem.
   BaseWorkingdir:=GetValueFromKey('Workingdir',sl);
@@ -1326,7 +1360,7 @@ begin
         Processor.Process.Parameters.Delete(0);
       end;
 
-      Processor.Process.CurrentDirectory:=Workingdir;
+      Infoln(localinfotext+'Running command. '+Processor.GetExeInfo,etInfo);
 
       ProcessorResult:=Processor.ExecuteAndWait;
       s:=Processor.WorkerOutput.Text;
@@ -1423,7 +1457,7 @@ begin
 
   PackageName:=FileNameWithoutExt(PackagePath);
 
-  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (UnInstallPackage: '+PackageName+'): ';
+  localinfotext:=InitInfoText(' (UnInstallPackage: '+PackageName+'): ');
 
   Infoln(localinfotext+'Entering ...',etDebug);
 
@@ -1586,15 +1620,13 @@ begin
   result:=InitModule;
   if not result then exit;
 
-  // Log to console only:
-  Infoln(infotext+'Building module '+ModuleName+'...',etInfo);
   idx:=UniModuleList.IndexOf(ModuleName);
   if idx>=0 then
     begin
     sl:=TStringList(UniModuleList.Objects[idx]);
     // Run all InstallExecute<n> commands:
     // More detailed logging only if verbose or debug:
-    if FVerbose then WritelnLog(infotext+'Building module '+ModuleName+' running all InstallExecute commands in: '+LineEnding+
+    if FVerbose then WritelnLog(infotext+'Going to build '+ModuleName+' running all InstallExecute commands in: '+LineEnding+
       sl.CommaText,true);
     result:=RunCommands('InstallExecute',sl);
     end
@@ -1823,7 +1855,7 @@ begin
       // If Lazarus was marked for rebuild, do so:
       if FLazarusNeedsRebuild then
       begin
-        Infoln(infotext+'Going to rebuild Lazarus because packages were installed.',etInfo);
+        Infoln(infotext+'Packages were installed.',etInfo);
         result:=RebuildLazarus;
       end;
   end
@@ -1854,6 +1886,8 @@ begin
   result:=inherited;
   result:=InitModule;
   if not result then exit;
+
+  RemoteURL:='';
 
   SourceOK:=false;
   idx:=UniModuleList.IndexOf(ModuleName);
@@ -2167,7 +2201,7 @@ begin
     end
     else
     begin
-      Infoln(infotext+'No source directory defined. Skipping fetching of external sources.',etInfo);
+      Infoln(infotext+'No source directory defined. Skipping fetching of external sources.',etDebug);
     end;
   end
   else
@@ -2191,7 +2225,7 @@ begin
   {
   if not DirectoryExists(SourceDirectory) then
   begin
-    Infoln(infotext+'No '+ModuleName+' source directory ('+SourceDirectory+') found [yet] ... nothing to be done',etInfo);
+    Infoln(infotext+'No '+ModuleName+' source directory ('+SourceDirectory+') found [yet] ... nothing to be done',etDebug);
     exit(true);
   end;
   }
@@ -2204,9 +2238,9 @@ begin
   if idx>=0 then
   begin
     sl:=TStringList(UniModuleList.Objects[idx]);
-    WritelnLog(infotext+'UnInstalling module '+ModuleName);
+    if FVerbose then WritelnLog(infotext+'Going to remove '+ModuleName+' running all UnInstallExecute commands in: '+LineEnding+
+      sl.CommaText,true);
     result:=RunCommands('UnInstallExecute',sl);
-
     // Process all AddPackage<n> directives in reverse.
     // As this changes config files, we keep it outside
     // the section where LazarusConfig is modified
@@ -2259,7 +2293,7 @@ begin
     // If Lazarus was marked for rebuild, do so:
     if FLazarusNeedsRebuild then
     begin
-      Infoln(infotext+'Going to rebuild Lazarus because packages were removed.',etInfo);
+      Infoln(infotext+'Packages were removed.',etInfo);
       result:=RebuildLazarus;
     end;
   end
@@ -2559,6 +2593,22 @@ begin
     LazarusConfig.SetVariable(Pas2jsConfig, 'compiler/value', FilePath);
     FilePath:=ConcatPaths([WorkingDir,'bin',GetFPCTarget(true),'compileserver'+GetExeExt]);
     LazarusConfig.SetVariable(Pas2jsConfig, 'webserver/value', FilePath);
+    LazarusConfig.SetVariable(WebserverConfig, 'Server/Exe/Value', FilePath);
+    {$ifdef Windowssssss}
+    FilePath:='C:\Program Files\Google\Chrome\Application\chrome.exe';
+    if FileExists(FilePath) then
+    begin
+      LazarusConfig.SetVariable(WebserverConfig, 'Browser/Kind', 'Chrome');
+    end
+    else
+    begin
+      FilePath:='C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe';
+      if FileExists(FilePath) then
+      begin
+        LazarusConfig.SetVariable(WebserverConfig, 'Browser/Kind', 'Edge');
+      end
+    end;
+    {$endif}
   finally
     LazarusConfig.Free;
   end;
@@ -2793,7 +2843,7 @@ begin
   result:=InitModule;
   if not result then exit;
 
-  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' ('+Copy(ClassName,2,MaxInt)+': '+ModuleName+'): ';
+  localinfotext:=InitInfoText(' ('+Copy(ClassName,2,MaxInt)+': '+ModuleName+'): ');
 
   aBinURL:='';
   aLibURL:='';

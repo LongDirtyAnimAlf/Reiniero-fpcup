@@ -68,8 +68,10 @@ Const
   MAXCONNECTIONRETRIES=2;
   {$ifdef Windows}
   GetExeExt='.exe';
+  GetLibExt='.dll';
   {$else}
   GetExeExt='';
+  //GetLibExt='.so';
   {$endif}
 
 
@@ -257,7 +259,7 @@ function DeleteDirectoryEx(DirectoryName: string): boolean;
 function DeleteFilesSubDirs(const DirectoryName: string; const Names:TStringList; const OnlyIfPathHas: string): boolean;
 // Recursively delete files with specified extension(s),
 // only if path contains specfied directory name somewhere (or no directory name specified):
-function DeleteFilesExtensionsSubdirs(const DirectoryName: string; const Extensions:TstringList; const OnlyIfPathHas: string): boolean;
+function DeleteFilesExtensionsSubdirs(const DirectoryName: string; const Extensions:TStringList; const OnlyIfPathHas: string): boolean;
 // only if filename contains specfied part somewhere
 function DeleteFilesNameSubdirs(const DirectoryName: string; const OnlyIfNameHas: string): boolean;
 function FileNameFromURL(URL:string):string;
@@ -317,6 +319,7 @@ function SaveInisFromResource(filename,resourcename:string):boolean;
 function StringsStartsWith(const SearchIn:array of string; SearchFor:string; StartIndex:integer=0; CS:boolean=false): integer;
 function StringsSame(const SearchIn:array of string; SearchFor:string;  StartIndex:integer=0; CS:boolean=false): integer;
 function StringListStartsWith(SearchIn:TStringList; SearchFor:string; StartIndex:integer=0; CS:boolean=false): integer;
+function StringListEndsWith(SearchIn:TStringList; SearchFor:string; StartIndex:integer=0; CS:boolean=false): integer;
 function StringListContains(SearchIn:TStringList; SearchFor:string; StartIndex:integer=0; CS:boolean=false): integer;
 function StringListSame(SearchIn:TStringList; SearchFor:string; StartIndex:integer=0; CS:boolean=false): integer;
 function GetTotalPhysicalMemory: DWord;
@@ -340,12 +343,14 @@ function GetXCodeLocation:string;
 function GetAndroidSDKDir:string;
 function GetAndroidNDKDir:string;
 function CompareVersionStrings(s1,s2: string): longint;
-function ExistWordInString(aString:pchar; aSearchString:string; aSearchOptions: TStringSearchOptions): Boolean;
+function ExistWordInString(const aString:pchar; const aSearchString:string; const aSearchOptions: TStringSearchOptions = []): Boolean;
+function UnCamel(const value:string):string;
 function GetEnumNameSimple(aTypeInfo:PTypeInfo;const aEnum:integer):string;
 function GetEnumValueSimple(aTypeInfo:PTypeInfo;const aEnum:string):integer;
 function ContainsDigit(const s: string): Boolean;
 //Find a library, if any
-function LibWhich(aLibrary: string): boolean;
+function LibWhich(const {%H-}aLibrary: string; out {%H-}dir: string): boolean;
+function LibWhich(const aLibrary: string): boolean;
 // Emulates/runs which to find executable in path. If not found, returns empty string
 function Which(const Executable: string): string;
 function IsExecutable(Executable: string):boolean;
@@ -1067,6 +1072,7 @@ begin
     XdgDesktopContent.Add('Encoding=UTF-8');
     XdgDesktopContent.Add('Type=Application');
     XdgDesktopContent.Add('Icon='+ExtractFilePath(Target)+'images/icons/lazarus.ico');
+    //XdgDesktopContent.Add('Icon='+ExtractFilePath(Target)+'images/icons/lazarus128x128.png');
     XdgDesktopContent.Add('Path='+ExtractFilePath(Target));
     XdgDesktopContent.Add('Exec='+Target+' '+TargetArguments+' %f');
     XdgDesktopContent.Add('Name='+ShortcutName);
@@ -1443,21 +1449,24 @@ begin
     VersionSnippet := Copy(VersionSnippet, i + 1, MaxInt);
 
     // if url contains a version, this version always starts with first _#
-    i:=1;
-    repeat
-      if (CharInSet(VersionSnippet[i],['0'..'9'])) then
-      begin
-        if (i>1) AND (VersionSnippet[i-1]='_') then break;
-      end;
-      Inc(i);
-      if (i>Length(VersionSnippet)) then break;
-    until false;
+    if Length(VersionSnippet)>0 then
+    begin
+      i:=1;
+      repeat
+        if (CharInSet(VersionSnippet[i],['0'..'9'])) then
+        begin
+          if (i>1) AND (VersionSnippet[i-1]='_') then break;
+        end;
+        Inc(i);
+        if (i>Length(VersionSnippet)) then break;
+      until false;
 
-    Delete(VersionSnippet,1,(i-1));
-    // ignore release candidate numbering
-    i := Pos('_RC',VersionSnippet);
-    if i>0 then Delete(VersionSnippet,i,MaxInt);
-    VersionSnippet:=StringReplace(VersionSnippet,'_',',',[rfReplaceAll]);
+      Delete(VersionSnippet,1,(i-1));
+      // ignore release candidate numbering
+      i := Pos('_RC',VersionSnippet);
+      if i>0 then Delete(VersionSnippet,i,MaxInt);
+      VersionSnippet:=StringReplace(VersionSnippet,'_',',',[rfReplaceAll]);
+    end;
 
     if Length(VersionSnippet)>0 then
     begin
@@ -1602,9 +1611,13 @@ begin
 end;
 
 function CheckDirectory(DirectoryName: string):boolean;
+{$ifndef Windows}
+const
+  FORBIDDENFOLDERS:array[0..11] of string = ('/bin','/boot','/dev','/lib','/lib32','/lib64','/proc','/root','/run','/sbin','/sys','/var');
+{$endif}
 var
   s,aDirectory:string;
-
+  i:integer;
 begin
   result:=true;
   aDirectory:=LowerCase(DirectoryName);
@@ -1615,13 +1628,14 @@ begin
   if s=aDirectory then exit;
   s:=IncludeTrailingPathDelimiter(s);
   if s=aDirectory then exit;
-  if (Pos(DirectorySeparator+'lib',aDirectory)=1) then exit;
-  if (Pos(DirectorySeparator+'lib32',aDirectory)=1) then exit;
-  if (Pos(DirectorySeparator+'lib64',aDirectory)=1) then exit;
-  if (Pos(DirectorySeparator+'sbin',aDirectory)=1) then exit;
+  for s in FORBIDDENFOLDERS do
+  begin
+    if (Pos(s,aDirectory)=1) then exit;
+  end;
   {$else}
   if Length(aDirectory)<=3 then exit;
-  if Pos('\windows',aDirectory)>0 then exit;
+  i:=Pos('\windows',aDirectory);
+  if ((i>0) AND (i<4)) then exit;
   {$endif}
   if (NOT ParentDirectoryIsNotRoot(aDirectory)) then exit;
   result:=false;
@@ -1739,13 +1753,13 @@ begin
   end;
 end;
 
-function DeleteFilesExtensionsSubdirs(const DirectoryName: string; const Extensions:TstringList; const OnlyIfPathHas: string): boolean;
+function DeleteFilesExtensionsSubdirs(const DirectoryName: string; const Extensions:TStringList; const OnlyIfPathHas: string): boolean;
 // Deletes all files ending in one of the extensions, starting from
 // DirectoryName and recursing down.
 // It only deletes files if any directory of the path contains OnlyIfPathHas,
 // unless that is empty
-// Extensions can contain * to cover everything (other extensions will then be
-// ignored), making it delete all files, but leaving the directories.
+// Extensions can contain * to cover everything [other extensions will then be ignored]
+// making it delete all files, but leaving the directories.
 // Will try to remove read-only files.
 //todo: check how this works with case insensitive file system like Windows
 var
@@ -1756,12 +1770,18 @@ var
   {$ENDIF}
   AllFiles: boolean;
   CurSrcDir: String;
+  CurSearchPath: String;
   CurFilename: String;
   i: integer;
+  CurSrcDirValid:boolean;
 begin
   result:=false;
 
-  if CheckDirectory(DirectoryName) then exit;
+  if CheckDirectory(DirectoryName) then
+  begin
+    ThreadLog('Something wrong with directory: ' + DirectoryName + ' .',etError);
+    exit;
+  end;
 
   // Make sure we can compare extensions using ExtractFileExt
   for i:=0 to Extensions.Count-1 do
@@ -1770,7 +1790,9 @@ begin
   end;
   AllFiles:=(Extensions.Count=0) or (Extensions.IndexOf('.*')>=0);
   CurSrcDir:=CleanAndExpandDirectory(DirectoryName);
-  if SysUtils.FindFirst(CurSrcDir+GetAllFilesMask,faAnyFile{$ifdef unix} or {%H-}faSymLink {$endif unix},FileInfo)=0 then
+  CurSrcDirValid:=((OnlyIfPathHas='') OR (Pos(DirectorySeparator+OnlyIfPathHas,CurSrcDir)>0));
+  CurSearchPath:=CurSrcDir+GetAllFilesMask;
+  if SysUtils.FindFirst(CurSearchPath,faAnyFile{$ifdef unix} or {%H-}faSymLink {$endif unix},FileInfo)=0 then
   begin
     result:=true;
     repeat
@@ -1788,8 +1810,7 @@ begin
         begin
           // If we are in the right path:
           //todo: get utf8 replacement for ExtractFilePath
-          if (OnlyIfPathHas='') or
-            (pos(DirectorySeparator+OnlyIfPathHas+DirectorySeparator,ExtractFilePath(CurFileName))>0) then
+          if CurSrcDirValid then
           begin
             // Only delete if extension is right
             if AllFiles or (Extensions.IndexOf(ExtractFileExt(FileInfo.Name))>=0) then
@@ -1798,12 +1819,21 @@ begin
               if (FileInfo.Attr and faReadOnly)>0 then
                 FileSetAttr(CurFilename, FileInfo.Attr-faReadOnly);
               if not SysUtils.DeleteFile(CurFilename) then result:=false;
+              if (NOT result) then
+              begin
+                ThreadLog('Delete error of file: ' + CurFilename + ' .',etError);
+              end;
             end;
           end;
         end;
       end;
     until (SysUtils.FindNext(FileInfo)<>0) OR (NOT result);
     SysUtils.FindClose(FileInfo);
+  end;
+  // Remove root directory; exit with failure on error:
+  if (result AND CurSrcDirValid) then
+  begin
+    if DirectoryIsEmpty(CurSrcDir) then result:=RemoveDir(CurSrcDir);
   end;
 end;
 
@@ -2775,6 +2805,25 @@ begin
     result:=i;
 end;
 
+function StringListEndsWith(SearchIn:TStringList; SearchFor:string; StartIndex:integer; CS:boolean): integer;
+var
+  Found:boolean=false;
+  i:integer;
+begin
+  result:=-1;
+  if (StartIndex>=SearchIn.Count) then exit;
+  for i:=StartIndex to Pred(SearchIn.Count) do
+  begin
+    if CS then
+      Found:=AnsiEndsStr(SearchFor,TrimRight(SearchIn[i]))
+    else
+      Found:=AnsiEndsText(SearchFor,TrimRight(SearchIn[i]));
+    if Found then break;
+  end;
+  if Found then
+    result:=i;
+end;
+
 function StringListContains(SearchIn:TStringList; SearchFor:string; StartIndex:integer; CS:boolean): integer;
 var
   Found:boolean=false;
@@ -3450,12 +3499,63 @@ begin
   until false;
 end;
 
-function ExistWordInString(aString:pchar; aSearchString:string; aSearchOptions: TStringSearchOptions): Boolean;
+function ExistWordInString(const aString:pchar; const aSearchString:string; const aSearchOptions: TStringSearchOptions): Boolean;
 var
   Size : Integer;
+  LocalSearchOptions: TStringSearchOptions;
 begin
   Size:=StrLen(aString);
-  Result := SearchBuf(aString, Size, 0, 0, aSearchString, aSearchOptions)<>nil;
+  LocalSearchOptions:=aSearchOptions;
+  Include(LocalSearchOptions, soDown); // Needed, while we pass 0 as SelStart
+  Result:=SearchBuf(aString, Size, 0, 0, aSearchString, LocalSearchOptions)<>nil;
+end;
+
+function UnCamel(const value:string):string;
+var
+  s:string;
+  len,i,j:integer;
+begin
+  result:='';
+  len:=Length(value);
+  if (len=0) then exit;
+
+  SetLength({%H-}s,256);
+  i:=1;
+
+  while (i<=len) do
+  begin
+    if (value[i] in ['A'..'Z']) then break;
+    Inc(i);
+  end;
+
+  j:=1;
+
+  while (i<=len) do
+  begin
+
+    while (i<=len) do
+    begin
+      if (value[i] in ['A'..'Z']) then s[j]:=value[i] else break;
+      Inc(i);
+      Inc(j);
+    end;
+    if ((j>2) AND (i<=len)) then
+    begin
+      s[j]:=s[j-1];
+      s[j-1]:=' ';
+      Inc(j);
+    end;
+    while (i<=len) do
+    begin
+      if (NOT (value[i] in ['A'..'Z'])) then s[j]:=value[i] else break;
+      Inc(i);
+      Inc(j);
+    end;
+
+  end;
+
+  SetLength(s,j-1);
+  result:=s;
 end;
 
 function GetEnumNameSimple(aTypeInfo:PTypeInfo;const aEnum:integer):string;
@@ -3489,7 +3589,7 @@ begin
   result := false;
 end;
 
-function LibWhich(aLibrary: string): boolean;
+function LibWhich(const aLibrary: string; out dir: string): boolean;
 {$ifdef Unix}
 const
   UNIXSEARCHDIRS : array [0..3] of string = (
@@ -3508,19 +3608,31 @@ const
   {$endif}
 var
   OutputString: string;
+  aFile:string;
   i:integer;
   sd:string;
+  OutputLines:TStringList;
 {$endif}
 begin
   result:=false;
-  {$ifdef Unix}
 
+  //SysUtils.GetCurrentDir;
+
+  {$ifdef Unix}
   if (NOT result) then
   begin
-    OutputString:=FileSearch(aLibrary,SysUtils.GetEnvironmentVariable('LIBRARY_PATH'));
-    //OutputString:=FindFileInDirList(aLibrary,SysUtils.GetEnvironmentVariable('LIBRARY_PATH'));
-    result:=(Length(OutputString)>0);
-    if result then ThreadLog('Library searcher found '+aLibrary+' in path @ '+OutputString,etDebug);
+    sd:=SysUtils.GetEnvironmentVariable('LIBRARY_PATH');
+    if (Length(sd)=0) then sd:=SysUtils.GetEnvironmentVariable('LD_LIBRARY_PATH');
+    if ((Length(sd)>0) AND (DirectoryExists(sd))) then
+    begin
+      OutputString:=FileSearch(aLibrary,sd);
+      result:=(Length(OutputString)>0);
+      if result then
+      begin
+        dir:='Found in library path: '+ExtractFileDir(OutputString);
+        ThreadLog('Library searcher found '+aLibrary+' in path @ '+OutputString,etDebug);
+      end;
+    end;
   end;
 
   if (NOT result) then
@@ -3537,24 +3649,64 @@ begin
       if (RightStr(sd,4)='/x86') then continue;
       {$endif}
       {$endif}
-      if (NOT result) then
+      if DirectoryExists(sd) then
       begin
-        //try to find a file
-        //OutputString:=FileSearch(aLibrary,SysUtils.GetEnvironmentVariable('LIBRARY_PATH'));
-        //OutputString:=FindFileInDirList(aLibrary,SysUtils.GetEnvironmentVariable('LIBRARY_PATH'));
-        RunCommand('find',[sd,'-type','f','-name',aLibrary],OutputString,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
-        result:=(Pos(aLibrary,OutputString)>0);
-      end;
-      if (NOT result) then
-      begin
-        //try to find a symlink to a file
-        RunCommand('find',[sd,'-type','l','-name',aLibrary],OutputString,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
-        result:=(Pos(aLibrary,OutputString)>0);
-      end;
-      if result then
-      begin
-        ThreadLog('Library searcher found '+aLibrary+' inside '+sd+'.',etDebug);
-        break;
+        if (NOT result) then
+        begin
+          //try to find a file
+          //OutputString:=FileSearch(aLibrary,SysUtils.GetEnvironmentVariable('LIBRARY_PATH'));
+          //OutputString:=FindFileInDirList(aLibrary,SysUtils.GetEnvironmentVariable('LIBRARY_PATH'));
+          RunCommand('find',[sd,'-type','f','-name',aLibrary],OutputString,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
+          result:=((Pos(aLibrary,OutputString)>0));
+          if result then
+          begin
+            OutputLines:=TStringList.Create;
+            try
+              OutputLines.Text:=OutputString;
+              i:=StringListContains(OutputLines,aLibrary);
+              if (i<>-1) then
+              begin
+                aFile:=OutputLines[i];
+                if FileExists(aFile) then
+                  dir:='Found in unix dir: '+ExtractFileDir(aFile)
+                else
+                  result:=false;
+              end;
+            finally
+              OutputLines.Destroy;
+            end;
+          end;
+
+        end;
+        if (NOT result) then
+        begin
+          //try to find a symlink to a file
+          RunCommand('find',[sd,'-type','l','-name',aLibrary],OutputString,[poUsePipes, poStderrToOutPut]{$IF DEFINED(FPC_FULLVERSION) AND (FPC_FULLVERSION >= 30200)},swoHide{$ENDIF});
+          result:=((Pos(aLibrary,OutputString)>0));
+          if result then
+          begin
+            OutputLines:=TStringList.Create;
+            try
+              OutputLines.Text:=OutputString;
+              i:=StringListContains(OutputLines,aLibrary);
+              if (i<>-1) then
+              begin
+                aFile:=OutputLines[i];
+                if FileExists(aFile) then
+                  dir:='Found symlink in unix dir: '+ExtractFileDir(aFile)
+                else
+                  result:=false;
+              end;
+            finally
+              OutputLines.Destroy;
+            end;
+          end;
+        end;
+        if result then
+        begin
+          ThreadLog('Library searcher found '+aLibrary+' inside '+sd+'.',etDebug);
+          break;
+        end;
       end;
     end;
   end;
@@ -3571,12 +3723,42 @@ begin
       result:=( (Pos(aLibrary,OutputString)>0) AND (Pos('not found',OutputString)=0));
       if result then
       begin
+        OutputLines:=TStringList.Create;
+        try
+          OutputLines.Text:=OutputString;
+          i:=StringListContains(OutputLines,aLibrary);
+          if (i<>-1) then
+          begin
+            aFile:=OutputLines[i];
+            i:=Pos(' /',aFile);
+            if (i>0) then
+            begin
+              Delete(aFile,1,i);
+              if FileExists(aFile) then
+                dir:='Found with ldconfig: '+ExtractFileDir(aFile)
+              else
+                result:=false;
+            end;
+          end;
+        finally
+          OutputLines.Destroy;
+        end;
+      end;
+      if result then
+      begin
         ThreadLog('Library '+aLibrary+' found by ldconfig.',etInfo);
       end;
     end;
   end;
   {$endif}
   {$endif}
+end;
+
+function LibWhich(const aLibrary: string): boolean;
+var
+  aDir:string;
+begin
+  result:=LibWhich(aLibrary,aDir);
 end;
 
 function Which(const Executable: string): string;
@@ -4225,6 +4407,7 @@ var
   JsonObject   : TJSONObject;
   Releases     : TJSONArray;
   NewVersion   : boolean;
+  Fixes        : boolean;
   i            : integer;
   Ss           : TStringStream;
   Content      : string;
@@ -4233,7 +4416,18 @@ begin
   json:=nil;
   Success:=false;
   NewVersion:=false;
+  Fixes:=false;
   result:='';
+
+  // Check for a fixes version
+  if DELUXEVERSION[Length(DELUXEVERSION)]='f' then
+  begin
+    if DELUXEVERSION[Length(DELUXEVERSION)-1] in ['a'..'z'] then
+    begin
+      Fixes:=true;
+    end;
+  end;
+
   if (Length(aURL)>0) then
   begin
     Ss := TStringStream.Create('');
@@ -4271,7 +4465,9 @@ begin
           if CalculateNumericalVersion(s)>CalculateNumericalVersion(DELUXEVERSION) then NewVersion:=True;
           if CalculateNumericalVersion(s)=CalculateNumericalVersion(DELUXEVERSION) then
           begin
-            if Ord(s[Length(s)])>Ord(DELUXEVERSION[Length(DELUXEVERSION)]) then NewVersion:=True;
+            i:=Length(DELUXEVERSION);
+            if Fixes then Dec(i);
+            if Ord(s[Length(s)])>Ord(DELUXEVERSION[i]) then NewVersion:=True;
           end;
           if NewVersion then
           begin
@@ -5429,7 +5625,7 @@ begin
 
   if (NOT FCURLOk) AND (NOT FWGETOk) then
   begin
-    ThreadLog('Could not initialize either libcurl or wget.',etError);
+    ThreadLog('Could not initialize either libcurl or wget.',etDebug);
   end;
 
   UserAgent:=CURLUSERAGENT;

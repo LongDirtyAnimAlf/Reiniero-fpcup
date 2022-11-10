@@ -148,6 +148,7 @@ const
     //standard useride build
     _DECLARE+_USERIDE+_SEP +
     _BUILDMODULE+_LAZBUILD+_SEP +
+    //_BUILDMODULE+'IdeDebugger'+_SEP +
     _BUILDMODULE+_USERIDE+_SEP +
     _END +
 
@@ -301,8 +302,8 @@ uses
 
 function TLazarusCrossInstaller.BuildModuleCustom(ModuleName: string): boolean;
 var
-  Options: string;
-  LazBuildApp: string;
+  Options      : string;
+  LazBuildApp  : string;
 begin
   Result:=inherited;
 
@@ -382,13 +383,27 @@ begin
         Processor.Process.Parameters.Add('LAZARUS_INSTALL_DIR='+IncludeTrailingPathDelimiter(InstallDirectory));
 
         //Make sure our FPC units can be found by Lazarus
-        Processor.Process.Parameters.Add('FPCDIR=' + ExcludeTrailingPathDelimiter(FPCSourceDir));
+        //Processor.Process.Parameters.Add('FPCDIR=' + ExcludeTrailingPathDelimiter(FPCSourceDir));
+        Processor.Process.Parameters.Add('FPCDIR=' + ExcludeTrailingPathDelimiter(FPCInstallDir));
         //Make sure Lazarus does not pick up these tools from other installs
         Processor.Process.Parameters.Add('FPCMAKE=' + FFPCCompilerBinPath+'fpcmake'+GetExeExt);
         Processor.Process.Parameters.Add('PPUMOVE=' + FFPCCompilerBinPath+'ppumove'+GetExeExt);
 
-        {$ifdef Windows}
+        {$ifdef MsWindows}
         Processor.Process.Parameters.Add('UPXPROG=echo');      //Don't use UPX
+        (*
+        // do we have a stray shell in the path ...
+        if StrayShell then
+        begin
+          s1:=ExtractFilePath(Make)+'gecho.exe';
+          if FileExists(s1) then
+          begin
+            if (Pos(' ',s1)>0) then s1:=ExtractShortPathName(s1);
+            s1:=StringReplace(s1,'\','/',[rfReplaceAll]);
+            Processor.Process.Parameters.Add('ECHOREDIR=' + s1);
+          end;
+        end;
+        *)
         {$else}
         //Processor.Process.Parameters.Add('INSTALL_BINDIR='+FBinPath);
         {$endif}
@@ -534,7 +549,7 @@ begin
 
   if not DirectoryExists(InstallDirectory) then
   begin
-    Infoln(infotext+'No Lazarus install [yet] ... nothing to be done',etInfo);
+    Infoln(infotext+'No Lazarus install [yet] ... nothing to be done',etDebug);
   end;
   if CheckDirectory(InstallDirectory) then exit;
 
@@ -598,13 +613,12 @@ end;
 
 function TLazarusNativeInstaller.BuildModuleCustom(ModuleName: string): boolean;
 var
-  i,j,ExitCode: integer;
-  s,s2,LazBuildApp,FPCDirStore: string;
+  i,ExitCode                     : integer;
+  s1,s2,LazBuildApp,FPCDirStore  : string;
   {$ifdef MSWindows}
-  OldPath:string;
+  OldPath                        : string;
   {$endif}
-  OperationSucceeded: boolean;
-  LazarusConfig: TUpdateLazConfig;
+  OperationSucceeded             : boolean;
 begin
   Result:=inherited;
 
@@ -616,16 +630,33 @@ begin
   //DownloadZlib;
   {$ENDIF}
 
-  LazBuildApp := IncludeTrailingPathDelimiter(InstallDirectory) + LAZBUILDNAME + GetExeExt;
 
-  if (ModuleName=_LAZARUS) OR (ModuleName=_LAZBUILD) then
+  if ((ModuleName=_LAZARUS) OR (ModuleName=_LAZBUILD) OR (ModuleName=_USERIDE)) then
   begin
     if (Length(ActualRevision)=0) OR (ActualRevision='failure') then
     begin
       s2:=GetRevision(ModuleName);
+      if (Length(s2)=0) then
+      begin
+        // In case we only do a rebuild of the available sources, get then revision while it might be missing
+        // And presume that we have git sources, which might be not true in all cases, but anyhow
+        GitClient.LocalRepository:=SourceDirectory;
+        s2:=GitClient.LocalRevision;
+      end;
       if Length(s2)>0 then FActualRevision:=s2;
     end;
-    if (ModuleName=_LAZARUS) then Infoln(infotext+'Now building '+ModuleName+' revision '+ActualRevision,etInfo);
+    if ((ModuleName=_LAZARUS) OR (ModuleName=_USERIDE)) then
+    begin
+      Infoln(infotext+'Now building '+ModuleName,etInfo);
+      s1:=ConcatPaths([SourceDirectory,'ide'])+DirectorySeparator+REVINCFILENAME;
+      // If not there, store the revision in the appropriate location
+      if (NOT FileExists(s1)) then
+      begin
+        s2:=ActualRevision;
+        if (Length(s2)=0) OR (s2='failure') then s2:='unknown';
+        CreateRevision(_LAZARUS,s2);
+      end;
+    end;
   end;
 
   //Note: available in more recent Lazarus : use "make lazbuild useride" to build ide with installed packages
@@ -663,14 +694,27 @@ begin
     Processor.Process.Parameters.Add('LAZARUS_INSTALL_DIR='+IncludeTrailingPathDelimiter(InstallDirectory));
 
     //Make sure our FPC units can be found by Lazarus
-    Processor.Process.Parameters.Add('FPCDIR=' + ExcludeTrailingPathDelimiter(FPCSourceDir));
-    //Processor.Process.Parameters.Add('FPCDIR=' + ExcludeTrailingPathDelimiter(FFPCInstallDir));
+    //Processor.Process.Parameters.Add('FPCDIR=' + ExcludeTrailingPathDelimiter(FPCSourceDir));
+    Processor.Process.Parameters.Add('FPCDIR=' + ExcludeTrailingPathDelimiter(FFPCInstallDir));
     //Make sure Lazarus does not pick up these tools from other installs
     Processor.Process.Parameters.Add('FPCMAKE=' + FFPCCompilerBinPath+'fpcmake'+GetExeExt);
     Processor.Process.Parameters.Add('PPUMOVE=' + FFPCCompilerBinPath+'ppumove'+GetExeExt);
 
-    {$ifdef Windows}
+    {$ifdef MsWindows}
     Processor.Process.Parameters.Add('UPXPROG=echo');      //Don't use UPX
+    (*
+    // do we have a stray shell in the path ...
+    if StrayShell then
+    begin
+      s1:=ExtractFilePath(Make)+'gecho.exe';
+      if FileExists(s1) then
+      begin
+        if (Pos(' ',s1)>0) then s1:=ExtractShortPathName(s1);
+        s1:=StringReplace(s1,'\','/',[rfReplaceAll]);
+        Processor.Process.Parameters.Add('ECHOREDIR=' + s1);
+      end;
+    end;
+    *)
     {$else}
     //Processor.Process.Parameters.Add('INSTALL_BINDIR='+FBinPath);
     {$endif}
@@ -683,27 +727,27 @@ begin
       Processor.Process.Parameters.Add('LCL_PLATFORM=' + FLCL_Platform);
 
     //Set standard options
-    s:=STANDARDCOMPILERVERBOSITYOPTIONS;
+    s1:=STANDARDCOMPILERVERBOSITYOPTIONS;
 
     //Always limit the search for fpc.cfg to our own fpc.cfg
     //Only needed on Windows. On Linux, we have already our own fpc.sh
-    {$ifdef Windows}
-    //s:=s+' -n @'+FFPCCompilerBinPath+'fpc.cfg';
+    {$ifdef MsWindows}
+    //s1:=s1+' -n @'+FFPCCompilerBinPath+'fpc.cfg';
     {$endif}
 
     // Add remaining options
-    s:=s+' '+FCompilerOptions;
+    s1:=s1+' '+FCompilerOptions;
 
     //Lazbuild MUST be build without giving any extra optimization options
     //At least on Linux anything else gives errors when trying to use lazbuild ... :-(
     if ModuleName=_LAZBUILD then
     begin
-      i:=Pos('-O',s);
+      i:=Pos('-O',s1);
       if i>0 then
       begin
-        if s[i+2] in ['0'..'9'] then
+        if s1[i+2] in ['0'..'9'] then
         begin
-          Delete(s,i,3);
+          Delete(s1,i,3);
         end;
       end;
     end;
@@ -718,23 +762,23 @@ begin
 
         if (NOT LibWhich(LIBQT5)) AND (FileExists(IncludeTrailingPathDelimiter(InstallDirectory)+LIBQT5)) then
         begin
-          s:=s+' -k"-rpath=./"';
-          s:=s+' -k"-rpath=$$ORIGIN"';
-          s:=s+' -k"-rpath=\\$$$$$\\ORIGIN"';
-          s:=s+' -Fl'+ExcludeTrailingPathDelimiter(InstallDirectory);
+          s1:=s1+' -k"-rpath=./"';
+          s1:=s1+' -k"-rpath=$$ORIGIN"';
+          s1:=s1+' -k"-rpath=\\$$$$$\\ORIGIN"';
+          s1:=s1+' -Fl'+ExcludeTrailingPathDelimiter(InstallDirectory);
         end;
         {$endif}
       {$endif}
     {$endif}
 
     // remove double spaces
-    while Pos('  ',s)>0 do
+    while Pos('  ',s1)>0 do
     begin
-      s:=StringReplace(s,'  ',' ',[rfReplaceAll]);
+      s1:=StringReplace(s1,'  ',' ',[rfReplaceAll]);
     end;
-    s:=Trim(s);
+    s1:=Trim(s1);
 
-    if Length(s)>0 then Processor.Process.Parameters.Add('OPT='+s);
+    if Length(s1)>0 then Processor.Process.Parameters.Add('OPT='+s1);
 
     case ModuleName of
       _USERIDE:
@@ -746,21 +790,21 @@ begin
         {$endif}
         Processor.Process.Parameters.Add('useride');
 
-        s:=IncludeTrailingPathDelimiter(PrimaryConfigPath)+DefaultIDEMakeOptionFilename;
+        s1:=IncludeTrailingPathDelimiter(PrimaryConfigPath)+DefaultIDEMakeOptionFilename;
 
-        //if FileExists(s) then
-          Processor.Process.Parameters.Add('CFGFILE=' + s);
+        //if FileExists(s1) then
+          Processor.Process.Parameters.Add('CFGFILE=' + s1);
 
         Infoln(infotext+'Running: make useride', etInfo);
 
         (*
-        s:=IncludeTrailingPathDelimiter(PrimaryConfigPath)+DefaultIDEMakeOptionFilename;
-        if FileExists(s) then
+        s1:=IncludeTrailingPathDelimiter(PrimaryConfigPath)+DefaultIDEMakeOptionFilename;
+        if FileExists(s1) then
         begin
           // this uses lazbuild as per definition in the Lazarus Makefile
           Processor.Process.Parameters.Add('LAZBUILDJOBS='+IntToStr(FCPUCount));
           // Add the ide config build file when it is there
-          Processor.Process.Parameters.Add('CFGFILE=' + s);
+          Processor.Process.Parameters.Add('CFGFILE=' + s1);
           Processor.Process.Parameters.Add('useride');
           Infoln(infotext+'Running: make useride', etInfo);
         end
@@ -839,7 +883,7 @@ begin
         else
         begin
           // nothing to be done: exit graceously
-          Infoln(infotext+'No extra LCL_PLATFORM defined ... nothing to be done', etInfo);
+          Infoln(infotext+'No extra LCL_PLATFORM defined ... nothing to be done', etDebug);
           OperationSucceeded := true;
           Result := true;
           exit;
@@ -850,8 +894,8 @@ begin
         if ((SourceVersionNum<>0) AND (SourceVersionNum<CalculateFullVersion(1,8,0))) then
         begin
           Infoln(infotext+'Deleting '+FPCDefines+' to force rescan of FPC sources.', etInfo);
-          s:=IncludeTrailingPathDelimiter(PrimaryConfigPath)+FPCDefines;
-          SysUtils.DeleteFile(s);
+          s1:=IncludeTrailingPathDelimiter(PrimaryConfigPath)+FPCDefines;
+          SysUtils.DeleteFile(s1);
         end;
         if (InstallDirectory<>SourceDirectory) then
         begin
@@ -887,11 +931,11 @@ begin
       {$ifdef MSWindows}
       //Prepend FPC binary directory to PATH to prevent pickup of strange tools
       OldPath:=Processor.Environment.GetVar(PATHVARNAME);
-      s:=ExcludeTrailingPathDelimiter(FFPCCompilerBinPath);
+      s1:=ExcludeTrailingPathDelimiter(FFPCCompilerBinPath);
       if OldPath<>'' then
-         Processor.Environment.SetVar(PATHVARNAME, s+PathSeparator+OldPath)
+         Processor.Environment.SetVar(PATHVARNAME, s1+PathSeparator+OldPath)
       else
-        Processor.Environment.SetVar(PATHVARNAME, s);
+        Processor.Environment.SetVar(PATHVARNAME, s1);
       {$endif}
 
       ProcessorResult:=Processor.ExecuteAndWait;
@@ -936,6 +980,8 @@ begin
     // Check for valid lazbuild.
     // Note: we don't check if we have a valid primary config path, but that will come out
     // in the next steps.
+    //LazBuildApp:=IncludeTrailingPathDelimiter(SourceDirectory)+LAZBUILDNAME+GetExeExt;
+    LazBuildApp:=IncludeTrailingPathDelimiter(InstallDirectory)+LAZBUILDNAME+GetExeExt;
     if CheckExecutable(LazBuildApp, ['--help'], LAZBUILDNAME) = false then
     begin
       WritelnLog(etError, infotext+'Lazbuild could not be found, so cannot build USERIDE.', true);
@@ -952,7 +998,8 @@ begin
       //SysUtils.GetEnvironmentVariable('FPCDIR');
       //Makefile could pickup this FPCDIR setting, so try to set it for fpcupdeluxe
       FPCDirStore:=Processor.Environment.GetVar('FPCDIR');
-      Processor.Environment.SetVar('FPCDIR',ExcludeTrailingPathDelimiter(FPCSourceDir));
+      //Processor.Environment.SetVar('FPCDIR',ExcludeTrailingPathDelimiter(FPCSourceDir));
+      Processor.Environment.SetVar('FPCDIR',ExcludeTrailingPathDelimiter(FPCInstallDir));
       {$IFDEF DEBUG}
       Processor.Process.Parameters.Add('--verbose');
       {$ELSE}
@@ -1079,8 +1126,8 @@ begin
     begin
       //Make new symlinks !!
       {$ifdef Darwin}
-      s:=ConcatPaths([InstallDirectory,'startlazarus']);
-      if FileExists(s) then
+      s1:=ConcatPaths([InstallDirectory,'startlazarus']);
+      if FileExists(s1) then
       begin
         s2:=ConcatPaths([InstallDirectory,'startlazarus.app','Contents','MacOS','startlazarus']);
         SysUtils.DeleteFile(s2);
@@ -1093,15 +1140,15 @@ begin
     begin
       //Make new symlinks !!
       {$ifdef Darwin}
-      s:=ConcatPaths([InstallDirectory,'lazarus']);
-      if FileExists(s) then
+      s1:=ConcatPaths([InstallDirectory,'lazarus']);
+      if FileExists(s1) then
       begin
         s2:=ConcatPaths([InstallDirectory,'lazarus.app','Contents','MacOS','lazarus']);
         SysUtils.DeleteFile(s2);
         fpSymlink(PChar('./../../../lazarus'),PChar(s2));
       end;
-      s:=ConcatPaths([InstallDirectory,'startlazarus']);
-      if FileExists(s) then
+      s1:=ConcatPaths([InstallDirectory,'startlazarus']);
+      if FileExists(s1) then
       begin
         s2:=ConcatPaths([InstallDirectory,'startlazarus.app','Contents','MacOS','startlazarus']);
         SysUtils.DeleteFile(s2);
@@ -1341,7 +1388,7 @@ end;
 function TLazarusInstaller.BuildModuleCustom(ModuleName: string): boolean;
 begin
   Result := true;
-  infotext:=Copy(Self.ClassName,2,MaxInt)+' (BuildModuleCustom: '+ModuleName+'): ';
+  infotext:=InitInfoText(' (BuildModuleCustom: '+ModuleName+'): ');
   Infoln(infotext+'Entering ...',etDebug);
 end;
 
@@ -1392,7 +1439,7 @@ begin
 
   if InitDone then exit;
 
-  localinfotext:=Copy(Self.ClassName,2,MaxInt)+' (InitModule): ';
+  localinfotext:=InitInfoText(' (InitModule): ');
 
   PlainBinDir := SafeExpandFileName(FFPCCompilerBinPath+'..'+DirectorySeparator+'..');
 
@@ -1425,19 +1472,28 @@ begin
     begin
       s:=SVNClient.RepoExecutable;
       if (Pos(' ',s)>0) then s:=ExtractShortPathName(s);
-      aPath:=aPath+PathSeparator+ExtractFileDir(s);
+      s:=ExtractFileDir(s);
+      // Only add path if there is no stray shell (sh.exe) laying around in this path
+      if (NOT FileExists(s+DirectorySeparator+'sh'+GetExeExt)) then
+        aPath:=aPath+PathSeparator+s;
     end;
     if Assigned(GITClient) AND GITClient.ValidClient then
     begin
       s:=GITClient.RepoExecutable;
       if (Pos(' ',s)>0) then s:=ExtractShortPathName(s);
-      aPath:=aPath+PathSeparator+ExtractFileDir(s);
+      s:=ExtractFileDir(s);
+      // Only add path if there is no stray shell (sh.exe) laying around in this path
+      if (NOT FileExists(s+DirectorySeparator+'sh'+GetExeExt)) then
+        aPath:=aPath+PathSeparator+s;
     end;
     if Assigned(HGClient) AND HGClient.ValidClient then
     begin
       s:=HGClient.RepoExecutable;
       if (Pos(' ',s)>0) then s:=ExtractShortPathName(s);
-      aPath:=aPath+PathSeparator+ExtractFileDir(s);
+      s:=ExtractFileDir(s);
+      // Only add path if there is no stray shell (sh.exe) laying around in this path
+      if (NOT FileExists(s+DirectorySeparator+'sh'+GetExeExt)) then
+        aPath:=aPath+PathSeparator+s;
     end;
     SetPath(
       ExcludeTrailingPathDelimiter(FFPCCompilerBinPath) + PathSeparator +
@@ -1513,6 +1569,7 @@ var
   RenameNeeded   : boolean;
   {$ENDIF DARWIN}
   LazarusConfig  : TUpdateLazConfig;
+  LegacyList     : boolean;
   PCPSnippet     : TStringList;
   aFileName      : string;
   s,s2           : string;
@@ -1565,6 +1622,13 @@ begin
 
       if (LazarusConfig.IfNewFile(EnvironmentConfig)) then
       begin
+        if Ultibo then
+        begin
+          s:=LazarusConfig.GetVariable(EnvironmentConfig, 'EnvironmentOptions/Version/Lazarus');
+          s:=s+'U';
+          LazarusConfig.SetVariable(EnvironmentConfig, 'EnvironmentOptions/Version/Lazarus',s);
+        end;
+
         {$IFDEF MSWINDOWS}
         // On Windows, we provide our own GDB
         GDBPath:=ConcatPaths([FMakeDir,'gdb',GetTargetCPUOS])+DirectorySeparator+'gdb.exe';
@@ -1607,10 +1671,12 @@ begin
           end
           else
           begin
-            LazarusConfig.SetVariable(EnvironmentConfig, 'EnvironmentOptions/Debugger/Configs/Config/ConfigName', 'Standard GDB');
-            LazarusConfig.SetVariable(EnvironmentConfig, 'EnvironmentOptions/Debugger/Configs/Config/ConfigClass', 'TGDBMIDebugger');
-            LazarusConfig.SetVariable(EnvironmentConfig, 'EnvironmentOptions/Debugger/Configs/Config/DebuggerFilename',GDBPath);
-            LazarusConfig.SetVariable(EnvironmentConfig, 'EnvironmentOptions/Debugger/Configs/Config/Active',True);
+            LegacyList:=LazarusConfig.IsLegacyList(EnvironmentConfig, 'EnvironmentOptions/Debugger/Configs/');
+            s:='EnvironmentOptions/Debugger/Configs/'+LazarusConfig.GetListItemXPath(EnvironmentConfig,'Config',0,LegacyList,True)+'/';
+            LazarusConfig.SetVariable(EnvironmentConfig, s+'ConfigName', 'Standard GDB');
+            LazarusConfig.SetVariable(EnvironmentConfig, s+'ConfigClass', 'TGDBMIDebugger');
+            LazarusConfig.SetVariable(EnvironmentConfig, s+'DebuggerFilename',GDBPath);
+            LazarusConfig.SetVariable(EnvironmentConfig, s+'Active',True);
             {$IFDEF DARWIN}
             //Available in latest trunk: extra gdb settings
             LazarusConfig.SetVariableIfNewFile(EnvironmentConfig, 'EnvironmentOptions/Debugger/ClassTGDBMIDebugger/Properties/DisableStartupShell', 'True');
@@ -1859,7 +1925,7 @@ begin
       // set defaults for pas2js
       LazarusConfig.SetVariableIfNewFile(Pas2jsConfig, 'compiler/value', ExtractFilePath(FCompiler)+'pas2js'+GetExeExt);
       LazarusConfig.SetVariableIfNewFile(Pas2jsConfig, 'webserver/value',  ExtractFilePath(FCompiler)+'compileserver'+GetExeExt);
-      //LazarusConfig.SetVariableIfNewFile(Pas2jsConfig, 'webserver/startatport/value', '8000');
+      //LazarusConfig.SetVariableIfNewFile(Pas2jsConfig, 'webserver/startatport/value', '3000');
 
     except
       on E: Exception do
@@ -1915,15 +1981,6 @@ begin
   if not Result then exit;
 
   CrossCompiling:=(Self is TLazarusCrossInstaller);
-
-  // If cleaning primary config:
-  if ((NOT CrossCompiling) and (ModuleName=_LAZARUS)) then
-  begin
-    //Infoln(infotext+'If your primary config path has changed, you may want to remove ' + IncludeTrailingPathDelimiter(
-    //  InstallDirectory) + 'lazarus.cfg which points to the primary config path.', etInfo);
-    Infoln(infotext+'Deleting Lazarus primary config file ('+LAZARUSCFG+').', etInfo);
-    DeleteFile(IncludeTrailingPathDelimiter(InstallDirectory) + LAZARUSCFG);
-  end;
 
   if (ModuleName=_LAZARUS) then
   begin
@@ -2080,7 +2137,7 @@ begin
         end
         else
         begin
-          Infoln(infotext+'No extra LCL_PLATFORM defined ... nothing to be done', etInfo);
+          Infoln(infotext+'No extra LCL_PLATFORM defined ... nothing to be done', etDebug);
           Result := true;
           exit;
         end;
@@ -2671,7 +2728,7 @@ begin
 
   if not DirectoryExists(SourceDirectory) then
   begin
-    Infoln(infotext+'No Lazarus sources [yet] ... nothing to be done',etInfo);
+    Infoln(infotext+'No Lazarus sources [yet] ... nothing to be done',etDebug);
   end;
   if CheckDirectory(SourceDirectory) then exit;
 
