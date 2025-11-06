@@ -1,5 +1,5 @@
 # Tests building lazbuild using fplazup on Windows 32, Windows 64, Linux 64, MacOS 64 and AArch64 (cross compiled)
-# Builds FPC 3.2.0 & Lazarus trunk but reverts to a known revision that compiles (64045).
+# Builds FPC 3.2.2 & Lazarus trunk.
 
 name: Test
 
