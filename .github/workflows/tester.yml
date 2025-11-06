@@ -34,7 +34,7 @@ jobs:
           - os: macos-latest
             name: 'MacOS 64'
             fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.4.0g/fpclazup-x86_64-darwin'
-            fpcup-opt: '--fpcVersion="stable.gitlab" --lazVersion="trunk.gitlab"'
+            fpcup-opt: '--fpcVersion="trunk.gitlab" --lazVersion="trunk.gitlab"'
 
           - os: ubuntu-latest
             name: 'AArch64'
