@@ -18,7 +18,7 @@ jobs:
         config:
           - os: windows-latest
             name: 'Windows 32'
-            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.4.0i/fpclazup-i386-win32.exe'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.4.0k/fpclazup-i386-win32.exe'
             fpcup-opt: '--fpcVersion="stable.gitlab" --lazVersion="trunk.gitlab"'
             
           - os: windows-latest
