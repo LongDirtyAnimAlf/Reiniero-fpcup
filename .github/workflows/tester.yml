@@ -23,22 +23,22 @@ jobs:
             
           - os: windows-latest
             name: 'Windows 64'
-            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.4.0i/fpclazup-x86_64-win64.exe'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.4.0k/fpclazup-x86_64-win64.exe'
             fpcup-opt: '--fpcVersion="stable.gitlab" --lazVersion="trunk.gitlab"'
 
           - os: ubuntu-latest
             name: 'Linux 64'
-            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.4.0i/fpclazup-x86_64-linux'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.4.0k/fpclazup-x86_64-linux'
             fpcup-opt: '--fpcVersion="stable.gitlab" --lazVersion="trunk.gitlab"'
 
           - os: macos-latest
             name: 'MacOS 64'
-            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.4.0i/fpclazup-x86_64-darwin'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.4.0k/fpclazup-x86_64-darwin'
             fpcup-opt: '--fpcVersion="trunk.gitlab" --lazVersion="trunk.gitlab"'
 
           - os: ubuntu-latest
             name: 'AArch64'
-            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.4.0i/fpclazup-x86_64-linux'
+            fpcup-url: 'https://github.com/LongDirtyAnimAlf/Reiniero-fpcup/releases/download/v2.4.0k/fpclazup-x86_64-linux'
             fpcup-opt: '--fpcVersion="stable.gitlab" --lazVersion="trunk.gitlab"'
 
     steps:
@@ -46,7 +46,7 @@ jobs:
       if: matrix.config.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
-        sudo apt-get -m -y install libgtk2.0-dev libpango1.0-dev
+        sudo apt-get -m -y install libgtk2.0-dev libgtk3.0-dev libpango1.0-dev
     - name: Install Lazarus
       run: |
         curl --retry 5 -L -o fpcup ${{ matrix.config.fpcup-url }}
